@@ -21,7 +21,7 @@ are *not* the deployed versions:
 | Cited | Deployed | Gap |
 |---|---|---|
 | jellyfin tag `v10.11.11` | Jellyfin **10.11.9** | two patch releases; the clone is shallow and carries no 10.11.9 tag, so no diff is possible |
-| WLED `main` @ `f49e541`, build 2607201 (2026-09-01) | WLED **16.0.0**, build 2605030 | ~2.5 months of `main` ahead of the firmware actually running |
+| WLED `main` @ `f49e541`, build 2607201 (2026-09-01) | WLED **16.0.1**, build 2606300 (updated 2026-09-05, was 16.0.0/2605030) | ~1 month of `main` ahead of the firmware actually running |
 
 Several cited WLED sites are visibly post-16.0.0. Nothing has been verified
 against the exact deployed builds; where a claim is load-bearing it should be
@@ -755,7 +755,7 @@ not yet written.
 | Q1 | Upgrade the dev host from 10.11.9 to 10.11.11? | **Answered 2026-09-05: no.** Make it work from 10.11.9. See §1. |
 | Q2 | `PlaybackProgress` reporting cadence of the TCL Android TV client. | **Answered 2026-09-05: operator does not know.** I must measure it myself using the dev API key. |
 | Q3 | Which files in the library have DV **P5** and **P7**? | **Answered 2026-09-05: operator cannot determine this.** Instead he named one reference asset — see §18. P5 is covered; **P7 has no known sample**, so §72 will ship with P7 listed as untested. |
-| Q4 | WLED master brightness and ABL settings on wled-livingroom. | **Answered 2026-09-05: operator will help test.** ⚠ Controller is currently **unplugged and unreachable** — no WLED work possible until he restores power. |
+| Q4 | WLED master brightness and ABL settings on wled-livingroom. | **Closed 2026-09-05 by measurement, no visual check needed.** `maxbri` now enabled and verified (7.5000 mA/LED forced vs 2.3819 at `bri` 80). ABL does not engage: all-white draws 19.65 A against a 40 A cap. See ADR-004 Amendment 2. |
 | Q5 | May the disabled plugin DLLs in `/root/jellyfin-plugin-disabled/` be decompiled as research input? | **Answered 2026-09-05: yes.** Not yet performed — see below. |
 | Q6 | Jellyfin API key for the dev server. | **Answered 2026-09-05:** key issued for jellyfin-dev. Held outside the repository. |
 
@@ -893,8 +893,6 @@ Nothing below may be recorded as passing without the operator's own observation.
 | Item | Requirement | Status |
 |---|---|---|
 | DV P5 colour correctness on the reference asset | §30, §32, §72 | needs the operator watching the film with LEDs live |
-| ABL dimming on the all-white calibration pattern | §47, §55 | measured numerically; visual impact not yet judged |
-| Exact corner alignment of segment boundaries | §44, §68 | not yet tested per-LED |
 | Perceived latency and smoothing quality | §41, §43 | needs §66 measurement with a phone camera |
 | Black-border behaviour on dark scenes | §33, §56 | needs the operator watching |
 

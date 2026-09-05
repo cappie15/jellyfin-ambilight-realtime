@@ -180,10 +180,11 @@ white balance demands it.
 change the user's configuration, so the correct behaviour is to **detect and
 report** this in the first-run check and Diagnostics, and let the user decide.
 
-**4. ABL will distort the ALL-WHITE calibration pattern.** 832 SK6812 RGBW at
-full white draws far more than the configured 40 A cap, so WLED will dim the
-strip. The §47 white test will therefore *not* be full brightness, and the UI
-must say so rather than let the user read it as a fault.
+**4. ~~ABL will distort the ALL-WHITE calibration pattern.~~ REFUTED by
+measurement — see Amendment 2.** This estimated ~60 mA/LED and concluded the
+40 A cap would be exceeded. Measured at forced full brightness, all 831 LEDs
+white draw **19.65 A**, comfortably under the cap. ABL does not engage, and the
+§47 white pattern renders at full brightness.
 
 **5. Topology, resolved.** §13 describes 832 LEDs across **four physical
 outputs**; the controller reports **one bus on a single pin**, and the operator
@@ -307,3 +308,105 @@ suppress realtime output and none were surveyed:
 | `if.live.rlm` | realtime honours the active ledmap — would re-route our indices |
 | `light.scale-bri` | a third brightness scaler (`led.cpp:59-61`) |
 | `if.live.mso` | main-segment-only; also decides whether the fps gate above applies |
+
+---
+
+## Amendment 2 — 2026-09-05 — firmware 16.0.1
+
+The operator updated the controller from **16.0.0** (build 2605030) to
+**16.0.1** (build 2606300) mid-project. Re-surveyed read-only, and the DDP
+behaviour re-measured objectively.
+
+### Protocol behaviour is unchanged — verified, not assumed
+
+| LEDs lit | Packets | Measured (mA) | Model | Error |
+|---|---|---|---|---|
+| 1 | 1 | 953 | 953.0 | +0.0 |
+| 100 | 1 | 1189 | 1188.8 | +0.2 |
+| 480 | 1 | 2094 | 2093.9 | +0.1 |
+| **481** | **2** | 2096 | 2096.3 | −0.3 |
+| 490 | 2 | 2118 | 2117.8 | +0.2 |
+| 491 | 2 | 2120 | 2120.1 | −0.1 |
+| **831** | **2** | 2930 | 2930.0 | +0.0 |
+
+`pwr = 950.6 + 2.3819 × n_lit`, maximum error **0.3 mA**. No truncation, correct
+fragmentation across the one-to-two-packet boundary, no discontinuity at 490/491,
+all 831 LEDs addressed. The firmware update is a non-event for the protocol.
+
+### A firmware update silently reverted an operator decision
+
+Two settings changed without the operator touching them:
+
+| Setting | 16.0.0 | 16.0.1 | Consequence |
+|---|---|---|---|
+| bus `rgbwm` | `0` (`RGBW_MODE_MANUAL_ONLY`) | **`2` (`RGBW_MODE_AUTO_ACCURATE`)** | auto-white calculation is now **ON** |
+| `state.bri` | 128 | **80** | realtime output now scaled to 31% |
+
+The `rgbwm` change directly contradicts the decision recorded in Amendment 1
+("WLED auto-white calculation stays OFF"). WLED now derives the white channel
+from our RGB and subtracts it from RGB — a colour transform between our
+calibration and the LEDs, which is exactly what §31 requires us not to have.
+
+**This is the strongest possible evidence for the first-run check.** Controller
+state does not merely differ from expectations at install time; it can change
+underneath a working installation, and a *firmware update* is enough to do it.
+The plugin must re-verify controller state on every session start, not once at
+setup, and report drift rather than silently producing wrong colour.
+
+### An accidental confirmation
+
+The slope fell from 3.7353 to 2.3819 mA/LED, a factor of 0.638, tracking the
+brightness change 80/128 = 0.625. Master brightness therefore demonstrably scales
+realtime output — previously known only from reading `led.cpp:68`, now measured.
+The intercept was unchanged (951.3 → 950.6): standby current is brightness-independent.
+
+### `info.leds.lc` must never be used to detect RGBW
+
+`lc` went 3 → 1 and `wv` 2 → 0, which looks like the strip changed type. It did
+not. `FX_fcn.cpp:1039-1044`:
+
+```cpp
+bool whiteSlider = (aWM == RGBW_MODE_DUAL || aWM == RGBW_MODE_MANUAL_ONLY);
+// if auto white calculation from RGB is active (Accurate/Brighter), force RGB controls
+if (!whiteSlider) capabilities |= SEG_CAPABILITY_RGB;
+```
+
+`lc` describes **which UI controls to show**, derived from the auto-white mode —
+not what the hardware is. With auto-white active there is no manual white slider,
+so the white capability bit is dropped even though the strip is still SK6812
+RGBW. A plugin reading `lc` to decide RGB24 versus RGBW32 would flip its wire
+format because a user changed an unrelated setting. **Read `hw.led.ins[].type`
+instead.**
+
+### Amendment 2, continued — `maxbri` enabled and verified
+
+The operator restored `rgbwm` to 0 and authorised direct configuration changes.
+`if.live.maxbri` was set to `true` via `POST /json/cfg` with the minimal body
+`{"if":{"live":{"maxbri":true}}}`; a full-config diff before and after confirms
+**exactly one field changed**. The pre-change configuration is backed up.
+
+Verified empirically rather than trusted. With `state.bri` still at 80:
+
+| Pattern | Slope (mA/LED) | 831 LEDs |
+|---|---|---|
+| `maxbri` off, `bri` 80 | 2.3819 | 2930 mA |
+| `maxbri` off, `bri` 128 | 3.7353 | 4059 mA |
+| **`maxbri` on, `bri` 80** | **7.5000** | **7183 mA** |
+
+Predicted for a forced 255: `3.7353 × 255/128 = 7.4414`. Measured **7.5000** —
+within 0.8%. `maxbri` forces full brightness during realtime while leaving the
+user's own effects at 80, which is exactly the separation §55 wants and means the
+plugin never needs to touch master brightness.
+
+### ABL does not engage — the earlier claim was wrong
+
+| 831 LEDs, forced full brightness | Draw |
+|---|---|
+| all red / all green / all blue | 7.18 A each |
+| **all white** | **19.65 A** |
+
+Against a 40 A cap. The survey's point 4 above estimated ~60 mA/LED and concluded
+ABL would dim the white calibration pattern. WLED's own model uses the bus
+`ledma: 30`, giving a theoretical ceiling of 831 × 30 = 24.9 A — still under the
+cap. **The §47 all-white pattern renders at full brightness and needs no
+explanatory note.** Q4 is closed without requiring visual confirmation.
