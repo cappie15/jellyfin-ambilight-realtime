@@ -22,7 +22,7 @@ All upstream trees were shallow-cloned on 2026-09-05 on the development host.
 | awawa-dev/HyperHDR | `master` | `e5bda285227cbd38bce60da6a442dde936fd9e7a` | 2026-09-01 |
 | gabrielprat/jellyfin-ambilight | `main` | `e64536e021910afc593375da5f3d6280f31d1b5b` | 2026-07-27 |
 
-Reference development host (`jellyfin-dev`, 10.0.0.31, unprivileged Proxmox LXC,
+Reference development host (`jellyfin-dev`, an unprivileged Proxmox LXC,
 Ubuntu 24.04, 4 cores / 8 GB):
 
 | Component | Version |
@@ -30,6 +30,11 @@ Ubuntu 24.04, 4 cores / 8 GB):
 | jellyfin-server / jellyfin-web | `10.11.9+ubu2404` |
 | jellyfin-ffmpeg7 | `7.1.3-6-noble` |
 | GPU | Intel iGPU, `/dev/dri/card1` (group `video`), `/dev/dri/renderD128` (group `render`) |
+
+Network addresses in this document are pseudonyms: `jellyfin-dev` is the
+development server, `jellyfin-prod` the production Jellyfin instance (never
+contacted), and `wled-livingroom` the WLED controller of the reference
+installation.
 
 ---
 
@@ -734,9 +739,9 @@ not yet written.
 | Q1 | Upgrade the dev host from 10.11.9 to 10.11.11? | **Answered 2026-09-05: no.** Make it work from 10.11.9. See §1. |
 | Q2 | `PlaybackProgress` reporting cadence of the TCL Android TV client. | **Answered 2026-09-05: operator does not know.** I must measure it myself using the dev API key. |
 | Q3 | Which files in the library have DV **P5** and **P7**? | **Answered 2026-09-05: operator cannot determine this.** Instead he named one reference asset — see §18. P5 is covered; **P7 has no known sample**, so §72 will ship with P7 listed as untested. |
-| Q4 | WLED master brightness and ABL settings on 10.0.0.8. | **Answered 2026-09-05: operator will help test.** ⚠ Controller is currently **unplugged and unreachable** — no WLED work possible until he restores power. |
+| Q4 | WLED master brightness and ABL settings on wled-livingroom. | **Answered 2026-09-05: operator will help test.** ⚠ Controller is currently **unplugged and unreachable** — no WLED work possible until he restores power. |
 | Q5 | May the disabled plugin DLLs in `/root/jellyfin-plugin-disabled/` be decompiled as research input? | **Answered 2026-09-05: yes.** Not yet performed — see below. |
-| Q6 | Jellyfin API key for the dev server. | **Answered 2026-09-05:** key issued for 10.0.0.31. Held outside the repository. |
+| Q6 | Jellyfin API key for the dev server. | **Answered 2026-09-05:** key issued for jellyfin-dev. Held outside the repository. |
 
 ### Q5 follow-up — decompilation approved, not yet performed
 
@@ -759,9 +764,9 @@ license obligations as adapting the source directly (§13).
 
 ### Q6 follow-up — credential handling
 
-An API key for the development server (10.0.0.31) has been issued. It is stored
+An API key for the development server (jellyfin-dev) has been issued. It is stored
 in the session scratchpad, outside the repository, and must never be committed.
-It is scoped to the dev host only. Production Jellyfin (10.0.0.30) remains
+It is scoped to the dev host only. Production Jellyfin (jellyfin-prod) remains
 untouched.
 
 ## 15. Assumptions requiring prototype validation
@@ -781,7 +786,7 @@ untouched.
 | R1 | Jellyfin 12.0 ships during the project; v1 targets 10.11.9 / `net9.0`, 12.0 needs `net10.0`. Already at rc7. |
 | R2 | DV P5 may have no acceptable fallback on this stack; section 30 forbids claiming untested support. |
 | R3 | WLED `DMXAddress`, `arlsOffset`, `realtimeOverride` and ABL can each silently alter or suppress output. All need first-run detection. |
-| R4 | The 10.0.0.8 controller is shared with production. Every realtime test needs operator coordination; this constrains the test schedule. |
+| R4 | The wled-livingroom controller is shared with production. Every realtime test needs operator coordination; this constrains the test schedule. |
 
 ---
 
@@ -891,12 +896,12 @@ capped at 40 A which will visibly dim the all-white calibration pattern. What
 remains genuinely visual is how the RGBW strip *looks* under RGB24 versus
 RGBW32, and whether the ABL dimming is objectionable in practice.
 
-⚠ **Before any realtime transmission to 10.0.0.8, the operator must confirm that
+⚠ **Before any realtime transmission to wled-livingroom, the operator must confirm that
 nothing is playing on production.** The controller is shared and accepts only one
 realtime consumer at a time. `info.live` was `false` at survey time, which is
 consistent with an idle controller but is not a substitute for his confirmation.
 
-No packets have been sent to 10.0.0.8. Production Jellyfin at 10.0.0.30 has not
+No packets have been sent to wled-livingroom. Production Jellyfin at jellyfin-prod has not
 been contacted.
 
 ---

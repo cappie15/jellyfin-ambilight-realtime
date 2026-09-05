@@ -124,7 +124,7 @@ surfaced rather than discovered by the user in the dark:
 - Auto-selection needs a WLED capability probe, which adds a JSON API dependency
   at setup time (not at frame time).
 
-## Controller survey — 10.0.0.8, read-only, 2026-09-05
+## Controller survey — wled-livingroom, read-only, 2026-09-05
 
 Read via `GET /json/info`, `/json/state` and `/json/cfg`. No packets were sent to
 the realtime path.
@@ -189,7 +189,7 @@ but worth confirming with the operator that the wiring is as he remembers.
 
 ## Protocol validation against the live controller, 2026-09-05
 
-Measured with a throwaway DDP sender against 10.0.0.8, using WLED's own power
+Measured with a throwaway DDP sender against wled-livingroom, using WLED's own power
 estimate (`info.leds.pwr`) as an objective read-back channel — it scales with the
 number of lit LEDs, which makes truncation measurable without seeing the strip.
 
@@ -215,7 +215,7 @@ Maximum error across the range: **0.7 mA**.
 - **All 832 LEDs receive data.** 832 lands exactly on the line.
 - **Over-length input is safe.** Sending 1000 LEDs of data to the 832-LED strip
   clamps at 4059 mA, does not crash, and the controller still reports 832.
-- **Source identification works.** WLED reports `lm: "DDP"`, `lip: "10.0.0.31"`.
+- **Source identification works.** WLED reports `lm: "DDP"`, `lip: "<dev-host>"`.
 
 ### Realtime release (§38, §39)
 
