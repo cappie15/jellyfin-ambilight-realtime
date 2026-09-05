@@ -14,6 +14,19 @@ that must be resolved before the corresponding ADR can be finalised.
 
 All upstream trees were shallow-cloned on 2026-09-05 on the development host.
 
+⚠ **Version drift qualifier — applies to every source citation in this document
+and in all nine ADRs.** Citations are against the refs in the table below, which
+are *not* the deployed versions:
+
+| Cited | Deployed | Gap |
+|---|---|---|
+| jellyfin tag `v10.11.11` | Jellyfin **10.11.9** | two patch releases; the clone is shallow and carries no 10.11.9 tag, so no diff is possible |
+| WLED `main` @ `f49e541`, build 2607201 (2026-09-01) | WLED **16.0.0**, build 2605030 | ~2.5 months of `main` ahead of the firmware actually running |
+
+Several cited WLED sites are visibly post-16.0.0. Nothing has been verified
+against the exact deployed builds; where a claim is load-bearing it should be
+re-checked against them.
+
 | Project | Ref | Commit | Date |
 |---|---|---|---|
 | jellyfin/jellyfin | tag `v10.11.11` | `1fbd8739292cce610231be93daf43368733edf63` | 2026-06-06 |
@@ -707,7 +720,7 @@ final.
 | Project | License | Our intended use |
 |---|---|---|
 | jellyfin-ambilight | **GPL-3.0-or-later** | architectural study; possible adaptation of extraction logic and device-mapping patterns |
-| HyperHDR | **LGPL-3.0** (to be verified per-file) | algorithm study: black-border processor, smoothing model |
+| HyperHDR | **MIT** (root `LICENSE`, awawa-dev 2020-2026; 8 non-MIT files confined to FTDI/amlogic/ESPixelStick paths) | algorithm study: black-border processor, smoothing model |
 | Jellyfin server | **GPL-2.0** | plugin API consumer only, via NuGet packages |
 | jellyfin-ffmpeg | **GPL-3.0** (built `--enable-gpl --enable-version3 --enable-libfdk-aac`) | invoked as a separate process |
 | WLED | **EUPL-1.2** | protocol study only; no code reuse |
@@ -724,8 +737,11 @@ Key obligations:
   never redistribute it — this is exactly why calling the system's existing
   jellyfin-ffmpeg (rather than bundling one) is also the cleanest licensing
   position. Worth stating explicitly in `licensing.md`.
-- HyperHDR's per-file licensing must be verified before adapting any code rather
-  than merely reimplementing a documented algorithm.
+- HyperHDR is **MIT**, not LGPL-3.0 as this document previously stated. That is a
+  materially *looser* constraint than the project had been assuming: adapting its
+  code requires only attribution and the licence text, not copyleft. The eight
+  non-MIT files sit under FTDI/amlogic/ESPixelStick paths we have no reason to
+  touch, but any file adapted must still be checked individually.
 
 `docs/architecture/licensing.md` is a separate deliverable per section 7 and is
 not yet written.

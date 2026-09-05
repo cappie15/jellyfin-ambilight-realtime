@@ -103,3 +103,63 @@ resume automatically if playback is still active.
 | Output via Home Assistant / MQTT | Requires the user to run a broker or hub; contradicts the minimal-dependency goal. |
 | No abstraction, WLED calls inline | Would entangle protocol details with the analysis pipeline and make §58's future drivers a rewrite. |
 | A large plugin-style driver framework | Over-engineering for one implementation. |
+
+---
+
+## Amendment 1 — 2026-09-05 — pending operator review
+
+Three corrections, one of them to a claim this ADR asserts as settled.
+
+### a. `ReleaseAsync` — there *is* an explicit release
+
+The text above says release "is then satisfied simply by ceasing to send". That
+is the crash-safety fallback, not the design. WLED exposes an explicit release:
+`POST /json {"live":false}` calls `exitRealtime()`
+(`wled00/json.cpp:457`; the function is `wled00/udp.cpp:439`, whose only other
+caller is the timeout at `:483`).
+
+Using it matters for three reasons:
+
+- it removes the 2.5 s dead tail between fade-end and control return;
+- it is the **only** escape when a user has set `if.live.timeout` to its 65000 ms
+  maximum, which otherwise means a near-permanent realtime lock;
+- `exitRealtime()` calls `strip.show()` (`udp.cpp:449`), pushing one frame at the
+  *restored* brightness — a possible single-frame flash we must test for.
+
+This also needs a distinction the ADR does not draw: a `/json` **state** write is
+not a `/json/cfg` **config** write. §39 forbids the latter. No cfg write is ever
+required — the DDP listener is unconditional.
+
+### b. "Exactly one Jellyfin notification per outage" presupposes a subsystem
+that does not exist
+
+At 10.11.x there is no `INotificationManager`, no `INotificationService`, no
+`ServerEvent`. Two channels exist and both break that sentence:
+
+- `IActivityManager` writes a durable admin activity-log row with **zero**
+  deduplication — `CreateAsync` inserts unconditionally. "Exactly one per outage"
+  becomes entirely a plugin-side edge-triggered state machine.
+- `ISessionManager.SendMessageCommand` puts a toast in front of the **viewer**,
+  which this ADR's own opening line and §88 priority 1 argue against.
+
+**Amendment.** Outage reporting is: a WARN log line, one edge-triggered activity-log
+entry per outage transition, and a status field on the diagnostics endpoint. No
+viewer-facing toast. If `Jellyfin.Database.Implementations` proves unavailable as a
+package, the activity-log entry degrades to the log line alone.
+
+### c. `ILedOutput` is two verbs short
+
+- **`KeepAliveAsync`** — see ADR-007 Amendment 1a. Freezing by ceasing to transmit
+  releases control after the realtime timeout, which is the exact opposite of what
+  §37 requires. A frozen or paused output must keep re-sending its last frame.
+  HyperHDR does precisely this, re-sending on the first tick at or after 1000 ms.
+- **a health/state surface** — required by the outage state machine in (b) and by
+  the §66 metrics the diagnostics page must expose.
+
+### d. The 2.5 s fade rationale is narrower than stated
+
+The value survives for the reference controller (`if.live.timeout: 25`), but the
+supporting argument — that a longer fade would be truncated — assumed 2500 ms is
+universal. It is a **per-controller setting**. With an explicit release (a), fade
+duration and the realtime timeout decouple entirely and the coincidence becomes
+decorative rather than load-bearing. The default stays 2.5 s.

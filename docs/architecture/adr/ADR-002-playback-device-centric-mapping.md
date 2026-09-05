@@ -99,3 +99,48 @@ priority system in v1.
 | Key on `PlaySessionId` | Lifetime is a single playback; cannot hold persistent configuration. |
 | Key on client IP address | Unstable under DHCP; and several clients may share an address. |
 | Full multi-session arbitration with room priority | Explicitly out of scope for v1 (§9). Large complexity cost for a rare case. |
+
+---
+
+## Amendment 1 — 2026-09-05 — pending operator review
+
+**"Strongly typed and versioned, with migrations (§60)" describes a mechanism
+that does not exist.**
+
+Three findings, all verified against the 10.11.11 tree:
+
+1. **There is no plugin migration framework.** `IMigrationRoutine` is declared
+   `internal` (`Jellyfin.Server/Migrations/IAsyncMigrationRoutine.cs:24`) and only
+   Jellyfin.Server's own assembly is scanned. `BasePluginConfiguration` carries no
+   version field.
+
+2. **A deserialisation failure silently destroys the user's configuration.**
+   `MediaBrowser.Common/Plugins/BasePluginOfT.cs:184-198`:
+
+   ```csharp
+   try   { return (TConfigurationType)XmlSerializer.DeserializeFromFile(...); }
+   catch { var config = Activator.CreateInstance<TConfigurationType>();
+           SaveConfiguration(config); return config; }
+   ```
+
+   A bare catch that immediately **writes defaults over the file**. One
+   incompatible property type change wipes a calibrated 831-LED layout — exactly
+   what `PlaybackDeviceBinding` holds, and exactly the data that cost an evening
+   of operator time to establish.
+
+3. Persistence is `XmlSerializer` XML at
+   `<ProgramData>/plugins/configurations/<AssemblyName>.xml`, and
+   `POST /Plugins/{id}/Configuration` replaces the **whole** object with
+   `PropertyNameCaseInsensitive = false` — a config page sending camelCase
+   silently resets fields to their defaults.
+
+**Amendment.** "With migrations" is replaced by a plugin-owned discipline:
+
+- an explicit `ConfigSchemaVersion` integer in our own configuration type;
+- **copy the config file to `.bak` before any upgrade step**, so the bare catch
+  can never be the only thing standing between the user and a lost calibration;
+- property changes are **additive only** — never retype or remove a property in
+  place; deprecate and add alongside;
+- saves are read-modify-write, never blind whole-object replacement;
+- the config page must serialise with exactly matching property casing, and this
+  needs a test.

@@ -30,7 +30,7 @@ That is a ~1.84 x 1.05 m perimeter — aspect ratio 1.76, essentially 16:9, and 
 2.12 m diagonal, i.e. roughly an **83-inch panel**. §27's "very large 85-inch
 16:9 TV" is almost exactly this installation.
 
-The one-LED asymmetries (top 265 vs bottom 266, right 150 vs left 151) are what
+The one-LED asymmetry (top 265 vs bottom 266) is what
 a hand-mounted strip actually looks like, and are a useful reminder that the
 layout model must not assume opposite sides are equal.
 
@@ -132,3 +132,37 @@ expert-mode setting and may be revisited against a real A/B test.
 | Fixed analysis resolution regardless of aspect ratio | Distorts sample spacing on non-16:9 content and interacts badly with black-bar cropping. |
 | Cubic / spline interpolation | Higher cost, risk of overshoot and clipping, no perceptible benefit on a smooth low-frequency signal. |
 | Interpolate in gamma-encoded RGB | Cheaper but produces dark, desaturated midpoints between samples. |
+
+---
+
+## Amendment 1 — 2026-09-05 — pending operator review
+
+**a. The pipeline diagram has no place for three necessary stages.** As drawn it
+is `VIDEO → LOGICAL EDGE SAMPLES → COLOUR PROCESSING → INTERPOLATION → PHYSICAL
+LED FRAME → WLED`. Missing: temporal smoothing, the anti-flicker deadband, and —
+on an SK6812 RGBW strip — RGBW extraction. Their **ordering is not a free
+choice**: a deadband applied before extraction does not stop the white channel
+dithering, because W is a nonlinear function of R, G and B. HyperHDR's own DDP
+driver is not self-consistent here, so there is no precedent to copy. Stage
+ordering is currently owned by no ADR and needs one.
+
+**b. The linear-light justification was wrong, though the decision stands.** The
+text says interpolation in linear light "is free" because the pipeline is already
+there. It is not: in HyperHDR, `srgbLinearToNonlinear` sits in the *middle* of the
+per-colour chain (`InfiniteProcessing.cpp:192`), with gamma, brightness,
+saturation, minimal backlight and the power limit all operating in **non-linear**
+space. Interpolating in linear light remains correct — it is the only way to avoid
+dark, desaturated midpoints — but it costs an explicit conversion, and the implied
+HyperHDR precedent does not exist.
+
+**c. No crop term.** Black-border detection can produce an asymmetric crop, where
+top and bottom are inset by different amounts. The logical/physical table has no
+crop concept at all, so the top and bottom LED runs would sample from different
+insets with nothing modelling it.
+
+**d. What a sample *is* remains undefined.** This ADR specifies *how many* logical
+samples (~100) but never what one is: depth of the sampling band into the frame,
+corner overlap between the top run and the side runs, the weighting kernel, and
+behaviour at a crop boundary. "Which pixels belong to logical sample *n*" is the
+question that decides whether the LEDs look right, and it is currently unanswered
+by any ADR.

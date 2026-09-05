@@ -140,3 +140,48 @@ and §66 require end-to-end measurement with the operator and a phone camera.
 | Wall-clock time instead of monotonic | NTP adjustments would corrupt the playback clock. |
 | Unbounded queue to smooth over jitter | Guarantees growing latency under load; forbidden by §42 and §52. |
 | Black out during seek | Visually worse than freezing and contradicts the spirit of §37. |
+
+---
+
+## Amendment 1 — 2026-09-05 — pending operator review
+
+### a. Freeze, as specified, does the opposite of what §37 requires
+
+The table above says that on pause the plugin will "**freeze** current colours.
+Do not black out, do not advance, **do not release control**."
+
+ADR-004 measured that WLED returns control **2500 ms after the last packet**. A
+freeze implemented by ceasing to transmit therefore releases control 2.5 s into
+the pause, and the strip visibly jumps to the user's own preset — precisely what
+§37 forbids. The two statements are incompatible, and the measurement that
+disproves the design was already in the repository when the design was written.
+
+**Amendment.** Freeze is an *active* state, not the absence of sending. While
+frozen — pause, and the seek debounce window — the output driver keeps
+re-transmitting its last frame at a low keepalive rate. HyperHDR does exactly
+this, re-sending on the first tick at or after 1000 ms while the source is
+active. This requires `KeepAliveAsync` on `ILedOutput` (ADR-003 Amendment 1c).
+The keepalive interval must be derived from the controller's own
+`if.live.timeout`, not from the 2500 ms default (ADR-004 Amendment 1).
+
+### b. The drift loop would correct against its own extrapolation
+
+Jellyfin synthesises its own progress events. `SessionManager.cs:930-933` calls
+`session.StartAutomaticProgress(info)` when `!isAutomated`, which runs a ~1 Hz
+timer that **extrapolates `PositionTicks` forward** and re-raises
+`PlaybackProgress` with `IsAutomated = true` (`SessionInfo.cs:373`ff, capped at
+`RunTimeTicks`).
+
+The Context field list above does not mention `IsAutomated`, and the drift table
+does not exclude those events. As written, the clock would be corrected against a
+server-side extrapolation of itself: a self-referential loop that **masks** real
+client drift instead of measuring it, and that would make seek detection
+unreliable in exactly the case it exists for.
+
+**Amendment.** Only `IsAutomated == false` events carry information. Automated
+events are ignored for drift correction entirely. They may still be used as a
+liveness signal.
+
+This partially closes **Q2**: the 1 Hz automated floor is now proven from source,
+and it is the cadence that must be *ignored*. The genuine client reporting cadence
+is still unmeasured, so Q2 remains open but is correctly scoped.

@@ -101,3 +101,46 @@ feature, exactly as §21 allows.
 | Precomputed colour files | Measured: ~89 GB for 711 items; requires a library scan; forbidden by §22. |
 | HDMI capture hardware | Requires the user to buy and wire additional hardware; contradicts §4. |
 | Hooking Jellyfin's existing transcode | Would force transcoding for Direct Play sessions, violating §25. |
+
+---
+
+## Amendment 1 — 2026-09-05 — pending operator review
+
+**A second coupling channel into Jellyfin, not covered by the original decision.**
+
+The non-negotiable above is written entirely about the frame pipeline. Research
+into the session API found a sharper channel that bypasses it completely.
+
+`Emby.Server.Implementations/Session/SessionManager.cs:928`:
+
+```csharp
+PlaybackProgress?.Invoke(this, eventArgs);   // synchronous, no try/catch
+```
+
+Compare `PlaybackStopped` at `:1112`, which goes through
+`EventHelper.QueueEventIfNotNull` and therefore gets `Task.Run` plus a catch.
+`PlaybackProgress` gets neither: it is invoked **synchronously on the client's
+HTTP request thread**, awaited from `PlaystateController`.
+
+Two consequences, both §88 priority 1:
+
+1. A slow handler degrades the client's progress POST — backpressure into
+   Jellyfin from a path this ADR does not mention.
+2. A **throwing** handler fails that request *and* skips
+   `SessionManager.cs:930-935`, so `StartAutomaticProgress` and the session
+   check timers never start. One unhandled exception in our code degrades
+   Jellyfin's own session bookkeeping.
+
+**Amendment.** The `PlaybackProgress` handler is subject to a hard contract: it
+must never throw, must never block, and must never do I/O. It reads the event,
+posts to an internal bounded queue, and returns. All work happens on our own
+scheduler. The handler body is wrapped in a catch-all that logs at WARN and
+swallows — the one place in the codebase where swallowing an exception is the
+correct behaviour, because the alternative is damaging playback.
+
+**Media path resolution corrected.** The original text says the plugin "runs its
+own decoder over the original media file" without naming the accessor. The
+authoritative path is
+`IMediaSourceManager.GetMediaSource(item, mediaSourceId, liveStreamId: null, enablePathSubstitution: false, ct)`,
+**not** `BaseItem.Path`, which resolves to the wrong file for items with
+alternate versions.

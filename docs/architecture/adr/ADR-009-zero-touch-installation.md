@@ -148,3 +148,63 @@ This is recorded as a deliberate decision rather than an oversight (risk R1). A
 | Target the newest stable (10.11.11) | The reference host runs 10.11.9; operator decision is to work from 10.11.9. |
 | Target 12.0-rc | Not stable; §5 says target the current latest **stable** release. |
 | Support 10.10.x as well | §5 forbids compatibility abstractions for obsolete releases. |
+
+---
+
+## Amendment 1 — 2026-09-05 — pending operator review
+
+### a. The first-run probe would run before FFmpeg exists
+
+`IMediaEncoder.EncoderPath` is populated by `SetFFmpegPath()`, called from
+`RunStartupTasksAsync` (`ApplicationHost.cs:417`) — *after* the host has started
+(`Program.cs:217` vs `:232`). A capability probe wired to
+`IHostedService.StartAsync` would report "FFmpeg missing, no QSV, no tone-mapping
+filters" on **every boot**.
+
+Since research.md calls `EncoderPath` the single most important finding for the
+installation architecture, this timing is load-bearing.
+
+**Amendment.** `StartAsync` subscribes to events and does nothing else. The
+capability probe is lazy, or gated on `IServerApplicationHost.CoreStartupHasCompleted`.
+This ADR's own closing warning — "a probe that passes while the real pipeline
+fails is worse than no probe" — applies to its inverse here too.
+
+### b. "Identical experience in LXC, Docker and bare metal" is false for discovery
+
+WLED advertises `_wled._tcp.local.` on TCP 80 with a single TXT key `mac`; its
+secondary channel is a 44-byte broadcast to `255.255.255.255` on port **65506**
+(`udp.cpp:731`). Multicast and limited broadcast **both die on a Docker NAT
+bridge**. `INetworkManager.SupportsMulticast` can rule mDNS out but never in, so
+the plugin cannot even detect the condition up front — it must time out on
+silence.
+
+Two further points: Jellyfin ships no mDNS dependency, so a managed-only library
+is required; and the reference controller is an **ESP32_Ethernet** board where it
+could not be verified that the mDNS responder binds the Ethernet interface at all.
+
+**Amendment.** Manual IP entry is the **primary** path and discovery is a
+convenience layered on top — not the other way round. The wizard must never
+present "not discovered" as "not present", and must show a live, re-scannable
+search rather than a one-shot query returning an empty list. The claim of an
+identical experience across deployment types is withdrawn for discovery
+specifically.
+
+### c. Plugin API controllers are anonymous by default
+
+Jellyfin sets no authorization `FallbackPolicy`, so a plugin controller without an
+explicit `[Authorize]` attribute is **fully unauthenticated**. This ADR owns the
+configuration surface and says nothing about it. The predecessor plugin's
+endpoints — including configuration write and file delete — are in exactly that
+state today.
+
+**Amendment.** Every endpoint this plugin exposes carries an explicit
+authorization policy requiring an administrator, and that is asserted by a test
+rather than by convention.
+
+### d. Package availability at 10.11.9 is unverified
+
+The target is `Jellyfin.Controller` / `Jellyfin.Model` **10.11.9**. No research
+session had network access, the plugin template pins 10.11.5, and every source
+citation in the corpus is against tag **v10.11.11** — the shallow clone has no
+10.11.9 tag. That those packages exist on nuget.org is currently an assumption,
+and it is trivially settled by a restore.

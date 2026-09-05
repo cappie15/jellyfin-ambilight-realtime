@@ -59,14 +59,19 @@ Port **4048**. 10-byte header:
   playback. Conversely, simply *ceasing* transmission releases realtime control
   after 2.5 s — the fade of §38 must complete before we stop sending.
 
-### The 832-LED reference case
+### The reference case
+
+The controller reported 832 LEDs when the measurements in this ADR were taken.
+The strip is physically **831**, and the controller was corrected afterwards
+(research.md §17). Measurements below are left at their as-taken values; the
+design arithmetic uses 831.
 
 | | |
 |---|---|
-| channels | 832 × 3 = 2496 |
-| packets | ⌈2496 / 1440⌉ = **2** |
+| channels | 831 × 3 = **2493** |
+| packets | ⌈2493 / 1440⌉ = **2** |
 | packet 1 | offset 0, len 1440, flags `VER1` |
-| packet 2 | offset 1440, len 1056, flags `VER1 \| PUSH` |
+| packet 2 | offset 1440, len 1053, flags `VER1 \| PUSH` |
 
 Two packets, no fragmentation. **The reference installation is an ordinary DDP
 case, not a stress case.**
@@ -166,7 +171,7 @@ Sending RGB24 leaves the white chip dark: WLED calls
 visual question, so it was put to the operator, who confirmed on 2026-09-05 that
 white rendered from R+G+B alone looks fine (research.md §17).
 
-**832 LEDs therefore stay at two packets per frame**, and the RGBW32 path is not
+**831 LEDs therefore stay at two packets per frame**, and the RGBW32 path is not
 needed for this installation. It remains worth implementing later for users whose
 white balance demands it.
 
@@ -180,10 +185,11 @@ full white draws far more than the configured 40 A cap, so WLED will dim the
 strip. The §47 white test will therefore *not* be full brightness, and the UI
 must say so rather than let the user read it as a fault.
 
-**5. Documented topology mismatch.** §13 describes 832 LEDs across **four
-physical outputs**; the controller reports **one bus on a single pin**. Harmless
-for us — we address logical indices 0–831 either way, exactly as §13 requires —
-but worth confirming with the operator that the wiring is as he remembers.
+**5. Topology, resolved.** §13 describes 832 LEDs across **four physical
+outputs**; the controller reports **one bus on a single pin**, and the operator
+confirmed on 2026-09-05 that the whole strip hangs off **GPIO 16** and may draw
+40 A continuously. The §13 description is out of date. Immaterial for us: we
+address logical indices either way, exactly as §13 requires.
 
 **Still to research:** mDNS discovery (§17), and the clean-release path (§39).
 
@@ -269,3 +275,35 @@ all-white calibration pattern.
 | Art-Net as default | Same universe overhead; DDP is the better fit for a contiguous pixel array. |
 | WebSocket / JSON API per frame | Far too much overhead for 30 fps realtime; the JSON API is for setup and state, not pixels. |
 | One datagram per frame regardless of size | Would silently cap at ~490 LEDs or rely on IP fragmentation. Forbidden by §15. |
+
+---
+
+## Amendment 1 — 2026-09-05 — pending operator review
+
+**The `hw.led.fps` headroom claim is refuted.** The survey table above reads
+`hw.led.fps 42` as meaning "our ~40 fps ceiling fits under the strip's refresh
+budget". `WLED_FPS` drives `strip.service()`, which is **skipped while realtime
+mode is active** (`wled00/wled.cpp:131-155`). It is not the gate. The actual
+cadence limit on the DDP path is a 15 ms guard (`wled00/udp.cpp:475`), i.e.
+roughly 66 fps — and that is conditional on `if.live.mso` being false, which was
+never surveyed on the reference controller.
+
+The conclusion is unchanged and in fact safer: 40 fps fits. The reasoning was
+wrong.
+
+**The realtime timeout is a configurable value, not a constant.** This ADR, and
+ADR-003 and ADR-007 which cite it, treat 2500 ms as fixed. It is
+`if.live.timeout` in units of 100 ms, settable up to **650 (65000 ms)** through
+both the settings form and `/json/cfg`. Every design that derives a duration from
+it must read it from the controller rather than assume the default.
+
+**Four more first-run hazards.** The §61 hazard table lists `DMXAddress`,
+`arlsOffset` and `realtimeOverride`. Four further settings silently transform or
+suppress realtime output and none were surveyed:
+
+| Setting | Effect |
+|---|---|
+| `if.live.timeout == 650` | 65 s realtime lock; explicit release becomes mandatory |
+| `if.live.rlm` | realtime honours the active ledmap — would re-route our indices |
+| `light.scale-bri` | a third brightness scaler (`led.cpp:59-61`) |
+| `if.live.mso` | main-segment-only; also decides whether the fps gate above applies |
