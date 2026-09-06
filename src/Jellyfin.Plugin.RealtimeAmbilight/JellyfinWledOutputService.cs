@@ -31,13 +31,23 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private static readonly TimeSpan LateFrameReportInterval = TimeSpan.FromSeconds(30);
 
     /// <summary>How far behind output must fall before the decoder is restarted.</summary>
-    private static readonly TimeSpan LateFrameResyncThreshold = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan LateFrameResyncThreshold = TimeSpan.FromSeconds(3);
 
     /// <summary>
-    /// Minimum spacing between those restarts. A restart costs a brief gap, so on
-    /// a host that simply cannot decode fast enough this must not become a loop.
+    /// Minimum spacing between those restarts. A restart costs a visible gap, so
+    /// this must be long enough that a host which cannot quite keep up drifts
+    /// slightly rather than flashing: at five seconds the restarts themselves
+    /// became the fault being reported.
     /// </summary>
-    private static readonly TimeSpan ResyncCooldown = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ResyncCooldown = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// How long the last frame is held on the LEDs while no new frame is due.
+    /// A decoder restart leaves a gap of several seconds, which is longer than
+    /// WLED's realtime timeout, so without this WLED reclaims the strip and the
+    /// LEDs visibly drop out and back for every correction.
+    /// </summary>
+    private static readonly TimeSpan OutputGapHold = TimeSpan.FromSeconds(15);
 
     private readonly CancellationTokenSource _shutdown = new();
     private Task? _pump;
@@ -82,7 +92,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
 
     private async Task RunPumpAsync()
     {
-        var lastKeepAlive = DateTimeOffset.UtcNow;
+        var lastFrameSent = DateTimeOffset.UtcNow;
+        var lastSend = DateTimeOffset.UtcNow;
         var lastLateReport = DateTimeOffset.MinValue;
         var lastResync = DateTimeOffset.MinValue;
         string? previousSession = null;
@@ -172,7 +183,10 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                                 if (_coordinator.RequestAnalysisResync())
                                 {
                                     lastResync = DateTimeOffset.UtcNow;
-                                    pendingFrames.Clear();
+
+                                    // Deliberately keep what is queued: those frames
+                                    // still bridge the restart, and dropping them is
+                                    // what makes the gap visible.
                                     _logger.LogWarning(
                                         "Realtime Ambilight was {Overdue:F0} ms behind the picture and restarted the analysis decoder.",
                                         overdue.TotalMilliseconds);
@@ -207,7 +221,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                             _logger.LogInformation("Realtime Ambilight sent its first WLED frame.");
                             loggedSentFrame = true;
                         }
-                        lastKeepAlive = now;
+                        lastFrameSent = now;
+                        lastSend = now;
                     }
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
@@ -215,15 +230,25 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                     _logger.LogError(exception, "Realtime Ambilight output pump failed while processing a frame.");
                     continue;
                 }
-                var holdWhilePaused = Plugin.Instance?.Configuration.HoldWhilePaused ?? true;
-                if (holdWhilePaused
+                // Holding the last frame covers two different silences: a pause,
+                // and a gap in decoding such as a restart. Both are longer than
+                // WLED's realtime timeout, and in both cases letting WLED reclaim
+                // the strip looks like a fault rather than like nothing happening.
+                // A pause holds indefinitely by design; a decoding gap holds only
+                // long enough to bridge a restart, so a stalled decoder cannot
+                // freeze one frame on the wall for the rest of the film.
+                var paused = _coordinator.IsPaused;
+                var mayHold = paused
+                    ? Plugin.Instance?.Configuration.HoldWhilePaused ?? true
+                    : DateTimeOffset.UtcNow - lastFrameSent < OutputGapHold;
+
+                if (mayHold
                     && pendingFrames.Count == 0
                     && currentSession is not null
-                    && _coordinator.IsPaused
-                    && DateTimeOffset.UtcNow - lastKeepAlive >= PauseKeepAliveInterval)
+                    && DateTimeOffset.UtcNow - lastSend >= PauseKeepAliveInterval)
                 {
                     await _output.KeepAliveAsync(_shutdown.Token).ConfigureAwait(false);
-                    lastKeepAlive = DateTimeOffset.UtcNow;
+                    lastSend = DateTimeOffset.UtcNow;
                 }
             }
         }

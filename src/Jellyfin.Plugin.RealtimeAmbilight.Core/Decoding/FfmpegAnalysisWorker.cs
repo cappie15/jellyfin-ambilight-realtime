@@ -25,8 +25,14 @@ public sealed class FfmpegAnalysisWorker : IPlaybackAnalysisWorker
     /// permanently behind by its own start-up cost, measured at about 1.1 s for
     /// the HDR graph, and every restart re-applies that lag. Decoding ahead lets
     /// output hold each frame until the picture actually reaches it.
+    ///
+    /// The lead must exceed the whole restart path, not just FFmpeg's start-up:
+    /// the seek debounce plus process start plus first frames measured 3 to 4 s.
+    /// A 2 s lead was consumed before the first frame arrived, so every restart
+    /// landed behind and immediately asked for another -- the LEDs cycled on and
+    /// off every five seconds.
     /// </summary>
-    public static readonly TimeSpan DecoderLead = TimeSpan.FromSeconds(2);
+    public static readonly TimeSpan DecoderLead = TimeSpan.FromSeconds(5);
     private readonly IFfmpegAnalysisSourceResolver _sourceResolver;
 
     public FfmpegAnalysisWorker(IFfmpegAnalysisSourceResolver sourceResolver)
