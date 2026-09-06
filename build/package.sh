@@ -30,7 +30,18 @@ guid="$(read_metadata guid)"
 base_url="${1:-https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v$version}"
 
 echo "==> Building $name $version"
-dotnet build Jellyfin.RealtimeAmbilight.sln --configuration Release
+# PathMap rewrites the checkout path embedded in the assemblies to a fixed root,
+# so the artifact does not leak the build machine's directory layout.
+#
+# Scope of "reproducible": the archive itself is deterministic (fixed entry
+# timestamps, sorted entries), and repeated builds from the same checkout
+# produce an identical checksum. Builds from two different checkout directories
+# were measured to still differ in 72 bytes -- the PE timestamp, MVID and PDB
+# signature, all derived from a content hash. Treat the CI artifact as the
+# canonical package rather than expecting a local rebuild to match its checksum.
+dotnet build Jellyfin.RealtimeAmbilight.sln --configuration Release \
+    -p:ContinuousIntegrationBuild=true \
+    -p:PathMap="$repository_root=/src"
 
 echo "==> Staging"
 rm -rf "$artifacts"
