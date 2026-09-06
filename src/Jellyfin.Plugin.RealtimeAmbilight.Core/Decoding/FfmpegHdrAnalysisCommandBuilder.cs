@@ -26,9 +26,19 @@ public static class FfmpegHdrAnalysisCommandBuilder
         var options = source.FrameOptions;
         var seekSeconds = seekPosition.TotalSeconds.ToString("0.######", CultureInfo.InvariantCulture);
         var applyDolbyVision = profile == HdrVideoProfile.DolbyVision ? "true" : "false";
+        // The frame rate must be pinned here exactly as the SDR graph pins it.
+        // Output derives each frame's media position from its index, so a graph
+        // that emits at the source rate while the index is counted at the
+        // configured rate makes every timestamp wrong and the LEDs fall
+        // progressively behind the picture.
+        //
+        // 320x180 is the intermediate the tone mapper works from. It was 960x540,
+        // which moved nine times as many pixels through hwdownload/hwupload for
+        // no benefit: the analysis output is 160x90. Measured on the reference
+        // host, the graph went from 2.75x to 6.28x real time at 60 fps.
         var filter = string.Create(
             CultureInfo.InvariantCulture,
-            $"scale_vaapi=w=960:h=540,hwdownload,format=p010le,hwupload,libplacebo=w={options.Width}:h={options.Height}:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=bt.2390:apply_dolbyvision={applyDolbyVision}:format=bgra,hwdownload,format=bgra");
+            $"fps={options.FramesPerSecond},scale_vaapi=w=320:h=180,hwdownload,format=p010le,hwupload,libplacebo=w={options.Width}:h={options.Height}:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=bt.2390:apply_dolbyvision={applyDolbyVision}:format=bgra,hwdownload,format=bgra");
 
         return
         [

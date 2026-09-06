@@ -237,6 +237,30 @@ public sealed class PlaybackEventCoordinator : IAsyncDisposable
         LatestFrames.Clear();
     }
 
+    /// <summary>
+    /// Restarts the analysis decoder at the current playback position.
+    /// </summary>
+    /// <remarks>
+    /// Output calls this when frames keep arriving after the moment they should
+    /// have been shown. A decoder that has lost its lead never regains it on its
+    /// own -- it runs at playback speed, not faster -- so without this the error
+    /// grows without bound, and the LEDs end up showing an earlier scene
+    /// entirely. Returns false when there is nothing to restart.
+    /// </remarks>
+    public bool RequestAnalysisResync()
+    {
+        lock (_sync)
+        {
+            if (_disposed || _isPaused || _activeSessionId is null || !_clock.IsRunning)
+            {
+                return false;
+            }
+
+            BeginSeekDebounce(_activeSessionId, _clock.PositionTicks);
+            return true;
+        }
+    }
+
     private void BeginSeekDebounce(string sessionId, long positionTicks)
     {
         _clock.Pause(); // Output holds its last frame while the future output driver keepalives it.

@@ -43,7 +43,13 @@ public class FfmpegAnalysisCommandBuilderTests
         Assert.Contains("vulkan=vk", arguments);
         Assert.Equal("vk", arguments[arguments.IndexOf("-filter_hw_device") + 1]);
         var filter = arguments[Array.IndexOf(arguments, "-vf") + 1];
-        Assert.Contains("scale_vaapi=w=960:h=540", filter);
+        Assert.Contains("scale_vaapi=w=320:h=180", filter);
+
+        // Output derives a frame's media position from its index, so the graph
+        // must emit at the configured rate. Letting it run at the source rate
+        // instead makes every timestamp wrong and the LEDs fall progressively
+        // behind the picture -- the defect this assertion exists to catch.
+        Assert.StartsWith("fps=", filter, StringComparison.Ordinal);
         Assert.Contains("libplacebo", filter);
         Assert.Contains("colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv", filter);
         Assert.Contains("tonemapping=bt.2390", filter);

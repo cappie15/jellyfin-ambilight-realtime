@@ -253,6 +253,36 @@ Now closed:
 Measured while diagnosing: the HDR analysis graph sustains about 101 fps on the
 reference host, so throughput was never the limit at 60 analysis fps.
 
+## The HDR graph never pinned its frame rate (2026-09-06)
+
+Reported as a colour fault: brown ground on screen, green LEDs. It was not a
+colour fault. The frame at 2:00 is pink sky over brown ground with no green in
+it at all, and running that frame through the real sampling pipeline produced
+correct warm values (top 241/133/107, bottom 75/22/2). But **t=90 s is a green
+scene** -- the LEDs were showing the right colours from the wrong moment.
+
+The SDR graph pins its rate with `fps={FramesPerSecond}`; the HDR graph never
+did, so it emitted at the source rate of 23.976 fps while output counted frame
+indices at the configured 60. Every stamped position therefore advanced 0.4 s
+per real second, and the LEDs fell behind by 0.6 s for every second played. The
+warning added earlier caught it exactly: 518 ms, then 9.5 s, 11.6 s, 17.6 s.
+At the two-minute mark that is roughly the 30 s offset to the green scene.
+
+Three changes:
+
+- The HDR graph pins `fps=` as the SDR graph does. A test now asserts it,
+  because this failure looks like a colour bug and costs an evening to find.
+- Its intermediate scale drops from 960x540 to 320x180. Nine times fewer pixels
+  cross hwdownload/hwupload for no loss, since analysis output is 160x90:
+  measured 2.75x -> 6.28x real time at 60 fps on the reference host.
+- Output can now call `PlaybackEventCoordinator.RequestAnalysisResync()`. A
+  decoder that has lost its lead cannot regain it, because it runs at playback
+  speed and not faster, so beyond 1 s late it is restarted at the current
+  position, at most once every 20 s.
+
+Live analysis fps was reduced from 60 to 30: the source is 23.976 fps, so 60
+duplicated every frame and doubled the tone-mapping work for no information.
+
 ## Partially implemented / needs validation
 
 - Final TV calibration: determine the useful output-delay range on the TCL/TV

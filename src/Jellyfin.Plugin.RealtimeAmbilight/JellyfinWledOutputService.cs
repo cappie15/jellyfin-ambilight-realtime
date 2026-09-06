@@ -30,6 +30,15 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     /// <summary>Rate limit for that report, so a persistent lag cannot flood the log.</summary>
     private static readonly TimeSpan LateFrameReportInterval = TimeSpan.FromSeconds(30);
 
+    /// <summary>How far behind output must fall before the decoder is restarted.</summary>
+    private static readonly TimeSpan LateFrameResyncThreshold = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Minimum spacing between those restarts. A restart costs a brief gap, so on
+    /// a host that simply cannot decode fast enough this must not become a loop.
+    /// </summary>
+    private static readonly TimeSpan ResyncCooldown = TimeSpan.FromSeconds(20);
+
     private readonly CancellationTokenSource _shutdown = new();
     private Task? _pump;
 
@@ -62,6 +71,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     {
         var lastKeepAlive = DateTimeOffset.UtcNow;
         var lastLateReport = DateTimeOffset.MinValue;
+        var lastResync = DateTimeOffset.MinValue;
         string? previousSession = null;
         var pendingFrames = new Queue<(DateTimeOffset DueAt, byte[] Rgb24Frame)>();
         var loggedProcessedFrame = false;
@@ -134,7 +144,24 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                             // The decoder has fallen behind the picture; showing the
                             // frame late is still better than dropping the output.
                             dueAt = DateTimeOffset.UtcNow;
-                            if (overdue > LateFrameReportThreshold && DateTimeOffset.UtcNow - lastLateReport > LateFrameReportInterval)
+
+                            // A decoder that has lost its lead cannot win it back:
+                            // it runs at playback speed, not faster. Restarting it
+                            // at the current position is the only way back, so the
+                            // error stays bounded instead of growing until the LEDs
+                            // are showing an altogether earlier scene.
+                            if (overdue > LateFrameResyncThreshold && DateTimeOffset.UtcNow - lastResync > ResyncCooldown)
+                            {
+                                lastResync = DateTimeOffset.UtcNow;
+                                if (_coordinator.RequestAnalysisResync())
+                                {
+                                    _logger.LogWarning(
+                                        "Realtime Ambilight was {Overdue:F0} ms behind the picture and restarted the analysis decoder.",
+                                        overdue.TotalMilliseconds);
+                                    pendingFrames.Clear();
+                                }
+                            }
+                            else if (overdue > LateFrameReportThreshold && DateTimeOffset.UtcNow - lastLateReport > LateFrameReportInterval)
                             {
                                 lastLateReport = DateTimeOffset.UtcNow;
                                 _logger.LogWarning(
