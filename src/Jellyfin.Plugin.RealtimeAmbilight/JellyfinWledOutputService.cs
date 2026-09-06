@@ -99,7 +99,12 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                 var current = Plugin.Instance?.Configuration;
                 return current is null
                     ? ColourAdjustment.None
-                    : ColourAdjustment.FromPercentages(current.BrightnessPercent, current.SaturationPercent);
+                    : ColourAdjustment.FromPercentages(
+                        current.BrightnessPercent,
+                        current.SaturationPercent,
+                        current.RedGainPercent,
+                        current.GreenGainPercent,
+                        current.BlueGainPercent);
             });
         _output = new WledRealtimeOutput(
             new WledEndpoint(configuration.WledHost, Math.Clamp(configuration.WledHttpPort, 1, ushort.MaxValue)),

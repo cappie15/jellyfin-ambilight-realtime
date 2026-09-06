@@ -203,6 +203,15 @@ public sealed class WledDiscoveryService
     /// </remarks>
     public async Task<Rgb24Encoding?> DetectRealtimeEncodingAsync(string host, int port, CancellationToken cancellationToken)
     {
+        var settings = await ReadRealtimeSettingsAsync(host, port, cancellationToken).ConfigureAwait(false);
+        return settings?.Encoding;
+    }
+
+    /// <summary>
+    /// Reads the controller settings that change how realtime output looks.
+    /// </summary>
+    public async Task<WledRealtimeSettings?> ReadRealtimeSettingsAsync(string host, int port, CancellationToken cancellationToken)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(host);
         var authority = port == 80 ? host : string.Create(CultureInfo.InvariantCulture, $"{host}:{port}");
 
@@ -238,6 +247,11 @@ public sealed class WledDiscoveryService
                     || !live.TryGetProperty("no-gc", out var noGammaCorrection)
                     || noGammaCorrection.ValueKind != JsonValueKind.False;
 
+                var forcesMaxBrightness = root.TryGetProperty("if", out var interfaceRoot)
+                    && interfaceRoot.TryGetProperty("live", out var liveRoot)
+                    && liveRoot.TryGetProperty("maxbri", out var maxBrightness)
+                    && maxBrightness.ValueKind == JsonValueKind.True;
+
                 var appliesGamma = !realtimeExempt && colourGamma > 1d;
                 _logger.LogInformation(
                     "WLED {Host} reports colour gamma {Gamma} and realtime gamma {RealtimeGamma}; sending {Encoding} values.",
@@ -246,13 +260,22 @@ public sealed class WledDiscoveryService
                     realtimeExempt ? "skipped" : "applied",
                     appliesGamma ? "display-encoded" : "light-proportional");
 
-                return appliesGamma ? Rgb24Encoding.Bt709 : Rgb24Encoding.Linear;
+                if (forcesMaxBrightness)
+                {
+                    _logger.LogWarning(
+                        "WLED {Host} has \"force max brightness\" enabled for realtime data, so it ignores its own brightness slider while the Ambilight runs and drives the strip at full. Turn it off in WLED, or lower the LED brightness on the plugin's settings page.",
+                        authority);
+                }
+
+                return new WledRealtimeSettings(
+                    appliesGamma ? Rgb24Encoding.Bt709 : Rgb24Encoding.Linear,
+                    forcesMaxBrightness);
             }
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException
             || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
-            _logger.LogWarning("Could not read the gamma settings from WLED {Host}; keeping the configured choice.", authority);
+            _logger.LogWarning("Could not read the realtime settings from WLED {Host}; keeping the configured choice.", authority);
             return null;
         }
     }
@@ -270,6 +293,9 @@ public sealed class WledDiscoveryService
             || (octets[0] == 192 && octets[1] == 168);
     }
 }
+
+/// <summary>Controller settings that change how realtime output looks.</summary>
+public sealed record WledRealtimeSettings(Rgb24Encoding Encoding, bool ForcesMaxBrightness);
 
 /// <summary>Read-only WLED discovery data shown on the settings page.</summary>
 public sealed record WledDiscoveryResult(string Host, string Name, int LedCount, string Version);

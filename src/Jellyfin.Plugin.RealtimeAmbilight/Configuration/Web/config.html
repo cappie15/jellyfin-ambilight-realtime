@@ -164,6 +164,10 @@
 
                 <div style="display:flex;gap:2em;flex-wrap:wrap;align-items:flex-start">
                     <div style="flex:1 1 20em;min-width:18em">
+                        <div id="maxBrightnessWarning" class="fieldDescription" style="display:none;border-left:3px solid currentColor;padding-left:.8em;margin-bottom:1em">
+                            <strong>Your WLED has "force max brightness" enabled for realtime data.</strong>
+                            It therefore ignores its own brightness slider while the Ambilight runs and drives the strip at full, which on the reference installation was three times brighter than the same colour shown normally. Turn it off under Sync Interfaces in WLED, or lower the LED brightness here.
+                        </div>
                         <div class="inputContainer">
                             <input is="emby-input" id="brightnessPercent" type="range" min="1" max="100" step="1" label="LED brightness" />
                             <div class="fieldDescription">
@@ -179,6 +183,28 @@
                                 Currently: <strong id="saturationValue"></strong>.
                                 <br /><strong>Default: 100%</strong>, faithful to the picture. Above that, colours are pushed away from grey without becoming brighter, which makes a night sky read as deep blue rather than pale blue. Greys and whites are unaffected at any setting.
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="fieldDescription" style="margin-top:1em"><strong>White balance.</strong> LED white is rarely the same white your television shows, and the room's own walls tint it further. Nudge a channel up to warm or cool the whole picture; leave all three at 100% for no correction.</div>
+                <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
+                    <div style="flex:1 1 13em;min-width:11em">
+                        <div class="inputContainer">
+                            <input is="emby-input" id="redGainPercent" type="range" min="50" max="150" step="1" label="Red" />
+                            <div class="fieldDescription">Now: <strong id="redGainValue"></strong></div>
+                        </div>
+                    </div>
+                    <div style="flex:1 1 13em;min-width:11em">
+                        <div class="inputContainer">
+                            <input is="emby-input" id="greenGainPercent" type="range" min="50" max="150" step="1" label="Green" />
+                            <div class="fieldDescription">Now: <strong id="greenGainValue"></strong></div>
+                        </div>
+                    </div>
+                    <div style="flex:1 1 13em;min-width:11em">
+                        <div class="inputContainer">
+                            <input is="emby-input" id="blueGainPercent" type="range" min="50" max="150" step="1" label="Blue" />
+                            <div class="fieldDescription">Now: <strong id="blueGainValue"></strong></div>
                         </div>
                     </div>
                 </div>

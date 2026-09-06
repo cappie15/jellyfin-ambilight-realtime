@@ -50,10 +50,21 @@ public sealed class ColourAdjustmentTests
     }
 
     [Fact]
+    public void ChannelGainsShiftWhiteBalanceWithoutTouchingTheOthers()
+    {
+        var warmed = new ColourAdjustment(1f, 1f, RedGain: 1.2f).Apply(new LinearRgb(0.5f, 0.5f, 0.5f));
+
+        Assert.Equal(0.6f, warmed.Red, 5);
+        Assert.Equal(0.5f, warmed.Green, 5);
+        Assert.Equal(0.5f, warmed.Blue, 5);
+    }
+
+    [Fact]
     public void IdentityIsRecognisedSoTheFrameIsNotWalked()
     {
         Assert.True(ColourAdjustment.None.IsIdentity);
         Assert.True(ColourAdjustment.FromPercentages(100, 100).IsIdentity);
         Assert.False(ColourAdjustment.FromPercentages(60, 100).IsIdentity);
+        Assert.False(ColourAdjustment.FromPercentages(100, 100, redGainPercent: 115).IsIdentity);
     }
 }

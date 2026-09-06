@@ -12,18 +12,37 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Color;
 /// halving the brightness halves the light, which is not true of the encoded
 /// values.
 /// </remarks>
-public readonly record struct ColourAdjustment(float Brightness, float Saturation)
+public readonly record struct ColourAdjustment(
+    float Brightness,
+    float Saturation,
+    float RedGain = 1f,
+    float GreenGain = 1f,
+    float BlueGain = 1f)
 {
     /// <summary>Leaves the frame untouched.</summary>
     public static ColourAdjustment None => new(1f, 1f);
 
-    public bool IsIdentity => Brightness == 1f && Saturation == 1f;
+    public bool IsIdentity => Brightness == 1f && Saturation == 1f
+        && RedGain == 1f && GreenGain == 1f && BlueGain == 1f;
 
     /// <summary>Creates an adjustment from whole percentages.</summary>
-    public static ColourAdjustment FromPercentages(int brightnessPercent, int saturationPercent)
-        => new(Math.Clamp(brightnessPercent, 1, 100) / 100f, Math.Clamp(saturationPercent, 50, 200) / 100f);
+    public static ColourAdjustment FromPercentages(
+        int brightnessPercent,
+        int saturationPercent,
+        int redGainPercent = 100,
+        int greenGainPercent = 100,
+        int blueGainPercent = 100)
+        => new(
+            Math.Clamp(brightnessPercent, 1, 100) / 100f,
+            Math.Clamp(saturationPercent, 50, 200) / 100f,
+            Math.Clamp(redGainPercent, 50, 150) / 100f,
+            Math.Clamp(greenGainPercent, 50, 150) / 100f,
+            Math.Clamp(blueGainPercent, 50, 150) / 100f);
 
-    /// <summary>Applies saturation about the colour's own luminance, then brightness.</summary>
+    /// <summary>
+    /// Applies saturation about the colour's own luminance, then the per-channel
+    /// gains that set white balance, then brightness.
+    /// </summary>
     public LinearRgb Apply(LinearRgb colour)
     {
         if (IsIdentity)
@@ -46,8 +65,8 @@ public readonly record struct ColourAdjustment(float Brightness, float Saturatio
         }
 
         return new LinearRgb(
-            Math.Clamp(red * Brightness, 0f, 1f),
-            Math.Clamp(green * Brightness, 0f, 1f),
-            Math.Clamp(blue * Brightness, 0f, 1f));
+            Math.Clamp(red * RedGain * Brightness, 0f, 1f),
+            Math.Clamp(green * GreenGain * Brightness, 0f, 1f),
+            Math.Clamp(blue * BlueGain * Brightness, 0f, 1f));
     }
 }

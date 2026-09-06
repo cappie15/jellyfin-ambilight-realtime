@@ -22,6 +22,25 @@ public sealed class WledDiscoveryController : ControllerBase
         _discoveryService = discoveryService ?? throw new ArgumentNullException(nameof(discoveryService));
     }
 
+    /// <summary>
+    /// Reports controller settings that visibly change how the Ambilight looks,
+    /// so the settings page can warn about them instead of leaving the operator
+    /// to wonder why the LEDs ignore every brightness control they can find.
+    /// </summary>
+    [HttpGet("Settings")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult<WledRealtimeSettings?>> GetSettingsAsync([FromQuery] string host, [FromQuery] int port, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return Ok(null as WledRealtimeSettings);
+        }
+
+        return Ok(await _discoveryService
+            .ReadRealtimeSettingsAsync(host, Math.Clamp(port, 1, ushort.MaxValue), cancellationToken)
+            .ConfigureAwait(false));
+    }
+
     /// <summary>Returns local WLED controllers that answer the read-only info endpoint.</summary>
     [HttpGet("Wled")]
     [ProducesResponseType(StatusCodes.Status200OK)]

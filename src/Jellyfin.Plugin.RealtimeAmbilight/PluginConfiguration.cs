@@ -102,6 +102,17 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public int SaturationPercent { get; set; } = 100;
 
+    /// <summary>
+    /// Per-channel gains as percentages, used to match the LEDs to the room and
+    /// to the strip's own colour balance. LED white is rarely the same white a
+    /// television shows, and no realtime path in the controller corrects it.
+    /// </summary>
+    public int RedGainPercent { get; set; } = 100;
+
+    public int GreenGainPercent { get; set; } = 100;
+
+    public int BlueGainPercent { get; set; } = 100;
+
     public bool CorrectLedGamma { get; set; } = true;
 
     /// <summary>

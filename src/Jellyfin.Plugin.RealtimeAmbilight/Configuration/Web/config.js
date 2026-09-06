@@ -2,13 +2,14 @@ export default function (view) {
     const pluginId = "7d6d91ed-0f36-46ea-9868-9623283b6b51";
     const numericFields = [
         "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond", "stopFadeMilliseconds",
-        "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisFramesPerSecond", "samplingDepthPercent", "brightnessPercent", "saturationPercent"
+        "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisFramesPerSecond", "samplingDepthPercent", "brightnessPercent", "saturationPercent", "redGainPercent", "greenGainPercent", "blueGainPercent"
     ];
     const defaults = {
         WledHttpPort: 80, RealtimeProtocol: 0, OutputDelayMilliseconds: 0, OutputFramesPerSecond: 30,
         StopFadeMilliseconds: 250, TopLedCount: 265, RightLedCount: 150,
         BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160, AnalysisFramesPerSecond: 30,
-        SamplingDepthPercent: 10, BrightnessPercent: 100, SaturationPercent: 100
+        SamplingDepthPercent: 10, BrightnessPercent: 100, SaturationPercent: 100,
+        RedGainPercent: 100, GreenGainPercent: 100, BlueGainPercent: 100
     };
     const ledCountFields = ["topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount"];
     let loadedConfig = null;
@@ -27,6 +28,9 @@ export default function (view) {
         byId("brightnessValue").textContent = `${byId("brightnessPercent").value}%`;
         const saturation = Number(byId("saturationPercent").value);
         byId("saturationValue").textContent = saturation === 100 ? "100% (faithful)" : `${saturation}%`;
+        ["red", "green", "blue"].forEach(channel => {
+            byId(`${channel}GainValue`).textContent = `${byId(`${channel}GainPercent`).value}%`;
+        });
     }
 
     function setDepthLabel() {
@@ -197,6 +201,23 @@ export default function (view) {
         }
     }
 
+    // Ask the controller about the settings that silently override our output.
+    function checkControllerSettings() {
+        const host = (byId("wledCandidatesContainer").style.display !== "none"
+            ? byId("wledCandidates").value
+            : byId("wledHost").value.trim()) || loadedConfig?.WledHost || "";
+        if (!host) {
+            return Promise.resolve();
+        }
+
+        const [hostName, hostPort] = host.split(":");
+        const port = Number(hostPort) || Number(byId("wledHttpPort").value) || 80;
+        return window.ApiClient
+            .getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Settings", { host: hostName, port }))
+            .then(settings => show("maxBrightnessWarning", Boolean(settings && settings.ForcesMaxBrightness)))
+            .catch(() => show("maxBrightnessWarning", false));
+    }
+
     function findWled() {
         byId("findWled").disabled = true;
         byId("wledFinderStatus").textContent = "Scanning the local network…";
@@ -237,6 +258,7 @@ export default function (view) {
                 return loadDevices(config.TargetDeviceId || "");
             })
             .then(findWled)
+            .then(checkControllerSettings)
             .finally(() => Dashboard.hideLoadingMsg());
     }
 
@@ -281,6 +303,7 @@ export default function (view) {
     byId("samplingDepthPercent").addEventListener("input", setDepthLabel);
     byId("brightnessPercent").addEventListener("input", setColourLabels);
     byId("saturationPercent").addEventListener("input", setColourLabels);
+    ["red", "green", "blue"].forEach(channel => byId(`${channel}GainPercent`).addEventListener("input", setColourLabels));
     byId("analysisWidth").addEventListener("change", setAnalysisLabel);
     ledCountFields.forEach(field => byId(field).addEventListener("input", setLedTotal));
     byId("wledCandidates").addEventListener("change", setLedTotal);
