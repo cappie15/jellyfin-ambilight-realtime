@@ -198,6 +198,26 @@ produced a filter that silently discarded every event. The page now merges
 `/Devices` with `/Sessions`, and `TargetDeviceName` was added as a fallback
 match, because one physical television was observed under three different ids.
 
+## The binding decays unless it repairs itself (2026-09-06)
+
+The HDR fix above worked on first contact: `processed its first decoded frame`
+and `sent its first WLED frame` were logged at 20:04:53 and the LEDs lit. The
+next item produced nothing, because at 20:08:32 a settings-page save wrote an
+empty `<TargetDeviceName />` over the good value -- almost certainly a page that
+had been open since before the binding was set, saving its stale copy. With the
+name gone and the id already stale, the filter rejected every event again.
+
+Two changes make that class of failure self-correcting rather than terminal:
+
+- The settings page carries each device's plain name on its `<option>`, so a
+  save can never write an empty name for a bound device, whatever the page's
+  copy of the configuration says.
+- On a matched playback start, the adapter writes back the session's actual id
+  and name when either has drifted, logging `refreshed its device binding`. Once
+  anything matches, both fields are known good, so the binding converges instead
+  of decaying. Note the limit: if *both* fields are wrong, nothing can match and
+  no repair happens -- rebind from the settings page.
+
 ## Partially implemented / needs validation
 
 - Final TV calibration: determine the useful output-delay range on the TCL/TV

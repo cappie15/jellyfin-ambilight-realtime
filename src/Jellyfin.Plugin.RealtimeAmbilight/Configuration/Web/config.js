@@ -27,6 +27,19 @@ export default function (view) {
         byId("analysisSizeValue").textContent = `${width} × ${analysisHeight()} pixels`;
     }
 
+    // Never save an empty name for a bound device: the plugin falls back to the
+    // name when a device id changes, so losing it silently breaks the binding.
+    function targetDeviceName() {
+        const select = byId("targetDeviceId");
+        if (!select.value) {
+            return "";
+        }
+        return select.selectedOptions[0]?.dataset.deviceName
+            || knownDevices.find(device => device.id === select.value)?.name
+            || loadedConfig?.TargetDeviceName
+            || "";
+    }
+
     function setLedTotal() {
         const total = ledCountFields.reduce((sum, field) => sum + (Number(byId(field).value) || 0), 0);
         byId("ledTotalValue").textContent = `${total} LEDs`;
@@ -99,12 +112,18 @@ export default function (view) {
         const select = byId("targetDeviceId");
         select.textContent = "";
         select.add(new Option("All devices — not bound", ""));
-        devices.forEach(device => select.add(new Option(deviceLabel(device), device.id)));
+        devices.forEach(device => {
+            const option = new Option(deviceLabel(device), device.id);
+            option.dataset.deviceName = device.name;
+            select.add(option);
+        });
 
         if (selectedDeviceId && !devices.some(device => device.id === selectedDeviceId)) {
             // Keep a binding to a device Jellyfin has since forgotten visible and
             // intact, instead of silently resetting it to "all devices" on save.
-            select.add(new Option("Saved device (no longer known to Jellyfin)", selectedDeviceId));
+            const saved = new Option("Saved device (no longer known to Jellyfin)", selectedDeviceId);
+            saved.dataset.deviceName = loadedConfig?.TargetDeviceName || "";
+            select.add(saved);
         }
 
         select.value = selectedDeviceId || "";
@@ -205,8 +224,7 @@ export default function (view) {
             Enabled: byId("enabled").checked,
             HoldWhilePaused: byId("holdWhilePaused").checked,
             TargetDeviceId: byId("targetDeviceId").value,
-            TargetDeviceName: knownDevices.find(device => device.id === byId("targetDeviceId").value)?.name
-                ?? (byId("targetDeviceId").value ? loadedConfig?.TargetDeviceName ?? "" : ""),
+            TargetDeviceName: targetDeviceName(),
             WledHost: hostName,
             AnalysisHeight: analysisHeight()
         };

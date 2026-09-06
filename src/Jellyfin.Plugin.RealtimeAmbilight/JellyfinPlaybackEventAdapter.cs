@@ -87,6 +87,7 @@ public sealed class JellyfinPlaybackEventAdapter : IHostedService, IAsyncDisposa
             }
 
             _logger.LogInformation("Realtime Ambilight playback start received for session {SessionId}, item {ItemId}.", sessionId, args.Item.Id);
+            SynchroniseBinding(args.Session?.DeviceId, args.Session?.DeviceName);
 
             _coordinator.TryPost(new PlaybackStarted(
                 sessionId,
@@ -174,6 +175,47 @@ public sealed class JellyfinPlaybackEventAdapter : IHostedService, IAsyncDisposa
     /// reporting three different ids, and the id carried by a live session need
     /// not be listed in /Devices at all.
     /// </summary>
+    /// <summary>
+    /// Repairs a bound device whose id or name has drifted. A television was
+    /// observed under three different ids, and a stale settings page can save an
+    /// empty name over a good one; either alone would silently stop matching.
+    /// Once an event has matched, both fields are known good, so writing them
+    /// back makes the binding converge instead of decaying.
+    /// </summary>
+    private void SynchroniseBinding(string? deviceId, string? deviceName)
+    {
+        var plugin = Plugin.Instance;
+        var configuration = plugin?.Configuration;
+        if (plugin is null
+            || configuration is null
+            || string.IsNullOrWhiteSpace(deviceId)
+            || string.IsNullOrWhiteSpace(deviceName))
+        {
+            return;
+        }
+
+        // An unbound plugin follows every device and must stay that way.
+        if (string.IsNullOrWhiteSpace(configuration.TargetDeviceId) && string.IsNullOrWhiteSpace(configuration.TargetDeviceName))
+        {
+            return;
+        }
+
+        if (string.Equals(configuration.TargetDeviceId, deviceId, StringComparison.Ordinal)
+            && string.Equals(configuration.TargetDeviceName, deviceName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _logger.LogInformation(
+            "Realtime Ambilight refreshed its device binding to {DeviceName} ({DeviceId}).",
+            deviceName,
+            deviceId);
+
+        configuration.TargetDeviceId = deviceId;
+        configuration.TargetDeviceName = deviceName;
+        plugin.SaveConfiguration();
+    }
+
     private static bool IsTargetDevice(string? deviceId, string? deviceName)
     {
         var configuration = Plugin.Instance?.Configuration;
