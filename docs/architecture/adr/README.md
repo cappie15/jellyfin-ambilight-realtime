@@ -11,10 +11,11 @@ has reviewed it; only **Accepted** ADRs may be treated as settled.
 | [003](ADR-003-wled-only-v1.md) | WLED-only v1 | One output driver behind a narrow `ILedOutput` abstraction | **Accepted** 2026-09-05 + Am. 1 accepted |
 | [004](ADR-004-wled-realtime-protocol-strategy.md) | WLED realtime protocol strategy | Multi-packet DDP; Hyperion raw RGB and its ~490 LED ceiling abandoned | **Accepted** 2026-09-05 + Am. 1-2 accepted |
 | [005](ADR-005-logical-sampling-vs-physical-led-interpolation.md) | Logical sampling vs physical LED interpolation | ~100 logical samples interpolated in linear light to 831 physical LEDs | **Accepted** 2026-09-05 + Am. 1 accepted |
-| [006](ADR-006-hdr-dolby-vision-normalization.md) | HDR/Dolby Vision normalization | GPU tone-mapping to linear-light BT.709; per-profile DV handling, P5 documented | **Accepted** 2026-09-05 + Am. 1 accepted |
+| [006](ADR-006-hdr-dolby-vision-normalization.md) | HDR/Dolby Vision normalization | GPU tone-mapping to linear-light BT.709; per-profile DV handling, P5 documented | **Accepted** 2026-09-05 + Am. 1 accepted, **Am. 2 pending** |
 | [007](ADR-007-jellyfin-playback-synchronization.md) | Jellyfin playback synchronization | Local monotonic clock corrected by push events; seeks detected by drift | **Accepted** 2026-09-05 + Am. 1-2 accepted |
 | [008](ADR-008-companion-worker-vs-in-process.md) | Companion worker vs in-process | In-process, spawning `IMediaEncoder.EncoderPath`; no daemon, no bundled binary | **Accepted** 2026-09-05 + Am. 1 accepted |
 | [009](ADR-009-zero-touch-installation.md) | Zero-touch installation architecture | Plugin repository only; nothing downloaded; capability gaps explained, not fixed | **Accepted** 2026-09-05 + Am. 1 accepted |
+| [010](ADR-010-sampling-zone-model.md) | The sampling zone model | What a logical sample *is*: zone rectangles, 5% depth off the **cropped** picture, overlapping corners, linear-light box mean | **Proposed** 2026-09-06 |
 
 **All nine ADRs are Accepted, with eleven amendments also accepted (operator review 2026-09-06).**
 The amendments come from two adversarial research passes (30 agents, ~3.6M

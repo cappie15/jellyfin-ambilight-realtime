@@ -290,3 +290,48 @@ This deviates from §24's "Intel QSV is the primary optimized implementation".
 The justification is that §24 was written before it was known that QSV is
 *incorrect* for Dolby Vision on this stack. QSV remains available in expert mode
 for users who know their library contains no DV.
+
+---
+
+## Amendment 2 — 2026-09-06 — the chain must pin its output colour
+
+**Amendment 1 records the pipeline in prose and never records the filter string.
+Built from the prose alone, it does not reach SDR BT.709.**
+
+`apply_dolbyvision=true` applies the RPU but does **not** tone-map to SDR unless
+the output is explicitly pinned. Measured with `showinfo` on the reference asset:
+
+| libplacebo options | Output tagging |
+|---|---|
+| `apply_dolbyvision=true:format=bgra` | `color_primaries:bt2020 color_trc:smpte2084` — **still PQ** |
+| `…:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=bt.2390:apply_dolbyvision=true` | `color_space:bt709 color_primaries:bt709 color_trc:bt709` ✓ |
+
+The measurements in Amendment 1 are unaffected — they used the pinned form. But
+an implementer following the ADR as written would produce a frame carrying PQ
+codes tagged BT.2020, and every downstream linear-light computation would then
+linearise with the wrong transfer curve. Silent, and wrong in a way that looks
+plausible.
+
+**Amendment.** The output colour pinning is part of the contract, not an
+incidental flag. The canonical analysis chain is:
+
+```
+-hwaccel vaapi -hwaccel_device /dev/dri/renderD128 -hwaccel_output_format vaapi
+-vf "scale_vaapi=w=960:h=540,
+     hwdownload,format=p010le,
+     hwupload,
+     libplacebo=w=<aw>:h=<ah>
+              :colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv
+              :tonemapping=bt.2390
+              :apply_dolbyvision=true
+              :format=bgra,
+     hwdownload,format=bgra"
+```
+
+The frame this produces is the colour contract ADR-010 depends on: 960×540 packed
+BGRA, BT.709 primaries, BT.709 transfer, limited range.
+
+**A related claim did *not* reproduce.** An intermediate finding held that the
+chain requires explicit `-init_hw_device vulkan=vk -filter_hw_device vk` flags. On
+this host it runs without them and the output is byte-identical. They are not part
+of the contract.
