@@ -12,7 +12,7 @@
                 <div class="selectContainer">
                     <select is="emby-select" id="targetDeviceId" label="Playback device"></select>
                     <div class="fieldDescription">
-                        Pick the device you actually watch on; only that device drives the LEDs. The list is ordered by last used, so your TV is usually near the top.
+                        Pick the device you actually watch on; only that device drives the LEDs. Devices that are connected right now come first, then the rest by last used, so your TV is usually near the top.
                         <br /><strong>Recommended:</strong> pick your TV. If you leave this on <em>All devices</em>, the LEDs react to every device that plays something &mdash; including a phone in another room.
                     </div>
                     <div id="targetDeviceStatus" class="fieldDescription" aria-live="polite"></div>
@@ -24,7 +24,7 @@
                     <input is="emby-checkbox" id="enabled" type="checkbox" />
                     <span>Enable Ambilight</span>
                 </label>
-                <div class="fieldDescription">Turn this off to release the LEDs straight away without losing the rest of your settings. <strong>Default: on.</strong></div>
+                <div class="fieldDescription">Turn this off to hand the LEDs back without losing the rest of your settings. WLED takes the strip over again about two and a half seconds later. <strong>Default: on.</strong></div>
             </div>
 
             <div class="verticalSection">
@@ -45,7 +45,7 @@
                     </div>
                     <div class="inputContainer">
                         <input is="emby-input" id="wledHttpPort" type="number" min="1" max="65535" label="WLED HTTP port" />
-                        <div class="fieldDescription">WLED's web port, used to read its status and to release the LEDs cleanly. Only change this if your WLED runs on a non-standard port. <strong>Default: 80.</strong></div>
+                        <div class="fieldDescription">WLED's web port, used only to read its public status page while searching. The LED colours themselves do not travel over this port. Only change this if your WLED runs on a non-standard port. <strong>Default: 80.</strong></div>
                     </div>
                 </div>
 
@@ -109,7 +109,7 @@
                 </div>
                 <div class="inputContainer">
                     <input is="emby-input" id="bottomLedCount" type="number" min="1" label="LEDs along the bottom" />
-                    <div class="fieldDescription"><strong>Default: 266</strong> &mdash; one more than the top, because the strip runs around the stand there.</div>
+                    <div class="fieldDescription"><strong>Default: 266.</strong> It need not match the top: count what is actually there.</div>
                 </div>
                 <div class="inputContainer">
                     <input is="emby-input" id="leftLedCount" type="number" min="1" label="LEDs up the left side" />
@@ -120,7 +120,7 @@
 
             <div class="verticalSection">
                 <h3 class="sectionTitle">5. Picture analysis</h3>
-                <p class="fieldDescription">The picture is scaled down before its edge colours are measured, and the outer tenth of each side is what the LEDs follow. Analysis assumes 16:9, so the height follows from the width.</p>
+                <p class="fieldDescription">The picture is scaled down before its edge colours are measured, and a band along each side is what the LEDs follow — you set how wide that band is below. Analysis assumes 16:9, so the height follows from the width.</p>
 
                 <div style="display:flex;gap:2em;flex-wrap:wrap;align-items:flex-start">
                     <div style="flex:1 1 20em;min-width:18em">
@@ -144,7 +144,7 @@
                             <input is="emby-input" id="analysisFramesPerSecond" type="number" min="1" max="60" label="Sampling frames per second" />
                             <div class="fieldDescription">
                                 How often a frame is analysed. <strong>Default: 30.</strong>
-                                <br />There is no point going above your film's own frame rate — most films are 24 fps — or above the LED updates per second. Higher just doubles the work for the same picture.
+                                <br />There is no point going above your film's own frame rate — most films are 24 fps — or above the LED updates per second. Higher only costs more work for the same picture.
                             </div>
                         </div>
                     </div>
