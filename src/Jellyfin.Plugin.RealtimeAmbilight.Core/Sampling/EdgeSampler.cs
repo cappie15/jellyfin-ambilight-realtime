@@ -13,9 +13,14 @@ public static class EdgeSampler
     /// <summary>Fraction of each axis sampled per side, as a percentage.</summary>
     public const int DefaultDepthPercent = 10;
 
-    public const int MinimumDepthPercent = 2;
+    public const int MinimumDepthPercent = 1;
 
-    public const int MaximumDepthPercent = 50;
+    /// <summary>
+    /// Beyond roughly a third of an axis an edge no longer reflects the part of
+    /// the picture nearest it, but an average of the whole scene, so every side
+    /// converges on the same colour.
+    /// </summary>
+    public const int MaximumDepthPercent = 30;
 
     public static PerimeterSamples SampleBgra(
         ReadOnlySpan<byte> bgraFrame,

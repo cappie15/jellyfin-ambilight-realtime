@@ -154,10 +154,11 @@
 
                 <br />
                 <div class="inputContainer">
-                    <input is="emby-input" id="samplingDepthPercent" type="range" min="2" max="50" step="1" label="How much of each edge to look at" />
+                    <input is="emby-input" id="samplingDepthPercent" type="range" min="1" max="30" step="1" label="Sampling edge range" />
                     <div class="fieldDescription">
-                        Currently: <strong id="samplingDepthValue"></strong> of each side.
-                        <br /><strong>Recommended: 10%.</strong> That takes in enough of the picture to stay steady without letting the middle of the image bleed into the edges. Go lower for a sharper, more literal edge match; go higher for a calmer, more averaged glow. Above roughly 25% the LEDs start reflecting the whole scene rather than the edge nearest them.
+                        Currently: <strong id="samplingDepthValue"></strong> inward from each side.
+                        <br /><strong>Recommended: 10%.</strong> That takes in enough of the picture to stay steady without letting the middle of the image bleed into the edges.
+                        <br />Lower gives a sharper, more literal match to the very edge of the picture, but reacts to small details and can look restless. Higher gives a calmer, more averaged glow. Towards 30% each side starts reflecting the whole scene instead of the part nearest it, so all four sides drift towards the same colour.
                     </div>
                 </div>
 
