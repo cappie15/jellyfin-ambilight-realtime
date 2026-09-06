@@ -789,8 +789,8 @@ untouched.
 
 | # | Assumption | Status |
 |---|---|---|
-| A1 | QSV 4K HEVC Main10 decode + on-GPU downscale does not measurably affect concurrent Jellyfin playback. | **Open.** Hardware now known: Intel **Core i5-10500T** (Comet Lake), UHD 630, in an LXC on PVE. Still needs measurement under real concurrent playback. |
-| A2 | `vpp_qsv` suffices for HDR→SDR versus needing `libplacebo`/Vulkan. | **Resolved 2026-09-05.** iGPU is UHD 630 (**Gen9.5**). `vpp_qsv` tone-maps only "if the input has HDR metadata", which the P5 reference asset lacks — so it would do nothing. Colour path is **libplacebo over Vulkan**. |
+| A1 | 4K HEVC Main10 decode + on-GPU downscale does not measurably affect concurrent Jellyfin playback. | **Largely closed 2026-09-06 by measurement.** The DV path (VAAPI + `scale_vaapi`) runs at **6.3× realtime on 0.79 cores**; QSV non-DV at 9.6× on 0.30 cores. Software is the risk at 2.36 of 4 cores. Not yet measured against a *real concurrent transcode*. |
+| A2 | `vpp_qsv` suffices for HDR→SDR versus needing `libplacebo`/Vulkan. | **Resolved, and worse than thought.** Beyond `vpp_qsv` not firing without HDR metadata, **QSV decode itself destroys the DV RPU** — see ADR-006 Amendment 1. VAAPI + `scale_vaapi` + libplacebo is the only correct hardware DV path. |
 | A3 | Dolby Vision **Profile 5** handling. Highest-risk item in the colour pipeline. | **Resolved favourably 2026-09-05.** `libplacebo apply_dolbyvision=true` applies the RPU. See §18 and ADR-006. Visual confirmation outstanding. |
 | A4 | Child-process spawning from a plugin is unrestricted in standard Docker. | **Open.** |
 | A5 | **New.** Multi-planar `hwdownload` (nv12) returns empty chroma on Mesa anv 25.0.7 / Gen9.5. The decoder must request packed `bgra`/`rgba`. | **Confirmed as a defect 2026-09-05**, worked around. |

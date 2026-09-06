@@ -185,3 +185,42 @@ liveness signal.
 This partially closes **Q2**: the 1 Hz automated floor is now proven from source,
 and it is the cadence that must be *ignored*. The genuine client reporting cadence
 is still unmeasured, so Q2 remains open but is correctly scoped.
+
+---
+
+## Amendment 2 — 2026-09-06 — the debounce needs an interlock, not just a timer
+
+Amendment 1 left the debounce window as "one or even two seconds" per §36. That
+is the right order of magnitude, but the reasoning was untested and the mechanism
+is insufficient.
+
+**Measured restart cost** (ADR-008 Amendment 1c): 754 ms hardware, 1303 ms
+software, rising to 1060 ms and **1842 ms** under a competing full-CPU decode.
+
+A 1 s window is therefore *below* the loaded restart cost of the software path.
+A timer alone would allow a second restart to be issued while the first has not
+yet produced a frame — and two concurrent software decoders is **4.7 cores on a
+four-core box**, precisely the §25/§74 violation the debounce exists to prevent.
+
+**Amendment.**
+
+- Debounce window: **1.5 s** with a hardware decoder, **2.0 s** with software.
+- The timer is **not sufficient on its own**. A state interlock must guarantee
+  that at most one analysis decoder exists per session: a new spawn is refused
+  while a previous one is still starting, and the pending target is coalesced
+  rather than queued.
+- **Worst-case user-visible freeze is roughly double the window**: window +
+  loaded restart p95 + minimal refill ≈ 2.0 + 2.0 + 0.3 = **4.3 s** on the
+  software path. The original ADR did not account for this. Since Amendment 1
+  makes freeze an *active* keepalive state, the strip holds its last colour
+  throughout — but four seconds is long enough that the diagnostics page should
+  show the resynchronising state.
+
+**Seek accuracy is a non-issue.** Input seek with the default `-accurate_seek`
+delivers the first frame boundary at or after the request: uniformly distributed
+over **[0, 41.67) ms**, mean ~20.8 ms, bounded by one frame at 24 fps. That is far
+inside any perceptible sync error, so no discard pass is needed.
+
+Keyframe-only seek (`-noaccurate_seek`) is unusable: the reference asset has a
+rigid **2.000 s closed GOP** with no scene-cut keyframes, giving a landing error
+uniform over (−2000, 0] ms.

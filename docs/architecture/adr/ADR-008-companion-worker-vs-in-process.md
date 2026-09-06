@@ -135,3 +135,56 @@ transcoding, but unconfirmed.
 | Per-RID binaries embedded in the DLL | The predecessor's approach: bloats the plugin, duplicates an FFmpeg the host already has, and must be rebuilt per platform. |
 | Bundle our own FFmpeg | Explicitly discouraged by §23; adds hundreds of MB and the libfdk-aac redistribution problem. |
 | FFmpeg via P/Invoke instead of a child process | A crash in native code takes Jellyfin down with it. A child process is a fault boundary — which is exactly what §74 wants. |
+
+---
+
+## Amendment 1 — 2026-09-06 — decoder selection, and a hang that looks like a crash
+
+### a. "Intel QSV primary, software fallback" is too coarse
+
+ADR-006 Amendment 1 establishes that QSV **silently drops the Dolby Vision RPU**.
+The decoder abstraction must therefore select on content, not only on hardware:
+
+| Content | Backend | Measured |
+|---|---|---|
+| Dolby Vision | **VAAPI** + `scale_vaapi` before download | 6.3× realtime, 0.79 cores, colour correct |
+| SDR / HDR10 / HLG | QSV + `vpp_qsv` | 9.6× realtime, 0.30 cores |
+| no usable GPU | software + libplacebo | 1.25× realtime, 2.36 of 4 cores |
+
+Software decode is not a degraded fallback for DV — it is colour-correct and
+clears the source rate — but at 2.36 of four cores it is the option most likely
+to disturb a concurrent transcode, which §25 forbids. It stays the last resort.
+
+### b. `-ss` after `-i` is not a seek — it is a 62-minute hang
+
+Measured: with `-ss` placed *after* `-i`, FFmpeg decodes and filters the entire
+file from t=0 and discards at the muxer, costing **~1.06 s of wall clock per
+second of target position** on the QSV chain (~0.81 s/s software). `showinfo`
+reports the first frame entering the graph at `pts_time:0` in every run. A probe
+at 1801.5 s was killed after 200 s having produced no frame; extrapolated to
+mid-film that is **62 minutes**.
+
+The danger is not the slowness, it is the shape of the failure: it is
+indistinguishable from a hung decoder, and the watchdog this ADR requires would
+kill and respawn it **into the same hang, forever**.
+
+**Amendment.** The seek is emitted as an *input* option, before `-i`, and the
+argument-vector builder asserts this. It is not left to convention, and it gets a
+test.
+
+### c. Measured restart cost
+
+Kill to first frame, median of 8 cycles at non-keyframe-aligned targets:
+
+| Pipeline | Kill | Kill → first frame | Under load |
+|---|---|---|---|
+| QSV + `vpp_qsv` | 11 ms | 344 ms | 506 ms |
+| VAAPI/QSV + libplacebo | 23 ms | 754 ms | 1060 ms |
+| software + libplacebo | 41 ms | 1303 ms | 1842 ms |
+
+Roughly **0.33 s of every libplacebo restart is filter initialisation**, paid on
+every seek. Pre-creating a Vulkan device saves only ~10 ms; only a pre-warmed
+process that has already built the filter graph would avoid it.
+
+Time-to-first-frame is flat with file position (0.657–0.713 s from 150 s to
+6347 s) and effectively independent of page-cache state.

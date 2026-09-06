@@ -211,3 +211,60 @@ matrix requires operator visual confirmation.
 | Treat all HDR as SDR | The naive failure §31 and §32 exist to prevent. |
 | Skip HDR support in v1 | §30 makes it a hard requirement. |
 | Apply the DV RPU ourselves | Enormous complexity; the RPU is only partially documented; out of scope. |
+
+---
+
+## Amendment 1 — 2026-09-06 — QSV silently destroys Dolby Vision
+
+**Intel QSV decode drops the Dolby Vision RPU. `apply_dolbyvision=true` is
+accepted, raises no error, and silently does nothing.**
+
+Measured on the reference asset at t=2400 s, six frames, mean channel values:
+
+| Pipeline | R | G | B | G−R | B−R | distance to correct |
+|---|---|---|---|---|---|---|
+| **QSV decode**, `apply_dolbyvision=true` | 15.42 | 27.00 | 25.07 | +11.59 | +9.65 | **41.05** |
+| software decode, `apply_dolbyvision=**false**` | 15.60 | 26.87 | 25.53 | +11.27 | +9.94 | — |
+| software decode, `apply_dolbyvision=true` (reference) | 14.47 | 9.92 | 2.05 | −4.55 | −12.42 | 0 |
+
+QSV with DV *enabled* sits **0.78** from software with DV *disabled*, and
+**41.05** from the correct result. The RPU is lost in the QSV wrapper's
+side-data propagation and libplacebo then no-ops the mapping.
+
+This is the worst available failure mode: the flag is set, nothing errors, and
+the output carries exactly the green/cyan cast §32 forbids. Nothing in the logs
+would reveal it.
+
+### The fix: VAAPI, and scale on the GPU before downloading
+
+| Pipeline | Colour | Throughput | CPU |
+|---|---|---|---|
+| QSV + `vpp_qsv` GPU scale | **wrong** (no DV) | 9.6× realtime | 0.30 cores |
+| QSV + full-res download + libplacebo | **wrong** (RPU dropped) | 0.8× | 0.39 cores |
+| VAAPI + full-res download + libplacebo | correct | 0.58× — **too slow** | 0.62 cores |
+| **VAAPI + `scale_vaapi` 960×540 → download → libplacebo** | **correct** | **6.3× realtime, ~150 fps** | **0.79 cores** |
+
+Verified independently: the scaled VAAPI path lands **0.25** from the software
+reference, i.e. colour-identical, and sustains 6.2–6.4× realtime at two
+positions in the film.
+
+The difference between the last two rows is entirely *where the scale happens*.
+Downloading 4K p010 frames caps at roughly 14/s (~173 MB/s); scaling on the GPU
+first removes the bottleneck. This is exactly what §65 and ADR-005 prescribe, now
+with a measured order-of-magnitude behind it.
+
+### Amendment
+
+- **VAAPI is the decode backend whenever Dolby Vision is present**, not QSV.
+- QSV remains valid for SDR/HDR10/HLG, where it is cheaper (0.30 vs 0.79 cores).
+- Backend selection therefore depends on `VideoRangeType`, not on hardware
+  capability alone. ADR-008's "QSV primary, software fallback" is too coarse.
+- **The filter graph must scale on the GPU before `hwdownload`.** This is a
+  correctness-adjacent performance requirement, not an optimisation.
+- **Zero-copy into libplacebo is unavailable on this stack.** Importing a
+  decoded VAAPI/QSV surface into Vulkan fails hard for 10-bit and nv12, and the
+  one variant that imports produces wrong pixels. The `hwdownload` → `hwupload`
+  round trip is mandatory here.
+- Any claim that a hardware DV path works must be verified by **comparing
+  channel statistics against the software reference**, because the failure is
+  silent. This belongs in the test suite.
