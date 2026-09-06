@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Discovery;
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Output;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.RealtimeAmbilight;
@@ -183,6 +184,75 @@ public sealed class WledDiscoveryService
         }
         catch (JsonException)
         {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads whether the controller applies gamma correction to realtime data.
+    /// </summary>
+    /// <returns>
+    /// The encoding the controller expects, or <see langword="null"/> when it
+    /// could not be read and the caller should keep its configured choice.
+    /// </returns>
+    /// <remarks>
+    /// WLED exposes both halves of this: <c>light.gc.col</c> is the gamma it
+    /// applies to colours, and <c>if.live.no-gc</c> says whether realtime data
+    /// is exempted from it. Realtime is exempt by default, which is why sending
+    /// display-encoded values is wrong far more often than it is right.
+    /// </remarks>
+    public async Task<Rgb24Encoding?> DetectRealtimeEncodingAsync(string host, int port, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(host);
+        var authority = port == 80 ? host : string.Create(CultureInfo.InvariantCulture, $"{host}:{port}");
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(ProbeTimeout);
+
+            var client = _httpClientFactory.CreateClient();
+            using var response = await client
+                .GetAsync(new Uri($"http://{authority}/json/cfg"), timeout.Token)
+                .ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var body = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
+            await using (body.ConfigureAwait(false))
+            {
+                using var document = await JsonDocument.ParseAsync(body, cancellationToken: timeout.Token).ConfigureAwait(false);
+                var root = document.RootElement;
+
+                var colourGamma = root.TryGetProperty("light", out var light)
+                    && light.TryGetProperty("gc", out var gammaCorrection)
+                    && gammaCorrection.TryGetProperty("col", out var colour)
+                    && colour.TryGetDouble(out var parsedGamma)
+                        ? parsedGamma
+                        : 1d;
+
+                var realtimeExempt = !root.TryGetProperty("if", out var interfaces)
+                    || !interfaces.TryGetProperty("live", out var live)
+                    || !live.TryGetProperty("no-gc", out var noGammaCorrection)
+                    || noGammaCorrection.ValueKind != JsonValueKind.False;
+
+                var appliesGamma = !realtimeExempt && colourGamma > 1d;
+                _logger.LogInformation(
+                    "WLED {Host} reports colour gamma {Gamma} and realtime gamma {RealtimeGamma}; sending {Encoding} values.",
+                    authority,
+                    colourGamma,
+                    realtimeExempt ? "skipped" : "applied",
+                    appliesGamma ? "display-encoded" : "light-proportional");
+
+                return appliesGamma ? Rgb24Encoding.Bt709 : Rgb24Encoding.Linear;
+            }
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException
+            || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            _logger.LogWarning("Could not read the gamma settings from WLED {Host}; keeping the configured choice.", authority);
             return null;
         }
     }

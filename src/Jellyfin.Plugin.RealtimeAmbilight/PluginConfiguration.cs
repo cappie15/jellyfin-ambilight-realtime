@@ -91,6 +91,15 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public bool CorrectLedGamma { get; set; } = true;
 
     /// <summary>
+    /// Reads the controller's own gamma settings at startup and uses those
+    /// instead of <see cref="CorrectLedGamma"/>. WLED reports both the gamma it
+    /// applies to colours and whether realtime data is exempt from it, so this
+    /// is a fact to be read rather than a preference to be guessed. Falls back
+    /// to the manual setting when the controller cannot be reached.
+    /// </summary>
+    public bool AutoDetectLedGamma { get; set; } = true;
+
+    /// <summary>
     /// Detects letterbox and pillarbox bars and samples the picture inside them.
     /// Without it the LEDs follow the bars and stay dark on a wider-than-16:9 film.
     /// </summary>

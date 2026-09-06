@@ -213,6 +213,7 @@ export default function (view) {
                 byId("holdWhilePaused").checked = config.HoldWhilePaused !== false;
                 byId("ignoreBlackBorders").checked = config.IgnoreBlackBorders !== false;
                 byId("correctLedGamma").checked = config.CorrectLedGamma !== false;
+                byId("autoDetectLedGamma").checked = config.AutoDetectLedGamma !== false;
                 numericFields.forEach(field => {
                     const key = fieldKey(field);
                     const value = field === "realtimeProtocol"
@@ -250,6 +251,7 @@ export default function (view) {
             HoldWhilePaused: byId("holdWhilePaused").checked,
             IgnoreBlackBorders: byId("ignoreBlackBorders").checked,
             CorrectLedGamma: byId("correctLedGamma").checked,
+            AutoDetectLedGamma: byId("autoDetectLedGamma").checked,
             TargetDeviceId: byId("targetDeviceId").value,
             TargetDeviceName: targetDeviceName(),
             WledHost: hostName,

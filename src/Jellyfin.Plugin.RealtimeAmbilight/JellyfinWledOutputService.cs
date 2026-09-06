@@ -13,6 +13,7 @@ namespace Jellyfin.Plugin.RealtimeAmbilight;
 public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
 {
     private readonly PlaybackEventCoordinator _coordinator;
+    private readonly WledDiscoveryService _discoveryService;
     private readonly WledRealtimeOutput _output;
     private readonly LatestFrameOutputScheduler _scheduler;
     private readonly ILogger<JellyfinWledOutputService> _logger;
@@ -57,10 +58,16 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
 
     private readonly CancellationTokenSource _shutdown = new();
     private Task? _pump;
+    private Rgb24Encoding _encoding;
+    private readonly int _ledCount;
 
-    public JellyfinWledOutputService(PlaybackEventCoordinator coordinator, ILogger<JellyfinWledOutputService> logger)
+    public JellyfinWledOutputService(
+        PlaybackEventCoordinator coordinator,
+        WledDiscoveryService discoveryService,
+        ILogger<JellyfinWledOutputService> logger)
     {
         _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
+        _discoveryService = discoveryService ?? throw new ArgumentNullException(nameof(discoveryService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         var configuration = Plugin.Instance?.Configuration ?? new PluginConfiguration();
         var physical = new LedLayout(
@@ -69,6 +76,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             Math.Max(1, configuration.BottomLedCount),
             Math.Max(1, configuration.LeftLedCount));
         var logical = LogicalSamplingLayout.FromPhysicalLayout(physical);
+        _ledCount = physical.TotalLedCount;
+        _encoding = configuration.CorrectLedGamma ? Rgb24Encoding.Linear : Rgb24Encoding.Bt709;
         // The detector is stateful across frames, so it is created once with the
         // service rather than per frame. Disabled, sampling simply uses the whole
         // frame, exactly as before this option existed.
@@ -83,7 +92,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                 configuration.SamplingDepthPercent,
                 EdgeSampler.MinimumDepthPercent,
                 EdgeSampler.MaximumDepthPercent),
-            configuration.CorrectLedGamma ? Rgb24Encoding.Linear : Rgb24Encoding.Bt709);
+            () => _encoding);
         _output = new WledRealtimeOutput(
             new WledEndpoint(configuration.WledHost, Math.Clamp(configuration.WledHttpPort, 1, ushort.MaxValue)),
             configuration.RealtimeProtocol,
@@ -91,10 +100,34 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
         _scheduler = new LatestFrameOutputScheduler(_coordinator.LatestFrames, processor, _output);
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
+        await DetectEncodingAsync(cancellationToken).ConfigureAwait(false);
         _pump = Task.Run(RunPumpAsync, CancellationToken.None);
-        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Asks the controller how it treats realtime data, so the encoding does not
+    /// have to be guessed or configured by hand.
+    /// </summary>
+    private async Task DetectEncodingAsync(CancellationToken cancellationToken)
+    {
+        var configuration = Plugin.Instance?.Configuration;
+        if (configuration is null || !configuration.AutoDetectLedGamma)
+        {
+            return;
+        }
+
+        var detected = await _discoveryService
+            .DetectRealtimeEncodingAsync(
+                configuration.WledHost,
+                Math.Clamp(configuration.WledHttpPort, 1, ushort.MaxValue),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (detected is { } encoding)
+        {
+            _encoding = encoding;
+        }
     }
 
     private async Task RunPumpAsync()
@@ -147,6 +180,23 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                     catch (Exception exception) when (exception is not OperationCanceledException)
                     {
                         _logger.LogError(exception, "Realtime Ambilight could not finish the playback-stop fade/release.");
+                    }
+                }
+
+                if (previousSession is null && currentSession is not null)
+                {
+                    // Claim the strip immediately. Otherwise WLED keeps showing
+                    // whatever effect it was running until the first analysed
+                    // frame lands, which is seconds into the item.
+                    try
+                    {
+                        await _scheduler.SendFrameAsync(new byte[_ledCount * 3], _shutdown.Token).ConfigureAwait(false);
+                        lastFrameSent = DateTimeOffset.UtcNow;
+                        lastSend = lastFrameSent;
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        _logger.LogWarning(exception, "Realtime Ambilight could not blank the LEDs at playback start.");
                     }
                 }
 

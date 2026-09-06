@@ -163,12 +163,20 @@
                 </div>
 
                 <label class="checkboxContainer">
-                    <input is="emby-checkbox" id="correctLedGamma" type="checkbox" />
-                    <span>Match LED brightness to the picture</span>
+                    <input is="emby-checkbox" id="autoDetectLedGamma" type="checkbox" />
+                    <span>Match LED brightness to the picture, read from the controller</span>
                 </label>
                 <div class="fieldDescription">
-                    LEDs get brighter in step with the number they are sent, but a picture does not store brightness that way: half brightness on screen is stored as roughly three quarters. Without this correction a dark scene is driven around thirteen times brighter than it should be, so the LEDs stay lit through the dark and colours look pale, because the weaker channels are lifted the most. <strong>Default: on.</strong>
-                    <br />Turn this off only if you have enabled gamma correction for realtime data in WLED itself, otherwise the correction is applied twice and everything turns muddy.
+                    LEDs get brighter in step with the number they are sent, but a picture does not store brightness that way: half the brightness on screen is stored as roughly three quarters. Uncorrected, a dark scene is driven about thirteen times brighter than it should be, so the LEDs stay lit through the dark, and colours look pale because the weakest channel of each colour is lifted the most.
+                    <br />WLED reports both the gamma it applies and whether realtime data is exempt from it, so this is read from your controller at startup rather than guessed. <strong>Default: on.</strong> Restart Jellyfin after changing the setting in WLED.
+                </div>
+
+                <label class="checkboxContainer">
+                    <input is="emby-checkbox" id="correctLedGamma" type="checkbox" />
+                    <span>Correct brightness manually</span>
+                </label>
+                <div class="fieldDescription">
+                    Only used when the controller cannot be read, or when the box above is off. On means the plugin corrects brightness itself, which is right for a controller that does not; off sends display-encoded values for a controller that applies its own gamma. <strong>Default: on.</strong>
                 </div>
 
                 <label class="checkboxContainer">
