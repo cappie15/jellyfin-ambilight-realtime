@@ -1,15 +1,17 @@
 export default function (view) {
     const pluginId = "7d6d91ed-0f36-46ea-9868-9623283b6b51";
     const numericFields = [
-        "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond", "pauseKeepAliveSeconds", "stopFadeMilliseconds",
+        "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond", "stopFadeMilliseconds",
         "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisWidth", "analysisFramesPerSecond"
     ];
     const defaults = {
         WledHttpPort: 80, RealtimeProtocol: 0, OutputDelayMilliseconds: 0, OutputFramesPerSecond: 30,
-        PauseKeepAliveSeconds: 2, StopFadeMilliseconds: 250, TopLedCount: 265, RightLedCount: 150,
+        StopFadeMilliseconds: 250, TopLedCount: 265, RightLedCount: 150,
         BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160, AnalysisFramesPerSecond: 30
     };
+    const ledCountFields = ["topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount"];
     let loadedConfig = null;
+    let discoveredControllers = [];
     const byId = id => view.querySelector(`#${id}`);
     const fieldKey = field => field[0].toUpperCase() + field.slice(1);
     const show = (id, visible) => { byId(id).style.display = visible ? "block" : "none"; };
@@ -22,6 +24,19 @@ export default function (view) {
     function setAnalysisLabel() {
         const width = Math.max(16, Number(byId("analysisWidth").value) || defaults.AnalysisWidth);
         byId("analysisSizeValue").textContent = `${width} × ${analysisHeight()} pixels`;
+    }
+
+    function setLedTotal() {
+        const total = ledCountFields.reduce((sum, field) => sum + (Number(byId(field).value) || 0), 0);
+        byId("ledTotalValue").textContent = `${total} LEDs`;
+
+        const selected = discoveredControllers.find(candidate => candidate.Host === byId("wledCandidates").value);
+        const reported = selected?.LedCount ?? 0;
+        byId("ledTotalCheck").textContent = reported <= 0 || total === 0
+            ? ""
+            : total === reported
+                ? " — matches the selected controller."
+                : ` — but the selected controller reports ${reported} LEDs, so these numbers are wrong.`;
     }
 
     function analysisHeight() {
@@ -101,6 +116,7 @@ export default function (view) {
             byId("wledFinderStatus").textContent = candidates.length === 1
                 ? "Found one WLED controller."
                 : `Found ${candidates.length} WLED controllers.`;
+            setLedTotal();
         } else {
             show("wledCandidatesContainer", false);
             show("manualWledContainer", true);
@@ -127,6 +143,7 @@ export default function (view) {
             .then(config => {
                 loadedConfig = config;
                 byId("enabled").checked = config.Enabled !== false;
+                byId("holdWhilePaused").checked = config.HoldWhilePaused !== false;
                 numericFields.forEach(field => {
                     const key = fieldKey(field);
                     const value = field === "realtimeProtocol"
@@ -137,6 +154,7 @@ export default function (view) {
                 byId("wledHost").value = config.WledHost || "";
                 setDelayLabel();
                 setAnalysisLabel();
+                setLedTotal();
                 return loadDevices(config.TargetDeviceId || "");
             })
             .then(findWled)
@@ -158,6 +176,7 @@ export default function (view) {
             ...loadedConfig,
             ConfigSchemaVersion: 2,
             Enabled: byId("enabled").checked,
+            HoldWhilePaused: byId("holdWhilePaused").checked,
             TargetDeviceId: byId("targetDeviceId").value,
             WledHost: hostName,
             AnalysisHeight: analysisHeight()
@@ -176,6 +195,8 @@ export default function (view) {
     byId("realtimeAmbilightConfigurationForm").addEventListener("submit", save);
     byId("outputDelayMilliseconds").addEventListener("input", setDelayLabel);
     byId("analysisWidth").addEventListener("input", setAnalysisLabel);
+    ledCountFields.forEach(field => byId(field).addEventListener("input", setLedTotal));
+    byId("wledCandidates").addEventListener("change", setLedTotal);
     byId("findWled").addEventListener("click", findWled);
     byId("refreshDevices").addEventListener("click", () => loadDevices(byId("targetDeviceId").value));
 }

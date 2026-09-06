@@ -45,6 +45,21 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     public int OutputFramesPerSecond { get; set; } = 30;
 
+    /// <summary>
+    /// Holds the last frame on the LEDs for as long as playback stays paused.
+    /// Resuming continues normally and stopping still runs the configured fade.
+    /// When disabled, output simply ceases on pause and WLED reclaims the strip
+    /// after its own realtime timeout.
+    /// </summary>
+    public bool HoldWhilePaused { get; set; } = true;
+
+    /// <summary>
+    /// Retained so existing serialized configurations keep deserializing; this
+    /// root is additive-only. It is no longer used: it was a resend interval
+    /// rather than a hold duration, and any value above WLED's realtime timeout
+    /// made the LEDs drop out and back mid-pause. The resend cadence is now a
+    /// fixed interval derived from that timeout, and holding is a plain switch.
+    /// </summary>
     public int PauseKeepAliveSeconds { get; set; } = 2;
 
     public int StopFadeMilliseconds { get; set; } = 250;

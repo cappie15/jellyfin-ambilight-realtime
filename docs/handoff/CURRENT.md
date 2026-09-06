@@ -167,6 +167,14 @@ this handover.
 - Final TV calibration: determine the useful output-delay range on the TCL/TV
   path; leave the live setting at 0 ms until an observed test justifies a
   positive delay. A UI slider exists (0–2000 ms, 25 ms increments).
+- **Pause is now a switch, not a duration (2026-09-06).** `HoldWhilePaused`
+  (default on) holds the paused frame on the LEDs until playback resumes or
+  stops. The old `PauseKeepAliveSeconds` was a *resend interval* rather than a
+  hold duration, and the live value of 10 s exceeded WLED's realtime timeout, so
+  the LEDs would have dropped back to WLED's own effect and been yanked in again
+  mid-pause. The resend cadence is now a fixed 1 s constant, chosen against
+  measured release times of 2.46 s for DDP and 2.25 s for Raw RGB. The old
+  property is retained unused so existing configurations keep deserializing.
 - Pause semantics still need a final *visual* confirmation on the TV: colours
   should hold for the configured keepalive duration, then release as intended.
   The underlying stop/release defect behind the earlier symptom is now fixed:

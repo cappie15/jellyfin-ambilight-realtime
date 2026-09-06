@@ -76,9 +76,13 @@
                     <div class="fieldDescription">How often the LEDs get a new colour. Higher looks smoother but costs more network traffic and CPU. <strong>Default: 30.</strong> Restart Jellyfin after changing this.</div>
                 </div>
 
-                <div class="inputContainer">
-                    <input is="emby-input" id="pauseKeepAliveSeconds" type="number" min="1" max="20" label="Hold while paused (seconds)" />
-                    <div class="fieldDescription">While paused, the last picture stays on the LEDs, so WLED does not jump back to its own effect the moment you pause. <strong>Default: 2 seconds.</strong></div>
+                <label class="checkboxContainer">
+                    <input is="emby-checkbox" id="holdWhilePaused" type="checkbox" />
+                    <span>Hold the picture while paused</span>
+                </label>
+                <div class="fieldDescription">
+                    When on, the frame you paused on stays on the LEDs for as long as playback is paused. Resuming continues the Ambilight, and stopping fades the LEDs out as configured below.
+                    <br />When off, the LEDs go back to WLED's own effect about two and a half seconds after you pause. <strong>Default: on.</strong>
                 </div>
 
                 <div class="inputContainer">
@@ -90,6 +94,7 @@
             <div class="verticalSection">
                 <h3 class="sectionTitle">4. How are the LEDs arranged around your TV?</h3>
                 <p class="fieldDescription">Count clockwise starting at the <strong>top-left corner</strong>: first the top, then the right side, then the bottom, then the left. The four numbers together must match the number of LEDs in your strip exactly. Restart Jellyfin after changing them.</p>
+                <div class="fieldDescription">Total: <strong id="ledTotalValue"></strong><span id="ledTotalCheck"></span></div>
                 <div class="inputContainer">
                     <input is="emby-input" id="topLedCount" type="number" min="1" label="LEDs along the top" />
                     <div class="fieldDescription"><strong>Default: 265.</strong></div>

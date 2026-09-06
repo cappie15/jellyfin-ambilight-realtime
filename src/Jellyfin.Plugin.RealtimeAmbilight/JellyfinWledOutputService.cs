@@ -16,6 +16,14 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private readonly WledRealtimeOutput _output;
     private readonly LatestFrameOutputScheduler _scheduler;
     private readonly ILogger<JellyfinWledOutputService> _logger;
+    /// <summary>
+    /// How often the held frame is resent while playback is paused. WLED drops
+    /// out of realtime once no data arrives for its configured realtime timeout,
+    /// measured at 2.46 s for DDP and 2.25 s for Raw RGB on the reference
+    /// controller, so this must stay comfortably below the shorter of the two.
+    /// </summary>
+    private static readonly TimeSpan PauseKeepAliveInterval = TimeSpan.FromSeconds(1);
+
     private readonly CancellationTokenSource _shutdown = new();
     private Task? _pump;
 
@@ -126,8 +134,12 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                     _logger.LogError(exception, "Realtime Ambilight output pump failed while processing a frame.");
                     continue;
                 }
-                var keepAliveSeconds = Math.Clamp(Plugin.Instance?.Configuration.PauseKeepAliveSeconds ?? 2, 1, 20);
-                if (pendingFrames.Count == 0 && currentSession is not null && _coordinator.IsPaused && DateTimeOffset.UtcNow - lastKeepAlive >= TimeSpan.FromSeconds(keepAliveSeconds))
+                var holdWhilePaused = Plugin.Instance?.Configuration.HoldWhilePaused ?? true;
+                if (holdWhilePaused
+                    && pendingFrames.Count == 0
+                    && currentSession is not null
+                    && _coordinator.IsPaused
+                    && DateTimeOffset.UtcNow - lastKeepAlive >= PauseKeepAliveInterval)
                 {
                     await _output.KeepAliveAsync(_shutdown.Token).ConfigureAwait(false);
                     lastKeepAlive = DateTimeOffset.UtcNow;
