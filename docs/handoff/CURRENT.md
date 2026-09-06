@@ -218,6 +218,41 @@ Two changes make that class of failure self-correcting rather than terminal:
   of decaying. Note the limit: if *both* fields are wrong, nothing can match and
   no repair happens -- rebind from the settings page.
 
+## Output was an open loop until 2026-09-06
+
+The operator reported the LEDs running 2 s early at the start of a film, and
+late again a minute later. The cause was structural, not a tuning problem.
+
+Analysis frames carried no media timestamp, and output scheduled them as
+"arrival time plus a fixed delay". The playback clock *was* corrected from the
+client's authoritative progress reports, but nothing connected that correction
+to what was sent, so the LEDs followed the decoder rather than the picture. Two
+errors then accumulated freely: FFmpeg was seeked to exactly the reported
+position, leaving it behind by its own start-up cost (about 1.1 s for the HDR
+graph) and re-applying that lag on every restart, and any difference between
+decode pace and playback pace drifted without bound.
+
+Now closed:
+
+- `AnalysisFrame` carries the media position it depicts. FFmpeg emits a
+  constant-rate stream from the seek point, so the position follows from the
+  frame index and costs nothing to compute.
+- The decoder starts `FfmpegAnalysisWorker.DecoderLead` (2 s) *ahead* of the
+  reported position, so it has slack to be held rather than lag to be endured.
+- Output computes each frame's due time from the playback clock, so a clock
+  correction immediately reshapes what is pending. `OutputDelayMilliseconds` now
+  means only what its label claims: compensation for the television's own
+  pipeline. The live value of 2000 ms was compensating this defect and has been
+  reset to 0; it must be re-tuned from there.
+- `DriftTolerance` drops from 1 s to 250 ms. It is now a direct upper bound on
+  visible synchronisation error, and a correction only reshuffles pending frames
+  instead of restarting the decoder.
+- Falling behind is reported: `is N ms behind the picture`, rate-limited to once
+  per 30 s.
+
+Measured while diagnosing: the HDR analysis graph sustains about 101 fps on the
+reference host, so throughput was never the limit at 60 analysis fps.
+
 ## Partially implemented / needs validation
 
 - Final TV calibration: determine the useful output-delay range on the TCL/TV

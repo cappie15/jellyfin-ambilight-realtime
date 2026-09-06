@@ -26,7 +26,7 @@ public sealed class LatestFrameOutputScheduler
     /// <returns>True only when a newly decoded frame was sent.</returns>
     public async Task<bool> SendLatestAsync(CancellationToken cancellationToken)
     {
-        if (!TryTakeProcessedFrame(out var rgb24Frame) || rgb24Frame is null)
+        if (!TryTakeProcessedFrame(out var rgb24Frame, out _) || rgb24Frame is null)
         {
             return false;
         }
@@ -35,16 +35,22 @@ public sealed class LatestFrameOutputScheduler
         return true;
     }
 
-    /// <summary>Processes one newest frame without sending it, for output-delay scheduling.</summary>
-    public bool TryTakeProcessedFrame(out byte[]? rgb24Frame)
+    /// <summary>
+    /// Processes one newest frame without sending it, reporting the media
+    /// position it depicts so output can schedule it against playback rather
+    /// than against the moment it happened to arrive.
+    /// </summary>
+    public bool TryTakeProcessedFrame(out byte[]? rgb24Frame, out long positionTicks)
     {
         if (!_latestFrames.TryTake(out var frame) || frame is null)
         {
             rgb24Frame = null;
+            positionTicks = 0;
             return false;
         }
 
         rgb24Frame = _processor.Process(frame);
+        positionTicks = frame.PositionTicks;
         return true;
     }
 

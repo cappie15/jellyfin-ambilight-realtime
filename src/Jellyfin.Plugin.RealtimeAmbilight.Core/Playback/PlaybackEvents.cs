@@ -44,7 +44,13 @@ public interface IPlaybackAnalysisWorker
 
 public sealed class PlaybackCoordinatorOptions
 {
-    public TimeSpan DriftTolerance { get; init; } = TimeSpan.FromSeconds(1);
+    /// <summary>
+    /// How far the extrapolated clock may sit from an authoritative client report
+    /// before it is corrected. Output now schedules against this clock, so the
+    /// tolerance is a direct upper bound on visible synchronisation error; a
+    /// correction only shifts pending frames and never restarts the decoder.
+    /// </summary>
+    public TimeSpan DriftTolerance { get; init; } = TimeSpan.FromMilliseconds(250);
 
     public TimeSpan SeekDiscontinuityThreshold { get; init; } = TimeSpan.FromSeconds(3);
 

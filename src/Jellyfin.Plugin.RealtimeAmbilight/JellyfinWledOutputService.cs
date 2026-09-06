@@ -24,6 +24,12 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     /// </summary>
     private static readonly TimeSpan PauseKeepAliveInterval = TimeSpan.FromSeconds(1);
 
+    /// <summary>How far behind the picture output must fall before it is reported.</summary>
+    private static readonly TimeSpan LateFrameReportThreshold = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Rate limit for that report, so a persistent lag cannot flood the log.</summary>
+    private static readonly TimeSpan LateFrameReportInterval = TimeSpan.FromSeconds(30);
+
     private readonly CancellationTokenSource _shutdown = new();
     private Task? _pump;
 
@@ -55,6 +61,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private async Task RunPumpAsync()
     {
         var lastKeepAlive = DateTimeOffset.UtcNow;
+        var lastLateReport = DateTimeOffset.MinValue;
         string? previousSession = null;
         var pendingFrames = new Queue<(DateTimeOffset DueAt, byte[] Rgb24Frame)>();
         var loggedProcessedFrame = false;
@@ -104,7 +111,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                 previousSession = currentSession;
                 try
                 {
-                    if (_scheduler.TryTakeProcessedFrame(out var rgb24Frame) && rgb24Frame is not null)
+                    if (_scheduler.TryTakeProcessedFrame(out var rgb24Frame, out var framePositionTicks) && rgb24Frame is not null)
                     {
                         if (!loggedProcessedFrame)
                         {
@@ -112,8 +119,31 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                             loggedProcessedFrame = true;
                         }
 
-                        var delay = Math.Clamp(Plugin.Instance?.Configuration.OutputDelayMilliseconds ?? 250, 0, 2000);
-                        pendingFrames.Enqueue((DateTimeOffset.UtcNow.AddMilliseconds(delay), rgb24Frame));
+                        // Schedule against the playback timeline, not against the
+                        // moment the frame arrived. The decoder runs ahead by a
+                        // fixed lead, so each frame waits here until the picture
+                        // reaches it. Because the clock is corrected from the
+                        // client's own progress reports, decoder drift and
+                        // restart lag are absorbed instead of accumulating.
+                        var delay = TimeSpan.FromMilliseconds(Math.Clamp(Plugin.Instance?.Configuration.OutputDelayMilliseconds ?? 0, 0, 2000));
+                        var lead = TimeSpan.FromTicks(framePositionTicks - _coordinator.CurrentPositionTicks);
+                        var dueAt = DateTimeOffset.UtcNow + lead + delay;
+                        var overdue = DateTimeOffset.UtcNow - dueAt;
+                        if (overdue > TimeSpan.Zero)
+                        {
+                            // The decoder has fallen behind the picture; showing the
+                            // frame late is still better than dropping the output.
+                            dueAt = DateTimeOffset.UtcNow;
+                            if (overdue > LateFrameReportThreshold && DateTimeOffset.UtcNow - lastLateReport > LateFrameReportInterval)
+                            {
+                                lastLateReport = DateTimeOffset.UtcNow;
+                                _logger.LogWarning(
+                                    "Realtime Ambilight is {Overdue:F0} ms behind the picture; the analysis decoder is not keeping its lead.",
+                                    overdue.TotalMilliseconds);
+                            }
+                        }
+
+                        pendingFrames.Enqueue((dueAt, rgb24Frame));
                     }
 
                     var now = DateTimeOffset.UtcNow;

@@ -18,6 +18,15 @@ public interface IFfmpegAnalysisSourceResolver
 public sealed class FfmpegAnalysisWorker : IPlaybackAnalysisWorker
 {
     private const int MaximumCapturedErrorCharacters = 16 * 1024;
+
+    /// <summary>
+    /// How far ahead of the reported playback position the analysis decoder is
+    /// started. Starting exactly at the reported position leaves the decoder
+    /// permanently behind by its own start-up cost, measured at about 1.1 s for
+    /// the HDR graph, and every restart re-applies that lag. Decoding ahead lets
+    /// output hold each frame until the picture actually reaches it.
+    /// </summary>
+    public static readonly TimeSpan DecoderLead = TimeSpan.FromSeconds(2);
     private readonly IFfmpegAnalysisSourceResolver _sourceResolver;
 
     public FfmpegAnalysisWorker(IFfmpegAnalysisSourceResolver sourceResolver)
@@ -35,9 +44,10 @@ public sealed class FfmpegAnalysisWorker : IPlaybackAnalysisWorker
 
         var source = await _sourceResolver.ResolveAsync(request, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("No FFmpeg analysis source was resolved for the playback request.");
+        var startPosition = TimeSpan.FromTicks(request.PositionTicks) + DecoderLead;
         var startInfo = source.VideoProfile is { } profile
-            ? CreateHdrStartInfo(source, request, profile)
-            : FfmpegAnalysisCommandBuilder.CreateSdrStartInfo(source, TimeSpan.FromTicks(request.PositionTicks));
+            ? CreateHdrStartInfo(source, startPosition, profile)
+            : FfmpegAnalysisCommandBuilder.CreateSdrStartInfo(source, startPosition);
         using var process = new Process { StartInfo = startInfo };
         if (!process.Start())
         {
@@ -48,11 +58,16 @@ public sealed class FfmpegAnalysisWorker : IPlaybackAnalysisWorker
         try
         {
             var frameLength = source.FrameOptions.ByteLength;
+            // FFmpeg emits a constant-rate stream from the seek point, so a frame's
+            // media position follows from its index without asking FFmpeg for it.
+            var frameInterval = TimeSpan.TicksPerSecond / Math.Max(1, source.FrameOptions.FramesPerSecond);
+            var frameIndex = 0L;
             while (await ReadCompleteFrameAsync(
                 process.StandardOutput.BaseStream,
                 frameLength,
                 source.FrameOptions.Width,
                 source.FrameOptions.Height,
+                startPosition.Ticks + (frameIndex++ * frameInterval),
                 latestFrames,
                 cancellationToken).ConfigureAwait(false))
             {
@@ -80,7 +95,7 @@ public sealed class FfmpegAnalysisWorker : IPlaybackAnalysisWorker
 
     private static ProcessStartInfo CreateHdrStartInfo(
         FfmpegAnalysisSource source,
-        PlaybackWorkerRequest request,
+        TimeSpan startPosition,
         HdrVideoProfile profile)
     {
         var startInfo = new ProcessStartInfo
@@ -92,7 +107,7 @@ public sealed class FfmpegAnalysisWorker : IPlaybackAnalysisWorker
             CreateNoWindow = true,
         };
         foreach (var argument in FfmpegHdrAnalysisCommandBuilder.BuildArguments(
-            source, TimeSpan.FromTicks(request.PositionTicks), profile, source.HardwareDevicePath))
+            source, startPosition, profile, source.HardwareDevicePath))
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -105,6 +120,7 @@ public sealed class FfmpegAnalysisWorker : IPlaybackAnalysisWorker
         int frameLength,
         int frameWidth,
         int frameHeight,
+        long positionTicks,
         LatestFrameBuffer<AnalysisFrame> latestFrames,
         CancellationToken cancellationToken)
     {
@@ -121,7 +137,7 @@ public sealed class FfmpegAnalysisWorker : IPlaybackAnalysisWorker
             offset += read;
         }
 
-        latestFrames.Publish(new AnalysisFrame(frame, frameWidth, frameHeight));
+        latestFrames.Publish(new AnalysisFrame(frame, frameWidth, frameHeight, positionTicks));
         return true;
     }
 

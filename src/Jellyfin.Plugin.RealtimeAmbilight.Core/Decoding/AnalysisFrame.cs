@@ -6,7 +6,7 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Decoding;
 /// </summary>
 public sealed class AnalysisFrame
 {
-    public AnalysisFrame(byte[] bgraPixels, int width, int height)
+    public AnalysisFrame(byte[] bgraPixels, int width, int height, long positionTicks = 0)
     {
         ArgumentNullException.ThrowIfNull(bgraPixels);
         if (width < 16 || height < 16)
@@ -23,6 +23,7 @@ public sealed class AnalysisFrame
         BgraPixels = bgraPixels;
         Width = width;
         Height = height;
+        PositionTicks = positionTicks;
     }
 
     public byte[] BgraPixels { get; }
@@ -30,4 +31,11 @@ public sealed class AnalysisFrame
     public int Width { get; }
 
     public int Height { get; }
+
+    /// <summary>
+    /// Position in the media timeline that this frame depicts. Output schedules
+    /// against it rather than against arrival time, so a decoder that runs early
+    /// or late does not shift the LEDs away from the picture.
+    /// </summary>
+    public long PositionTicks { get; }
 }
