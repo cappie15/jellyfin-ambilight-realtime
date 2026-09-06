@@ -2,14 +2,17 @@
 
 ## Last known commit and worktree
 
-Base commit: `16b02fa8f8bcfed698cdb46daa9d8054b96560fb` (`main`, one commit
-ahead of `origin/main`). The implementation is intentionally still an
-uncommitted worktree checkpoint: the workspace exposes `.git` read-only, so
-`git add` cannot create `.git/index.lock`.
+`main` is at `428088f` and pushed to `origin/main`; the worktree is clean. The
+earlier note that `.git` was read-only no longer holds -- it is writable, and
+nineteen commits from `16b02fa` onwards carry the whole implementation, the
+CI workflow, the packaging script and this handover.
 
-Uncommitted work includes the solution, plugin projects, tests, package
-metadata, handover/review documents and updates to ADR-004, ADR-009 and the ADR
-index. `git diff --check` passed on 2026-09-06.
+Pushing needs the `workflow` OAuth scope because the repository contains
+`.github/workflows/ci.yml`; the operator granted it with
+`gh auth refresh --hostname github.com -s workflow`, which needs a real
+terminal. Pushes use `git -c credential.helper='!gh auth git-credential' push`.
+The registered SSH key is not associated with the GitHub account, so HTTPS via
+`gh` is the only working path today.
 
 ## Handoff discipline
 
@@ -35,11 +38,26 @@ dotnet test Jellyfin.RealtimeAmbilight.sln --configuration Release --no-restore
 ```
 
 The Release build completed with zero warnings/errors. The test suite passed
-**53/53**. It covers DDP/Raw-RGB packet semantics, layouts/interpolation,
+**71/71**. It covers DDP/Raw-RGB packet semantics, layouts/interpolation,
 playback coordination, latest-frame handoff, SDR/HDR FFmpeg argument building,
 sampling, WLED protocol selection, keepalive, fade, release-by-ceasing-
-transmission and mDNS discovery parsing (against a captured real WLED packet). The target is
-`net9.0`; this host uses .NET 10, so tests require `DOTNET_ROLL_FORWARD=Major`.
+transmission, mDNS discovery parsing (against a captured real WLED packet),
+black-bar detection, media-position stamping, the two wire encodings and the
+colour adjustments. The target is `net9.0`; this host uses .NET 10, so tests
+require `DOTNET_ROLL_FORWARD=Major`.
+
+**`dotnet test` does not build the plugin project.** The test project references
+Core only, so a green test run says nothing about the plugin assembly, and the
+settings page lives in that assembly as an embedded resource. Deploy with:
+
+```bash
+dotnet build src/Jellyfin.Plugin.RealtimeAmbilight/Jellyfin.Plugin.RealtimeAmbilight.csproj \
+    --configuration Release --no-incremental
+```
+
+`--no-incremental` is not optional: incremental builds silently reused a stale
+`config.html` twice in one session. Verify a deployment by grepping the built
+assembly for a string you just added before copying it.
 
 The plugin references Jellyfin.Controller/Model **10.11.9**, deliberately
 matching the live Jellyfin host rather than the previously assumed 10.11.11.
@@ -63,10 +81,19 @@ The previous `Ambilight_2.5.0` plugin and its XML configuration were moved
 (not destroyed) to `/tmp/jellyfin-ambilight-backup-20260906` to avoid competing
 output.
 
-WLED is `10.0.0.8`, firmware 16.0.1, 831 LEDs. Its observed state after the
-latest deployment was `live=false` and `maxpwr=40000`. **Never write WLED's
-persistent configuration or alter `maxpwr`; it must remain 40 A.** Runtime
-realtime frames and runtime release are permitted and are all this plugin uses.
+WLED is `10.0.0.8`, firmware 16.0.1, 831 LEDs, an SK6812 **RGBW** strip
+(`type 30`) in RGB order with `rgbwm 0`, meaning manual white only. Its observed
+state after the latest deployment was `live=false` and `maxpwr=40000`.
+**Never write WLED's persistent configuration or alter `maxpwr`; it must remain
+40 A.** Runtime realtime frames are all this plugin sends.
+
+One exception, on explicit operator instruction on 2026-09-06:
+`if.live.maxbri` was changed from `true` to `false`. With it enabled WLED
+ignored its own brightness slider during realtime and drove the strip at full,
+measured at 5.5x the current the same colour drew as a static colour at the
+operator's brightness of 80. A full configuration backup was taken first, the
+diff was verified to contain that single field, and `maxpwr` was confirmed
+unchanged at 40000 afterwards. The plugin itself still writes nothing.
 
 The operator's Jellyfin API credential is not persisted in this repository or
 this handover.
@@ -126,12 +153,12 @@ this handover.
   resolver → independent FFmpeg decode → sampling → WLED realtime output.
 - The settings page and its JavaScript resource are registered and loadable in
   Jellyfin. The user visually confirmed that the page now appears to work.
-- Earlier testing showed pause holds the live colours initially and resume
-  restarts output. Do not assume a universal default is correct: tune the delay
-  against the actual TV pipeline. The saved live value is currently **125 ms**
-  (with keepalive 10 s, stop fade 2500 ms, analysis 60 fps); the code default is
-  now **0 ms**, matching the documented "start at zero" guidance, which the
-  configuration class previously contradicted with 250 ms.
+- **HDR playback reached the LEDs on 2026-09-06**: `processed its first decoded
+  frame` and `sent its first WLED frame` were logged for a 2160p HDR10 HEVC
+  remux and the strip lit. That is the first end-to-end HDR success.
+- Do not assume a universal delay is correct: tune it against the actual TV.
+  The saved live values are delay **0 ms**, stop fade 2500 ms, analysis 30 fps,
+  sampling edge range 10%, brightness and saturation 100%.
 - **Discovery verified end to end on the live host (2026-09-06).** With the
   configured host deliberately set to an unreachable `192.168.254.254`, the
   endpoint still returned the real controller in ~1.6 s, proving the result came
@@ -142,10 +169,12 @@ this handover.
 
 ## Important operational notes
 
-- Structural changes — WLED endpoint/protocol, physical LED counts and output
-  FPS — are read when the hosted output service starts. Save them in the page,
-  then restart Jellyfin before judging them. Delay, enable/disable, keepalive
-  and fade values are read dynamically.
+- Structural changes -- WLED endpoint/protocol, physical LED counts, output FPS,
+  sampling resolution, sampling edge range and the gamma detection -- are read
+  when the hosted output service starts. Save them in the page, then restart
+  Jellyfin before judging them. Delay, enable/disable, hold-while-paused, fade,
+  brightness, saturation, white balance and black-bar handling are read per
+  frame and take effect immediately.
 - Use the installed plugin's log markers to distinguish event/source/decoder
   failures from a WLED delivery failure:
 
@@ -154,6 +183,15 @@ this handover.
   Realtime Ambilight resolved source
   Realtime Ambilight processed its first decoded frame
   Realtime Ambilight sent its first WLED frame
+  ```
+
+- Three further log lines exist precisely because their failures used to be
+  silent, and each names its own remedy:
+
+  ```text
+  ignored playback on device ... because it is bound to ...
+  analysis failed; the LEDs will stay dark until the next playback event
+  is N ms behind the picture; the analysis decoder is not keeping its lead
   ```
 
 - Prefer `systemctl restart jellyfin` for deployment. The Jellyfin HTTP restart
@@ -308,11 +346,72 @@ verify by searching the assembly for a string you just added.
 - The LED layout section collapses, since it is set once, and its summary keeps
   showing the four counts and the total while closed.
 
+## The colour path was wrong end to end (2026-09-06, fixed)
+
+Reported as two separate faults -- "it only looks at colour, not brightness"
+during a dark scene, and washed-out colours minutes later. One cause.
+
+`Rgb24Encoder` applied the BT.709 transfer function, the encoding a *display*
+expects. WLED drives realtime data straight to the LEDs: this controller has
+`if.live.no-gc true`, and exempting realtime is WLED's own default. Every value
+was therefore driven far above its intended light output -- about thirteen times
+for a dark scene, twice for a mid tone -- so dark scenes stayed lit, and colours
+paled because the weakest channel of a colour is lifted the most and saturation
+is exactly what that costs.
+
+`Rgb24Encoding` is now explicit: `Linear` sends light-proportional bytes,
+`Bt709` keeps the old behaviour for a controller that applies its own gamma.
+`AutoDetectLedGamma` (default on) reads `/json/cfg` at startup and picks from
+`light.gc.col` and `if.live.no-gc` rather than guessing, logging what it found
+and falling back to `CorrectLedGamma` when the controller cannot be reached.
+Restart Jellyfin after changing that setting in WLED.
+
+**Ruled out with measurements, so nobody repeats the work.** The white channel
+was not involved: `rgbwm` is manual-only, and estimated power across black,
+greys and saturated primaries scaled exactly with the sum of the RGB values
+(half grey to saturated red measured 1.51, the ratio pure RGB predicts).
+libplacebo's dynamic peak detection was not involved either: `peak_detect=0`
+changed frame brightness by at most three units out of 255.
+
+## Colour and brightness controls (2026-09-06)
+
+`ColourAdjustment` applies, in linear light, saturation about the colour's own
+luminance, then per-channel gains, then brightness. Linear light matters: half
+the brightness is half the light, which is not true of encoded values.
+
+- `BrightnessPercent` (1-100, default 100). Needed because WLED's realtime path
+  bypasses its master brightness when "force max brightness" is on.
+- `SaturationPercent` (50-200, default 100). Above 100 deepens a colour without
+  making it brighter; greys and whites are untouched at any setting, which a
+  test pins because the obvious implementation tints them.
+- `RedGainPercent`, `GreenGainPercent`, `BlueGainPercent` (50-150, default 100).
+
+**A gain cannot add a colour that is absent.** On a pure night sky (R=0), red
+100% and red 140% produce identical output; on the sunrise a minute later the
+same setting moves red from 131 to 170. Warmth that survives a pure blue would
+be a tint, which trades fidelity to the picture, and is deliberately not
+implemented. The operator was shown both on the strip and has not yet chosen.
+
+## Operator calibration aid
+
+Candidate colours can be put on the top edge as labelled blocks so the operator
+picks by eye, using the real pipeline to compute each block from a real setting.
+The scratch script sends DDP directly at 20 Hz for a fixed duration.
+
+**Run one at a time.** Starting a second while the first was still running made
+the strip alternate between the two, which reads exactly like a plugin fault --
+it was reported as "flickering red-blue" and cost a round trip to explain.
+
 ## Partially implemented / needs validation
 
 - Final TV calibration: determine the useful output-delay range on the TCL/TV
-  path; leave the live setting at 0 ms until an observed test justifies a
-  positive delay. A UI slider exists (0–2000 ms, 25 ms increments).
+  path. A UI slider exists (0-2000 ms, 25 ms increments) and shows its value as
+  you drag. The live value is **0 ms**: the earlier 2000 ms was compensating the
+  open-loop scheduling defect and was reset when that was fixed.
+- **Brightness, saturation and white balance are unchosen.** Defaults are all
+  100%, which is faithful to the picture but, on this installation, brighter
+  than the operator wants. Candidate values were put on the strip; the operator
+  has not yet reported which block they prefer.
 - **Pause is now a switch, not a duration (2026-09-06).** `HoldWhilePaused`
   (default on) holds the paused frame on the LEDs until playback resumes or
   stops. The old `PauseKeepAliveSeconds` was a *resend interval* rather than a
@@ -322,7 +421,10 @@ verify by searching the assembly for a string you just added.
   measured release times of 2.46 s for DDP and 2.25 s for Raw RGB. The old
   property is retained unused so existing configurations keep deserializing.
 - Pause semantics still need a final *visual* confirmation on the TV: colours
-  should hold for the configured keepalive duration, then release as intended.
+  should hold while paused, and resuming should pick the picture back up without
+  WLED's own effect appearing in between. The gap bridge now covers that: it
+  measured from the last real frame, so a pause longer than the bridge had
+  already spent it, and nothing covered the decoder restart on resume.
   The underlying stop/release defect behind the earlier symptom is now fixed:
   the explicit `{"live": false}` control call was failing with `400 Bad Request`
   (`PostAsJsonAsync` frames the body as chunked, which WLED's ESPAsyncWebServer
@@ -337,8 +439,15 @@ verify by searching the assembly for a string you just added.
   detection, hardware-path selection and visual HDR/DV validation are not.
 - WLED outage recovery/retry policy, richer admin diagnostics and automated
   live-controller integration tests are still absent.
-- Colour calibration, user-configurable logical sampling layout, black-bar
-  handling refinements and smoothing are not exposed as product settings.
+- Colour calibration is now exposed (brightness, saturation, per-channel gains);
+  a user-configurable logical sampling layout and temporal smoothing are not.
+- **Not understood: the analysis decoder loses its lead during real playback.**
+  Run standalone it holds a five-second lead within 30 ms over 100 seconds, and
+  sustains exactly 30 fps with `-re` over a minute, so neither FFmpeg nor the
+  graph is the limit. Under real playback it still falls behind by one to two
+  seconds within a few seconds of a restart. The consequences are contained --
+  the lead absorbs it, the bridge covers gaps, and a restart is a last resort
+  with a 60 s cooldown -- but the cause is unknown and worth finding.
 
 ## Packaging and CI (added 2026-09-06)
 
@@ -373,28 +482,57 @@ verify by searching the assembly for a string you just added.
 - Manual deployment works, but there is no distributable repository artifact.
 - WLED firmware/state can change outside the plugin. Check relevant runtime
   state at the start/end of a test, especially `maxpwr=40000`.
-- HDR/DV must not silently fall back to an invalid colour path; treat the
-  currently working live pipeline as SDR unless logs/source metadata prove
-  otherwise.
+- HDR10 is now confirmed working end to end; HLG and Dolby Vision are not, and
+  must not be assumed from it. The graphs share a code path, so a DV failure
+  would look like an HDR10 success until someone plays DV.
+- The colour path depends on a WLED setting the plugin only reads. If
+  `if.live.no-gc` is changed and Jellyfin is not restarted, the plugin keeps the
+  encoding it detected at startup and everything will be twice-corrected or
+  not corrected at all. The page says so; the log line says which was chosen.
+- The plugin now writes back a device binding it has repaired. That is the only
+  configuration it writes on its own, and only after an event has matched.
+
+## Settings on the page today
+
+Five numbered sections, every field explained with its default named. Section 4
+collapses and keeps its counts and total in the summary.
+
+1. Device binding (merged from `/Devices` and `/Sessions`, connected first),
+   enable switch.
+2. WLED finder over mDNS, manual host/port fallback, realtime protocol.
+3. LED delay, LED updates per second, hold while paused, stop fade.
+4. LED counts per side with a live total, checked against the LED count the
+   discovered controller reports.
+5. Sampling resolution (six 16:9 presets, 96x54 to 480x270), sampling rate,
+   sampling edge range (1-30%, recommended 10), LED brightness, colour
+   intensity, white balance, gamma handling, ignore black borders.
+
+A warning appears above the brightness slider when the controller reports
+"force max brightness", read live from `GET /RealtimeAmbilight/Discovery/Settings`.
 
 ## Next actions (ordered)
 
-1. Run a final TV checklist while tailing Jellyfin logs: SD and HD start,
-   pause, resume, seek and stop. Record whether all four pipeline markers
-   appear and whether `live` returns false after release; confirm
-   `maxpwr=40000` each time.
-2. Calibrate `OutputDelayMilliseconds` using the settings slider and a
-   repeatable motion scene. Start from 0 ms, adjust in small increments only
-   when the LEDs are demonstrably ahead of the image, and restart Jellyfin only
-   for structural settings.
-3. **Done (2026-09-06):** the stop/release defect is fixed and recorded in
-   ADR-004 Amendment 4. What remains is the visual confirmation in step 1 that
-   the configured 2500 ms fade is actually seen on the LEDs, and that WLED's own
-   effect returns about 2.3 s after the fade ends.
-4. Bind the TV under "1. Bij welke tv horen deze leds?", save, then verify that
-   playback on a *different* device leaves the LEDs dark and playback on the
-   bound TV still drives them.
-5. Add source-profile detection and separately validate HDR10/HLG/Dolby Vision
-   before claiming HDR support.
-6. Publish a release: tag it, attach the packaged zip and host the manifest, so
-   `sourceUrl` resolves. The build and manifest generation already exist.
+1. **Finish the colour calibration.** Brightness, colour intensity and white
+   balance are all at 100% and the operator finds that too bright on this
+   installation. Put candidates on the strip one reel at a time, take the
+   operator's choice, and write it into the configuration.
+2. Decide whether a warm **tint** is wanted. A gain cannot add red to a pure
+   blue sky; only a tint can, and it deviates from the picture. Not implemented
+   pending that decision.
+3. Run a full TV checklist while tailing the log: start, pause, resume, seek and
+   stop, on SD, HD and HDR. Confirm all four pipeline markers appear, that the
+   configured fade is visible on stop, that resuming does not show WLED's own
+   effect in between, and `maxpwr=40000` each time.
+4. Verify the device binding filters: play on a device other than the bound TV
+   and confirm the LEDs stay dark, then play on the TV and confirm they do not.
+   The `ignored playback on device` log line reports both sides of any mismatch.
+5. Find out why the decoder loses its lead under real playback when it holds it
+   perfectly standalone. Instrument the gap between stamped frame position and
+   clock over a whole film rather than reasoning from restarts.
+6. Calibrate `OutputDelayMilliseconds` from 0 ms upwards, only when the LEDs are
+   demonstrably ahead of the picture.
+7. Add source-profile detection and separately validate HDR10, HLG and Dolby
+   Vision before claiming HDR support. The HDR graph now runs, but only HDR10
+   has been seen working.
+8. Publish a release: tag it, attach the packaged zip and host the manifest so
+   `sourceUrl` resolves. Build and manifest generation already exist.
