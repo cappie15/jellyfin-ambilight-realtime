@@ -186,10 +186,29 @@ this handover.
 - Colour calibration, user-configurable logical sampling layout, black-bar
   handling refinements and smoothing are not exposed as product settings.
 
+## Packaging and CI (added 2026-09-06)
+
+- `build/package.sh` builds, stages both assemblies with `meta.json`, writes a
+  deterministic zip and emits a Jellyfin plugin repository manifest. The
+  manifest field names and the MD5 checksum were taken from Jellyfin's own
+  `PackageInfo`/`VersionInfo` DTOs by reflecting over the installed
+  `MediaBrowser.Model.dll`, not from a guessed schema.
+- The produced package was extracted into the live plugin directory and loaded
+  as `Active`, so the artifact is known to install and not merely to build.
+- `.github/workflows/ci.yml` restores, builds, tests and packages on push and
+  pull request, and uploads the zip plus manifest as an artifact. Because
+  `Directory.Build.props` sets `TreatWarningsAsErrors`, a warning fails CI.
+- **Reproducibility, precisely.** The archive is deterministic (fixed entry
+  timestamps, sorted entries) and repeated builds from the same checkout give an
+  identical checksum. Two different checkout directories still differ in 72
+  bytes -- PE timestamp, MVID and PDB signature, all content-hash derived --
+  and `PathMap` did not close that gap. Treat the CI artifact as canonical.
+
 ## Not implemented
 
-- Plugin repository manifest, signed/reproducible release package, CI workflow
-  and setup/discovery wizard.
+- No published release or hosted repository manifest: `sourceUrl` points at a
+  GitHub release tag that does not exist yet, and nothing is signed.
+- Setup/discovery wizard beyond the settings page.
 - A disposable multi-version Jellyfin integration fixture and automated TV/WLED
   end-to-end test harness.
 
@@ -223,4 +242,5 @@ this handover.
    bound TV still drives them.
 5. Add source-profile detection and separately validate HDR10/HLG/Dolby Vision
    before claiming HDR support.
-6. Package the plugin and add CI only after the live behaviour is stable.
+6. Publish a release: tag it, attach the packaged zip and host the manifest, so
+   `sourceUrl` resolves. The build and manifest generation already exist.
