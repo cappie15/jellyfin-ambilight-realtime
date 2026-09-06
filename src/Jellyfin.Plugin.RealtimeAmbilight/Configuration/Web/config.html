@@ -163,6 +163,15 @@
                 </div>
 
                 <label class="checkboxContainer">
+                    <input is="emby-checkbox" id="correctLedGamma" type="checkbox" />
+                    <span>Match LED brightness to the picture</span>
+                </label>
+                <div class="fieldDescription">
+                    LEDs get brighter in step with the number they are sent, but a picture does not store brightness that way: half brightness on screen is stored as roughly three quarters. Without this correction a dark scene is driven around thirteen times brighter than it should be, so the LEDs stay lit through the dark and colours look pale, because the weaker channels are lifted the most. <strong>Default: on.</strong>
+                    <br />Turn this off only if you have enabled gamma correction for realtime data in WLED itself, otherwise the correction is applied twice and everything turns muddy.
+                </div>
+
+                <label class="checkboxContainer">
                     <input is="emby-checkbox" id="ignoreBlackBorders" type="checkbox" />
                     <span>Ignore black borders</span>
                 </label>

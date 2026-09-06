@@ -15,17 +15,20 @@ public sealed class AmbilightFrameProcessor
     private readonly LogicalSamplingLayout _logicalLayout;
     private readonly Func<AnalysisFrame, CropInsets> _cropResolver;
     private readonly int _samplingDepthPercent;
+    private readonly Rgb24Encoding _encoding;
 
     public AmbilightFrameProcessor(
         LedLayout physicalLayout,
         LogicalSamplingLayout logicalLayout,
         Func<AnalysisFrame, CropInsets> cropResolver,
-        int samplingDepthPercent = EdgeSampler.DefaultDepthPercent)
+        int samplingDepthPercent = EdgeSampler.DefaultDepthPercent,
+        Rgb24Encoding encoding = Rgb24Encoding.Bt709)
     {
         _physicalLayout = physicalLayout ?? throw new ArgumentNullException(nameof(physicalLayout));
         _logicalLayout = logicalLayout ?? throw new ArgumentNullException(nameof(logicalLayout));
         _cropResolver = cropResolver ?? throw new ArgumentNullException(nameof(cropResolver));
         _samplingDepthPercent = Math.Clamp(samplingDepthPercent, EdgeSampler.MinimumDepthPercent, EdgeSampler.MaximumDepthPercent);
+        _encoding = encoding;
     }
 
     public byte[] Process(AnalysisFrame frame)
@@ -45,6 +48,6 @@ public sealed class AmbilightFrameProcessor
             samples.Right,
             samples.Bottom,
             samples.Left);
-        return Rgb24Encoder.Encode(physicalFrame);
+        return Rgb24Encoder.Encode(physicalFrame, _encoding);
     }
 }

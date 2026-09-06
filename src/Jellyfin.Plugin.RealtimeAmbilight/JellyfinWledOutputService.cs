@@ -47,7 +47,13 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     /// WLED's realtime timeout, so without this WLED reclaims the strip and the
     /// LEDs visibly drop out and back for every correction.
     /// </summary>
-    private static readonly TimeSpan OutputGapHold = TimeSpan.FromSeconds(15);
+    /// <remarks>
+    /// This is a bridge, not a freeze. It must outlast a restart, measured at
+    /// three to four seconds, and no more: every second beyond that is a second
+    /// of stale picture on the wall, which is what a viewer sees when the scene
+    /// goes dark and the LEDs stay bright.
+    /// </remarks>
+    private static readonly TimeSpan OutputGapHold = TimeSpan.FromSeconds(6);
 
     private readonly CancellationTokenSource _shutdown = new();
     private Task? _pump;
@@ -76,7 +82,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             Math.Clamp(
                 configuration.SamplingDepthPercent,
                 EdgeSampler.MinimumDepthPercent,
-                EdgeSampler.MaximumDepthPercent));
+                EdgeSampler.MaximumDepthPercent),
+            configuration.CorrectLedGamma ? Rgb24Encoding.Linear : Rgb24Encoding.Bt709);
         _output = new WledRealtimeOutput(
             new WledEndpoint(configuration.WledHost, Math.Clamp(configuration.WledHttpPort, 1, ushort.MaxValue)),
             configuration.RealtimeProtocol,
@@ -93,6 +100,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private async Task RunPumpAsync()
     {
         var lastFrameSent = DateTimeOffset.UtcNow;
+        var wasPaused = false;
         var lastSend = DateTimeOffset.UtcNow;
         var lastLateReport = DateTimeOffset.MinValue;
         var lastResync = DateTimeOffset.MinValue;
@@ -238,6 +246,17 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                 // long enough to bridge a restart, so a stalled decoder cannot
                 // freeze one frame on the wall for the rest of the film.
                 var paused = _coordinator.IsPaused;
+                if (wasPaused && !paused)
+                {
+                    // Resuming restarts the decoder, so the bridge is needed again
+                    // right now. Without this the budget was already spent by the
+                    // pause itself, and WLED reclaimed the strip between the
+                    // resume and the first new frame.
+                    lastFrameSent = DateTimeOffset.UtcNow;
+                }
+
+                wasPaused = paused;
+
                 var mayHold = paused
                     ? Plugin.Instance?.Configuration.HoldWhilePaused ?? true
                     : DateTimeOffset.UtcNow - lastFrameSent < OutputGapHold;

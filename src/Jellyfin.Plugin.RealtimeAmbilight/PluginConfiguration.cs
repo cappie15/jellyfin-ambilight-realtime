@@ -82,6 +82,15 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public int SamplingDepthPercent { get; set; } = EdgeSampler.DefaultDepthPercent;
 
     /// <summary>
+    /// Sends byte values proportional to light output, which is what a
+    /// controller needs when it drives its LEDs straight from the byte. WLED
+    /// skips gamma correction for realtime data by default, so leaving this on
+    /// is almost always right; turn it off only if gamma correction for
+    /// realtime is enabled on the controller itself.
+    /// </summary>
+    public bool CorrectLedGamma { get; set; } = true;
+
+    /// <summary>
     /// Detects letterbox and pillarbox bars and samples the picture inside them.
     /// Without it the LEDs follow the bars and stay dark on a wider-than-16:9 film.
     /// </summary>
