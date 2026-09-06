@@ -347,10 +347,32 @@ public sealed class PlaybackEventCoordinator : IAsyncDisposable
         {
             // Expected lifecycle cancellation.
         }
+        catch (Exception exception)
+        {
+            // Never let a background analysis failure tear down Jellyfin's event
+            // handling -- but never swallow it silently either. Reporting is the
+            // host's job; a failure that is only visible as "the LEDs stay dark"
+            // costs hours to diagnose, because FFmpeg's own stderr is carried on
+            // this exception and is lost with it.
+            ReportAnalysisFailure(exception);
+        }
+    }
+
+    /// <summary>
+    /// Raised when an analysis worker fails. The host subscribes to log it; the
+    /// coordinator stays free of any logging dependency.
+    /// </summary>
+    public event Action<Exception>? AnalysisFailed;
+
+    private void ReportAnalysisFailure(Exception exception)
+    {
+        try
+        {
+            AnalysisFailed?.Invoke(exception);
+        }
         catch
         {
-            // The future host integration records worker failures and applies its watchdog.
-            // Never let a background analysis failure tear down Jellyfin's event handling.
+            // A faulty subscriber must not escalate into the event loop.
         }
     }
 

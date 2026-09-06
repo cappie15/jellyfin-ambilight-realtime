@@ -12,6 +12,7 @@ export default function (view) {
     const ledCountFields = ["topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount"];
     let loadedConfig = null;
     let discoveredControllers = [];
+    let knownDevices = [];
     const byId = id => view.querySelector(`#${id}`);
     const fieldKey = field => field[0].toUpperCase() + field.slice(1);
     const show = (id, visible) => { byId(id).style.display = visible ? "block" : "none"; };
@@ -59,40 +60,66 @@ export default function (view) {
         return days === 1 ? "yesterday" : `${days} days ago`;
     }
 
-    function deviceLabel(device) {
-        const name = device.CustomName || device.Name || "Unnamed device";
-        const app = device.AppName ? ` — ${device.AppName}` : "";
-        const user = device.LastUserName ? `, ${device.LastUserName}` : "";
-        return `${name}${app} (${lastUsedLabel(device.DateLastActivity)}${user})`;
+    // Two sources are needed, and neither is sufficient alone. /Devices knows
+    // devices that are switched off, which /Sessions cannot show. But a live
+    // session can carry a device id that /Devices does not list at all, and it
+    // is that id which playback events carry -- so binding from /Devices alone
+    // can produce a binding that never matches anything.
+    function mergeDevices(devices, sessions) {
+        const merged = new Map();
+        devices.filter(device => device.Id).forEach(device => merged.set(device.Id, {
+            id: device.Id,
+            name: device.CustomName || device.Name || "Unnamed device",
+            app: device.AppName || "",
+            lastUsed: device.DateLastActivity || "",
+            connected: false
+        }));
+        sessions.filter(session => session.DeviceId).forEach(session => {
+            const existing = merged.get(session.DeviceId);
+            merged.set(session.DeviceId, {
+                id: session.DeviceId,
+                name: session.DeviceName || existing?.name || "Unnamed device",
+                app: session.Client || existing?.app || "",
+                lastUsed: session.LastActivityDate || existing?.lastUsed || "",
+                connected: true
+            });
+        });
+        return [...merged.values()].sort((left, right) =>
+            (right.connected - left.connected) || (new Date(right.lastUsed || 0) - new Date(left.lastUsed || 0)));
     }
 
-    // Devices, not sessions: a TV that is switched off has no session at all, yet
-    // it is exactly the device an installation needs to be bound to.
+    function deviceLabel(device) {
+        const app = device.app ? ` — ${device.app}` : "";
+        const when = device.connected ? "connected now" : lastUsedLabel(device.lastUsed);
+        return `${device.name}${app} (${when})`;
+    }
+
     function populateDevices(devices, selectedDeviceId) {
+        knownDevices = devices;
         const select = byId("targetDeviceId");
         select.textContent = "";
         select.add(new Option("All devices — not bound", ""));
+        devices.forEach(device => select.add(new Option(deviceLabel(device), device.id)));
 
-        devices
-            .filter(device => device.Id)
-            .sort((left, right) => new Date(right.DateLastActivity || 0) - new Date(left.DateLastActivity || 0))
-            .forEach(device => select.add(new Option(deviceLabel(device), device.Id)));
-
-        if (selectedDeviceId && !devices.some(device => device.Id === selectedDeviceId)) {
+        if (selectedDeviceId && !devices.some(device => device.id === selectedDeviceId)) {
             // Keep a binding to a device Jellyfin has since forgotten visible and
             // intact, instead of silently resetting it to "all devices" on save.
             select.add(new Option("Saved device (no longer known to Jellyfin)", selectedDeviceId));
         }
 
         select.value = selectedDeviceId || "";
+        const connected = devices.filter(device => device.connected).length;
         byId("targetDeviceStatus").textContent = devices.length === 0
             ? "Jellyfin does not know any playback devices yet. Play something on the TV once, then reload this page."
-            : `${devices.length} known devices, most recently used first.`;
+            : `${devices.length} known devices, ${connected} connected right now. Devices in use appear first.`;
     }
 
     function loadDevices(selectedDeviceId) {
-        return window.ApiClient.getJSON(window.ApiClient.getUrl("Devices"))
-            .then(result => populateDevices(result.Items || [], selectedDeviceId))
+        return Promise.all([
+            window.ApiClient.getJSON(window.ApiClient.getUrl("Devices")).catch(() => ({ Items: [] })),
+            window.ApiClient.getSessions().catch(() => [])
+        ])
+            .then(([devices, sessions]) => populateDevices(mergeDevices(devices.Items || [], sessions || []), selectedDeviceId))
             .catch(() => {
                 byId("targetDeviceStatus").textContent = "The device list could not be loaded.";
                 populateDevices([], selectedDeviceId);
@@ -178,6 +205,8 @@ export default function (view) {
             Enabled: byId("enabled").checked,
             HoldWhilePaused: byId("holdWhilePaused").checked,
             TargetDeviceId: byId("targetDeviceId").value,
+            TargetDeviceName: knownDevices.find(device => device.id === byId("targetDeviceId").value)?.name
+                ?? (byId("targetDeviceId").value ? loadedConfig?.TargetDeviceName ?? "" : ""),
             WledHost: hostName,
             AnalysisHeight: analysisHeight()
         };

@@ -34,6 +34,19 @@ public static class FfmpegHdrAnalysisCommandBuilder
         [
             "-hide_banner", "-nostdin", "-loglevel", "warning",
             "-ss", seekSeconds,
+            // libplacebo runs on Vulkan, so a Vulkan filter device must exist and
+            // be selected. Without these two options the graph's hwupload targets
+            // the VAAPI device instead and the filter chain cannot be negotiated:
+            // "Impossible to convert between the formats supported by the filter
+            // 'Parsed_libplacebo' and the filter 'auto_scale'". The device is
+            // created standalone rather than derived from VAAPI, because deriving
+            // it makes libplacebo import VAAPI surfaces directly, which fails on
+            // the reference host with VK_ERROR_OUT_OF_DEVICE_MEMORY at every frame
+            // size: Mesa's Vulkan driver cannot import these multi-planar formats
+            // with DRM modifiers. Routing through system memory via hwdownload and
+            // hwupload avoids that import entirely.
+            "-init_hw_device", "vulkan=vk",
+            "-filter_hw_device", "vk",
             "-hwaccel", "vaapi",
             "-hwaccel_device", devicePath,
             "-hwaccel_output_format", "vaapi",

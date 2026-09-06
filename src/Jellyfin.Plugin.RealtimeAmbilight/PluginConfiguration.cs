@@ -21,6 +21,15 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public string TargetDeviceId { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Display name of the bound device, matched as a fallback when the id does
+    /// not. The Jellyfin Android TV client was observed reporting three different
+    /// device ids for one physical television across reinstalls and logins, and a
+    /// live session's id need not appear in /Devices at all, so an id-only
+    /// binding silently stops working. The name survives those changes.
+    /// </summary>
+    public string TargetDeviceName { get; set; } = string.Empty;
+
     public string WledHost { get; set; } = "10.0.0.8";
 
     public int WledHttpPort { get; set; } = 80;

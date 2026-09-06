@@ -36,6 +36,12 @@ public class FfmpegAnalysisCommandBuilderTests
         Assert.Equal("-ss", arguments[4]);
         Assert.Equal("2", arguments[5]);
         Assert.Contains("-hwaccel", arguments);
+
+        // libplacebo is a Vulkan filter: without its own filter device the graph
+        // fails to negotiate and the analysis produces no frames at all.
+        Assert.Contains("-init_hw_device", arguments);
+        Assert.Contains("vulkan=vk", arguments);
+        Assert.Equal("vk", arguments[arguments.IndexOf("-filter_hw_device") + 1]);
         var filter = arguments[Array.IndexOf(arguments, "-vf") + 1];
         Assert.Contains("scale_vaapi=w=960:h=540", filter);
         Assert.Contains("libplacebo", filter);

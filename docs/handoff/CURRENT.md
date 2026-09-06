@@ -162,6 +162,42 @@ this handover.
   and the saved live configuration may still report schema 1 until the settings
   page is saved once.
 
+## Why the LEDs stayed dark (2026-09-06, fixed)
+
+Three independent defects, found after the operator reported that playback
+produced no Ambilight at all. Each is worth knowing about on its own.
+
+**1. Failures were invisible.** `PlaybackEventCoordinator.RunWorkerAsync` ended
+in a bare `catch { }` whose comment deferred reporting to "the future host
+integration". FFmpeg's stderr is carried on that exception, so every analysis
+failure was discarded together with the only evidence of its cause. The
+coordinator now raises `AnalysisFailed`, which the adapter logs; the coordinator
+still takes no logging dependency. Two silent rejections in the playback-start
+handler were logged for the same reason.
+
+**2. The HDR path could never have produced a frame.** The reference film is
+HDR10 (`smpte2084`, bt2020, 10-bit), so it takes the HDR graph, which was
+written but never executed against real media. libplacebo is a Vulkan filter and
+no Vulkan filter device was ever created, so `hwupload` targeted the VAAPI device
+and FFmpeg could not negotiate the chain: *"Impossible to convert between the
+formats supported by the filter 'Parsed_libplacebo' and the filter
+'auto_scale'"*. Adding `-init_hw_device vulkan=vk -filter_hw_device vk` fixes it;
+the graph is otherwise unchanged, so ADR-006's measured Dolby Vision decision
+stands. Deriving the Vulkan device from VAAPI (`vulkan=vk@va` with `hwmap`) is
+**not** viable here: it fails with `VK_ERROR_OUT_OF_DEVICE_MEMORY` at every frame
+size down to 320x180, because Mesa cannot import these multi-planar formats with
+DRM modifiers. Routing through system memory avoids the import. Verified: first
+frame in ~1.1 s as the `jellyfin` user.
+
+**3. The device binding could never match.** The settings page offered devices
+from `/Devices`, but playback events carry the *session's* device id, and those
+sets do not coincide: the live TV session reported
+`96d21932a3badbe4fb4231645ec7e57a098ecdbe`, an id absent from `/Devices`, which
+listed two other ids for the same television. Binding by id alone therefore
+produced a filter that silently discarded every event. The page now merges
+`/Devices` with `/Sessions`, and `TargetDeviceName` was added as a fallback
+match, because one physical television was observed under three different ids.
+
 ## Partially implemented / needs validation
 
 - Final TV calibration: determine the useful output-delay range on the TCL/TV
