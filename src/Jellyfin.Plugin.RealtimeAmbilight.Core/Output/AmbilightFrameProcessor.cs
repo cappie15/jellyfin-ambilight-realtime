@@ -16,19 +16,22 @@ public sealed class AmbilightFrameProcessor
     private readonly Func<AnalysisFrame, CropInsets> _cropResolver;
     private readonly int _samplingDepthPercent;
     private readonly Func<Rgb24Encoding> _encodingResolver;
+    private readonly Func<ColourAdjustment> _adjustmentResolver;
 
     public AmbilightFrameProcessor(
         LedLayout physicalLayout,
         LogicalSamplingLayout logicalLayout,
         Func<AnalysisFrame, CropInsets> cropResolver,
         int samplingDepthPercent = EdgeSampler.DefaultDepthPercent,
-        Func<Rgb24Encoding>? encodingResolver = null)
+        Func<Rgb24Encoding>? encodingResolver = null,
+        Func<ColourAdjustment>? adjustmentResolver = null)
     {
         _physicalLayout = physicalLayout ?? throw new ArgumentNullException(nameof(physicalLayout));
         _logicalLayout = logicalLayout ?? throw new ArgumentNullException(nameof(logicalLayout));
         _cropResolver = cropResolver ?? throw new ArgumentNullException(nameof(cropResolver));
         _samplingDepthPercent = Math.Clamp(samplingDepthPercent, EdgeSampler.MinimumDepthPercent, EdgeSampler.MaximumDepthPercent);
         _encodingResolver = encodingResolver ?? (static () => Rgb24Encoding.Bt709);
+        _adjustmentResolver = adjustmentResolver ?? (static () => ColourAdjustment.None);
     }
 
     public byte[] Process(AnalysisFrame frame)
@@ -48,6 +51,15 @@ public sealed class AmbilightFrameProcessor
             samples.Right,
             samples.Bottom,
             samples.Left);
+        var adjustment = _adjustmentResolver();
+        if (!adjustment.IsIdentity)
+        {
+            for (var index = 0; index < physicalFrame.Length; index++)
+            {
+                physicalFrame[index] = adjustment.Apply(physicalFrame[index]);
+            }
+        }
+
         return Rgb24Encoder.Encode(physicalFrame, _encodingResolver());
     }
 }

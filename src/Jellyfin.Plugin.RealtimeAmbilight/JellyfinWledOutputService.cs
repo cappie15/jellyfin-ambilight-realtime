@@ -1,4 +1,5 @@
 #pragma warning disable CA1848, CA1873
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Color;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Layout;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Output;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Playback;
@@ -92,7 +93,14 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                 configuration.SamplingDepthPercent,
                 EdgeSampler.MinimumDepthPercent,
                 EdgeSampler.MaximumDepthPercent),
-            () => _encoding);
+            () => _encoding,
+            static () =>
+            {
+                var current = Plugin.Instance?.Configuration;
+                return current is null
+                    ? ColourAdjustment.None
+                    : ColourAdjustment.FromPercentages(current.BrightnessPercent, current.SaturationPercent);
+            });
         _output = new WledRealtimeOutput(
             new WledEndpoint(configuration.WledHost, Math.Clamp(configuration.WledHttpPort, 1, ushort.MaxValue)),
             configuration.RealtimeProtocol,

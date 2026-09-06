@@ -162,6 +162,27 @@
                     </div>
                 </div>
 
+                <div style="display:flex;gap:2em;flex-wrap:wrap;align-items:flex-start">
+                    <div style="flex:1 1 20em;min-width:18em">
+                        <div class="inputContainer">
+                            <input is="emby-input" id="brightnessPercent" type="range" min="1" max="100" step="1" label="LED brightness" />
+                            <div class="fieldDescription">
+                                Currently: <strong id="brightnessValue"></strong>.
+                                <br /><strong>Default: 100%</strong>, which matches the brightness of the picture itself. WLED normally ignores its own brightness slider for realtime data, so this is the dial that dims the Ambilight without dimming everything else your controller does.
+                            </div>
+                        </div>
+                    </div>
+                    <div style="flex:1 1 20em;min-width:18em">
+                        <div class="inputContainer">
+                            <input is="emby-input" id="saturationPercent" type="range" min="50" max="200" step="5" label="Colour intensity" />
+                            <div class="fieldDescription">
+                                Currently: <strong id="saturationValue"></strong>.
+                                <br /><strong>Default: 100%</strong>, faithful to the picture. Above that, colours are pushed away from grey without becoming brighter, which makes a night sky read as deep blue rather than pale blue. Greys and whites are unaffected at any setting.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <label class="checkboxContainer">
                     <input is="emby-checkbox" id="autoDetectLedGamma" type="checkbox" />
                     <span>Match LED brightness to the picture, read from the controller</span>

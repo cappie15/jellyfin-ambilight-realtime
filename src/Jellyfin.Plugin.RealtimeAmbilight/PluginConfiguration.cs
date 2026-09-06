@@ -88,6 +88,20 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// is almost always right; turn it off only if gamma correction for
     /// realtime is enabled on the controller itself.
     /// </summary>
+    /// <summary>
+    /// Overall LED brightness as a percentage of the picture's own brightness.
+    /// WLED's realtime path bypasses its master brightness when "force max
+    /// brightness" is enabled, which is its default, so without this an
+    /// installation has no way to dim the Ambilight on its own.
+    /// </summary>
+    public int BrightnessPercent { get; set; } = 100;
+
+    /// <summary>
+    /// Colour intensity as a percentage. Above 100 pushes each colour away from
+    /// its own luminance, which deepens it without changing how bright it is.
+    /// </summary>
+    public int SaturationPercent { get; set; } = 100;
+
     public bool CorrectLedGamma { get; set; } = true;
 
     /// <summary>

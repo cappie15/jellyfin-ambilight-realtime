@@ -2,13 +2,13 @@ export default function (view) {
     const pluginId = "7d6d91ed-0f36-46ea-9868-9623283b6b51";
     const numericFields = [
         "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond", "stopFadeMilliseconds",
-        "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisFramesPerSecond", "samplingDepthPercent"
+        "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisFramesPerSecond", "samplingDepthPercent", "brightnessPercent", "saturationPercent"
     ];
     const defaults = {
         WledHttpPort: 80, RealtimeProtocol: 0, OutputDelayMilliseconds: 0, OutputFramesPerSecond: 30,
         StopFadeMilliseconds: 250, TopLedCount: 265, RightLedCount: 150,
         BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160, AnalysisFramesPerSecond: 30,
-        SamplingDepthPercent: 10
+        SamplingDepthPercent: 10, BrightnessPercent: 100, SaturationPercent: 100
     };
     const ledCountFields = ["topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount"];
     let loadedConfig = null;
@@ -21,6 +21,12 @@ export default function (view) {
     function setDelayLabel() {
         const value = Number(byId("outputDelayMilliseconds").value);
         byId("outputDelayValue").textContent = value === 0 ? "0 ms (no delay)" : `${value} ms`;
+    }
+
+    function setColourLabels() {
+        byId("brightnessValue").textContent = `${byId("brightnessPercent").value}%`;
+        const saturation = Number(byId("saturationPercent").value);
+        byId("saturationValue").textContent = saturation === 100 ? "100% (faithful)" : `${saturation}%`;
     }
 
     function setDepthLabel() {
@@ -226,6 +232,7 @@ export default function (view) {
                 setDelayLabel();
                 setAnalysisLabel();
                 setDepthLabel();
+                setColourLabels();
                 setLedTotal();
                 return loadDevices(config.TargetDeviceId || "");
             })
@@ -272,6 +279,8 @@ export default function (view) {
     byId("realtimeAmbilightConfigurationForm").addEventListener("submit", save);
     byId("outputDelayMilliseconds").addEventListener("input", setDelayLabel);
     byId("samplingDepthPercent").addEventListener("input", setDepthLabel);
+    byId("brightnessPercent").addEventListener("input", setColourLabels);
+    byId("saturationPercent").addEventListener("input", setColourLabels);
     byId("analysisWidth").addEventListener("change", setAnalysisLabel);
     ledCountFields.forEach(field => byId(field).addEventListener("input", setLedTotal));
     byId("wledCandidates").addEventListener("change", setLedTotal);
