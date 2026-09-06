@@ -2,12 +2,13 @@ export default function (view) {
     const pluginId = "7d6d91ed-0f36-46ea-9868-9623283b6b51";
     const numericFields = [
         "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond", "stopFadeMilliseconds",
-        "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisWidth", "analysisFramesPerSecond"
+        "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisFramesPerSecond", "samplingDepthPercent"
     ];
     const defaults = {
         WledHttpPort: 80, RealtimeProtocol: 0, OutputDelayMilliseconds: 0, OutputFramesPerSecond: 30,
         StopFadeMilliseconds: 250, TopLedCount: 265, RightLedCount: 150,
-        BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160, AnalysisFramesPerSecond: 30
+        BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160, AnalysisFramesPerSecond: 30,
+        SamplingDepthPercent: 10
     };
     const ledCountFields = ["topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount"];
     let loadedConfig = null;
@@ -22,9 +23,25 @@ export default function (view) {
         byId("outputDelayValue").textContent = value === 0 ? "0 ms (no delay)" : `${value} ms`;
     }
 
+    function setDepthLabel() {
+        const percent = Number(byId("samplingDepthPercent").value);
+        byId("samplingDepthValue").textContent = percent === 10 ? "10% (recommended)" : `${percent}%`;
+    }
+
     function setAnalysisLabel() {
         const width = Math.max(16, Number(byId("analysisWidth").value) || defaults.AnalysisWidth);
         byId("analysisSizeValue").textContent = `${width} × ${analysisHeight()} pixels`;
+    }
+
+    // A configuration written by hand, or by an older build, can hold a width the
+    // preset list does not offer. Keep it selectable instead of silently moving
+    // the user to a different resolution on the next save.
+    function selectAnalysisWidth(width) {
+        const select = byId("analysisWidth");
+        if (![...select.options].some(option => Number(option.value) === width)) {
+            select.add(new Option(`${width} × ${Math.round((width * 9) / 16)} — custom`, String(width)));
+        }
+        select.value = String(width);
     }
 
     // Never save an empty name for a bound device: the plugin falls back to the
@@ -43,6 +60,10 @@ export default function (view) {
     function setLedTotal() {
         const total = ledCountFields.reduce((sum, field) => sum + (Number(byId(field).value) || 0), 0);
         byId("ledTotalValue").textContent = `${total} LEDs`;
+        // The layout section collapses, so its summary has to carry the answer.
+        byId("ledLayoutSummary").textContent = ledCountFields
+            .map(field => Number(byId(field).value) || 0)
+            .join(" / ") + ` — ${total} LEDs in total`;
 
         const selected = discoveredControllers.find(candidate => candidate.Host === byId("wledCandidates").value);
         const reported = selected?.LedCount ?? 0;
@@ -190,6 +211,7 @@ export default function (view) {
                 loadedConfig = config;
                 byId("enabled").checked = config.Enabled !== false;
                 byId("holdWhilePaused").checked = config.HoldWhilePaused !== false;
+                byId("ignoreBlackBorders").checked = config.IgnoreBlackBorders !== false;
                 numericFields.forEach(field => {
                     const key = fieldKey(field);
                     const value = field === "realtimeProtocol"
@@ -198,8 +220,10 @@ export default function (view) {
                     byId(field).value = value;
                 });
                 byId("wledHost").value = config.WledHost || "";
+                selectAnalysisWidth(Math.max(16, Number(config.AnalysisWidth) || defaults.AnalysisWidth));
                 setDelayLabel();
                 setAnalysisLabel();
+                setDepthLabel();
                 setLedTotal();
                 return loadDevices(config.TargetDeviceId || "");
             })
@@ -223,9 +247,11 @@ export default function (view) {
             ConfigSchemaVersion: 2,
             Enabled: byId("enabled").checked,
             HoldWhilePaused: byId("holdWhilePaused").checked,
+            IgnoreBlackBorders: byId("ignoreBlackBorders").checked,
             TargetDeviceId: byId("targetDeviceId").value,
             TargetDeviceName: targetDeviceName(),
             WledHost: hostName,
+            AnalysisWidth: Number(byId("analysisWidth").value),
             AnalysisHeight: analysisHeight()
         };
         numericFields.forEach(field => { config[fieldKey(field)] = Number(byId(field).value); });
@@ -241,7 +267,8 @@ export default function (view) {
     view.addEventListener("viewshow", load);
     byId("realtimeAmbilightConfigurationForm").addEventListener("submit", save);
     byId("outputDelayMilliseconds").addEventListener("input", setDelayLabel);
-    byId("analysisWidth").addEventListener("input", setAnalysisLabel);
+    byId("samplingDepthPercent").addEventListener("input", setDepthLabel);
+    byId("analysisWidth").addEventListener("change", setAnalysisLabel);
     ledCountFields.forEach(field => byId(field).addEventListener("input", setLedTotal));
     byId("wledCandidates").addEventListener("change", setLedTotal);
     byId("findWled").addEventListener("click", findWled);

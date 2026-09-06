@@ -1,4 +1,5 @@
 using MediaBrowser.Model.Plugins;
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Sampling;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Wled;
 
 namespace Jellyfin.Plugin.RealtimeAmbilight;
@@ -72,6 +73,19 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public int PauseKeepAliveSeconds { get; set; } = 2;
 
     public int StopFadeMilliseconds { get; set; } = 250;
+
+    /// <summary>
+    /// Fraction of each axis, as a percentage, sampled inward from every edge.
+    /// Ten percent is the recommended setting: it takes in enough of the picture
+    /// to be stable without letting the centre of the image dominate an edge.
+    /// </summary>
+    public int SamplingDepthPercent { get; set; } = EdgeSampler.DefaultDepthPercent;
+
+    /// <summary>
+    /// Detects letterbox and pillarbox bars and samples the picture inside them.
+    /// Without it the LEDs follow the bars and stay dark on a wider-than-16:9 film.
+    /// </summary>
+    public bool IgnoreBlackBorders { get; set; } = true;
 
     public int AnalysisWidth { get; set; } = 160;
 

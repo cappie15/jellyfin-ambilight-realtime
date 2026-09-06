@@ -283,6 +283,31 @@ Three changes:
 Live analysis fps was reduced from 60 to 30: the source is 23.976 fps, so 60
 duplicated every frame and doubled the tone-mapping work for no information.
 
+## Deployment trap: incremental builds miss embedded resources
+
+Twice now a deployment shipped a stale settings page because `dotnet build`
+reported success without re-embedding a changed `config.html`. Worse, `dotnet
+test` does not build the plugin project at all -- the test project references
+only Core -- so a green test run says nothing about the plugin assembly. Before
+deploying, build the plugin project explicitly with `--no-incremental`, and
+verify by searching the assembly for a string you just added.
+
+## Sampling controls (2026-09-06)
+
+- Bands are the outer tenth of **each axis**, not of the short edge, so the top
+  and bottom no longer weigh differently from the left and right on the same
+  scene. `SamplingDepthPercent` exposes it: 2-50, recommended 10.
+- `IgnoreBlackBorders` (default on) detects letterbox and pillarbox bars.
+  Detection is deliberately slow to change: a result must repeat across frames
+  before it is adopted, and one that would leave too little picture is rejected
+  so a fade to black keeps the last known geometry instead of cropping the
+  picture out of existence.
+- Analysis size is now a list of six 16:9 presets from 96x54 to 480x270 rather
+  than a free number, with sampling rate beside it. A stored width outside the
+  list is kept as a custom entry rather than silently rounded to a preset.
+- The LED layout section collapses, since it is set once, and its summary keeps
+  showing the four counts and the total while closed.
+
 ## Partially implemented / needs validation
 
 - Final TV calibration: determine the useful output-delay range on the TCL/TV

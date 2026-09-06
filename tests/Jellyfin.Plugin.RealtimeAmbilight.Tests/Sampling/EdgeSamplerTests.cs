@@ -9,16 +9,37 @@ public class EdgeSamplerTests
     [Fact]
     public void ReferenceLetterboxGeometryUsesTheActivePictureForGuardAndDepth()
     {
+        // Active picture is 960x401 inside the letterbox, so after the 2 px guard
+        // the sampled bands are the outer tenth of each axis: 40 px deep top and
+        // bottom, 96 px deep left and right.
         var zones = EdgeSampler.CreateZones(
             frameWidth: 960,
             frameHeight: 540,
             new CropInsets(Top: 69, Right: 0, Bottom: 70, Left: 0),
             new LogicalSamplingLayout(100, 56, 100, 56));
 
-        Assert.Equal(new SamplingZone(2, 71, 11, 91), zones.Top[0]);
-        Assert.Equal(new SamplingZone(938, 71, 958, 78), zones.Right[0]);
-        Assert.Equal(new SamplingZone(949, 448, 958, 468), zones.Bottom[0]);
-        Assert.Equal(new SamplingZone(2, 461, 22, 468), zones.Left[0]);
+        Assert.Equal(new SamplingZone(2, 71, 11, 111), zones.Top[0]);
+        Assert.Equal(new SamplingZone(862, 71, 958, 78), zones.Right[0]);
+        Assert.Equal(new SamplingZone(949, 428, 958, 468), zones.Bottom[0]);
+        Assert.Equal(new SamplingZone(2, 461, 98, 468), zones.Left[0]);
+    }
+
+    [Fact]
+    public void EveryBandIsTheOuterTenthOfItsOwnAxis()
+    {
+        // Measuring depth off the short edge would make the top and bottom bands a
+        // different fraction of the picture than the left and right ones, so the
+        // sides would weigh unequally on the same scene.
+        var zones = EdgeSampler.CreateZones(
+            frameWidth: 1600,
+            frameHeight: 900,
+            new CropInsets(0, 0, 0, 0),
+            new LogicalSamplingLayout(10, 10, 10, 10));
+
+        Assert.Equal(90, zones.Top[0].Height);
+        Assert.Equal(90, zones.Bottom[0].Height);
+        Assert.Equal(160, zones.Right[0].Width);
+        Assert.Equal(160, zones.Left[0].Width);
     }
 
     [Fact]

@@ -10,16 +10,24 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Sampling;
 /// </summary>
 public static class EdgeSampler
 {
+    /// <summary>Fraction of each axis sampled per side, as a percentage.</summary>
+    public const int DefaultDepthPercent = 10;
+
+    public const int MinimumDepthPercent = 2;
+
+    public const int MaximumDepthPercent = 50;
+
     public static PerimeterSamples SampleBgra(
         ReadOnlySpan<byte> bgraFrame,
         int frameWidth,
         int frameHeight,
         CropInsets crop,
-        LogicalSamplingLayout layout)
+        LogicalSamplingLayout layout,
+        int depthPercent = DefaultDepthPercent)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ValidateFrame(bgraFrame, frameWidth, frameHeight);
-        var zones = CreateZones(frameWidth, frameHeight, crop, layout);
+        var zones = CreateZones(frameWidth, frameHeight, crop, layout, depthPercent);
         return new PerimeterSamples(
             SampleRun(bgraFrame, frameWidth, zones.Top),
             SampleRun(bgraFrame, frameWidth, zones.Right),
@@ -31,9 +39,12 @@ public static class EdgeSampler
         int frameWidth,
         int frameHeight,
         CropInsets crop,
-        LogicalSamplingLayout layout)
+        LogicalSamplingLayout layout,
+        int depthPercent = DefaultDepthPercent)
     {
         ArgumentNullException.ThrowIfNull(layout);
+        ArgumentOutOfRangeException.ThrowIfLessThan(depthPercent, MinimumDepthPercent);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(depthPercent, MaximumDepthPercent);
         if (frameWidth < 16 || frameHeight < 16)
         {
             throw new ArgumentOutOfRangeException(nameof(frameWidth), "Sampling frames must be at least 16 by 16 pixels.");
@@ -46,24 +57,34 @@ public static class EdgeSampler
         var activeBottom = frameHeight - crop.Bottom;
         var activeShortEdge = Math.Min(activeRight - activeLeft, activeBottom - activeTop);
         var guard = Math.Clamp((int)Math.Round(activeShortEdge * 0.005, MidpointRounding.AwayFromZero), 1, 4);
-        var depth = Math.Clamp((int)Math.Round(activeShortEdge * 0.05, MidpointRounding.AwayFromZero), 8, 64);
+
+        // Sample the outer tenth of the picture. Depth is taken per axis, not off
+        // the short edge: a band measured against the short edge is a different
+        // fraction of the frame on the top and bottom than on the left and right,
+        // so the sides would weigh differently on the same scene.
+        var horizontalDepth = SamplingDepth(activeBottom - activeTop, depthPercent);
+        var verticalDepth = SamplingDepth(activeRight - activeLeft, depthPercent);
         var pictureLeft = activeLeft + guard;
         var pictureTop = activeTop + guard;
         var pictureRight = activeRight - guard;
         var pictureBottom = activeBottom - guard;
         var pictureWidth = pictureRight - pictureLeft;
         var pictureHeight = pictureBottom - pictureTop;
-        if (pictureWidth < 3 || pictureHeight < 3 || depth > pictureWidth || depth > pictureHeight)
+        if (pictureWidth < 3 || pictureHeight < 3 || verticalDepth > pictureWidth || horizontalDepth > pictureHeight)
         {
             throw new ArgumentException("The active picture is too small for the ADR-010 guard band and sampling depth.", nameof(crop));
         }
 
         return new EdgeSamplingZones(
-            BuildHorizontalRun(pictureLeft, pictureRight, pictureTop, pictureTop + depth, layout.TopSampleCount, leftToRight: true),
-            BuildVerticalRun(pictureRight - depth, pictureRight, pictureTop, pictureBottom, layout.RightSampleCount, topToBottom: true),
-            BuildHorizontalRun(pictureLeft, pictureRight, pictureBottom - depth, pictureBottom, layout.BottomSampleCount, leftToRight: false),
-            BuildVerticalRun(pictureLeft, pictureLeft + depth, pictureTop, pictureBottom, layout.LeftSampleCount, topToBottom: false));
+            BuildHorizontalRun(pictureLeft, pictureRight, pictureTop, pictureTop + horizontalDepth, layout.TopSampleCount, leftToRight: true),
+            BuildVerticalRun(pictureRight - verticalDepth, pictureRight, pictureTop, pictureBottom, layout.RightSampleCount, topToBottom: true),
+            BuildHorizontalRun(pictureLeft, pictureRight, pictureBottom - horizontalDepth, pictureBottom, layout.BottomSampleCount, leftToRight: false),
+            BuildVerticalRun(pictureLeft, pictureLeft + verticalDepth, pictureTop, pictureBottom, layout.LeftSampleCount, topToBottom: false));
     }
+
+    /// <summary>The configured outer fraction of one axis, floored so a tiny frame still works.</summary>
+    private static int SamplingDepth(int extent, int depthPercent)
+        => Math.Clamp((int)Math.Round(extent * (depthPercent / 100d), MidpointRounding.AwayFromZero), 2, 192);
 
     private static SamplingZone[] BuildHorizontalRun(int left, int right, int top, int bottom, int count, bool leftToRight)
     {

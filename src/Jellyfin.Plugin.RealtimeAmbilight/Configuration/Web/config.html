@@ -92,7 +92,11 @@
             </div>
 
             <div class="verticalSection">
-                <h3 class="sectionTitle">4. How are the LEDs arranged around your TV?</h3>
+                <details id="ledLayoutSection">
+                    <summary style="cursor:pointer;list-style:revert">
+                        <span class="sectionTitle" style="display:inline">4. How are the LEDs arranged around your TV?</span>
+                        <div class="fieldDescription" style="margin-top:.3em">Set once, then left alone. <strong id="ledLayoutSummary"></strong></div>
+                    </summary>
                 <p class="fieldDescription">Count clockwise starting at the <strong>top-left corner</strong>: first the top, then the right side, then the bottom, then the left. The four numbers together must match the number of LEDs in your strip exactly. Restart Jellyfin after changing them.</p>
                 <div class="fieldDescription">Total: <strong id="ledTotalValue"></strong><span id="ledTotalCheck"></span></div>
                 <div class="inputContainer">
@@ -111,21 +115,59 @@
                     <input is="emby-input" id="leftLedCount" type="number" min="1" label="LEDs up the left side" />
                     <div class="fieldDescription"><strong>Default: 150.</strong> Together with the other three that makes 831 LEDs.</div>
                 </div>
+                </details>
             </div>
 
             <div class="verticalSection">
                 <h3 class="sectionTitle">5. Picture analysis</h3>
-                <p class="fieldDescription">Analysis assumes a 16:9 screen, so you do not need to enter a height: it follows from the width.</p>
-                <div class="inputContainer">
-                    <input is="emby-input" id="analysisWidth" type="number" min="16" max="1920" label="Analysis width (pixels)" />
-                    <div class="fieldDescription">
-                        The picture is scaled down to this size before the edge colours are worked out. Analysis size becomes: <strong id="analysisSizeValue"></strong>.
-                        <br />Larger gives barely any visible detail but costs more CPU. <strong>Default: 160</strong> (so 160 &times; 90).
+                <p class="fieldDescription">The picture is scaled down before its edge colours are measured, and the outer tenth of each side is what the LEDs follow. Analysis assumes 16:9, so the height follows from the width.</p>
+
+                <div style="display:flex;gap:2em;flex-wrap:wrap;align-items:flex-start">
+                    <div style="flex:1 1 20em;min-width:18em">
+                        <div class="selectContainer">
+                            <select is="emby-select" id="analysisWidth" label="Sampling resolution">
+                                <option value="96">96 × 54 — lightest</option>
+                                <option value="128">128 × 72 — light</option>
+                                <option value="160">160 × 90 — recommended</option>
+                                <option value="240">240 × 135 — more detail</option>
+                                <option value="320">320 × 180 — high</option>
+                                <option value="480">480 × 270 — highest</option>
+                            </select>
+                            <div class="fieldDescription">
+                                <strong>Default: 160 × 90.</strong> Bigger does not make the colours more accurate, because each LED already averages a whole band of pixels; it mainly costs CPU and GPU.
+                                <br />96 × 54 and 128 × 72 suit a low-power NAS or a Raspberry Pi. 160 × 90 is right for almost everything. 240 × 135 and above only pay off on a machine with power to spare, or if you later sample many small zones.
+                            </div>
+                        </div>
+                    </div>
+                    <div style="flex:1 1 20em;min-width:18em">
+                        <div class="inputContainer">
+                            <input is="emby-input" id="analysisFramesPerSecond" type="number" min="1" max="60" label="Sampling frames per second" />
+                            <div class="fieldDescription">
+                                How often a frame is analysed. <strong>Default: 30.</strong>
+                                <br />There is no point going above your film's own frame rate — most films are 24 fps — or above the LED updates per second. Higher just doubles the work for the same picture.
+                            </div>
+                        </div>
                     </div>
                 </div>
+
+                <div class="fieldDescription">Analysis size: <strong id="analysisSizeValue"></strong></div>
+
+                <br />
                 <div class="inputContainer">
-                    <input is="emby-input" id="analysisFramesPerSecond" type="number" min="1" max="60" label="Analyses per second" />
-                    <div class="fieldDescription">How often a frame is analysed. Setting this higher than the LED updates per second gains nothing. <strong>Default: 30.</strong></div>
+                    <input is="emby-input" id="samplingDepthPercent" type="range" min="2" max="50" step="1" label="How much of each edge to look at" />
+                    <div class="fieldDescription">
+                        Currently: <strong id="samplingDepthValue"></strong> of each side.
+                        <br /><strong>Recommended: 10%.</strong> That takes in enough of the picture to stay steady without letting the middle of the image bleed into the edges. Go lower for a sharper, more literal edge match; go higher for a calmer, more averaged glow. Above roughly 25% the LEDs start reflecting the whole scene rather than the edge nearest them.
+                    </div>
+                </div>
+
+                <label class="checkboxContainer">
+                    <input is="emby-checkbox" id="ignoreBlackBorders" type="checkbox" />
+                    <span>Ignore black borders</span>
+                </label>
+                <div class="fieldDescription">
+                    Films wider than your screen are shown with black bars above and below. Without this the LEDs sample the bars and simply stay dark. <strong>Default: on.</strong>
+                    <br />Detection needs the bars to hold still for a few frames, so a fade to black keeps the last known picture area instead of collapsing onto nothing.
                 </div>
             </div>
 

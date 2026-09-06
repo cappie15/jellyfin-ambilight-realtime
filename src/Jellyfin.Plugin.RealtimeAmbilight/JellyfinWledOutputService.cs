@@ -37,7 +37,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     /// Minimum spacing between those restarts. A restart costs a brief gap, so on
     /// a host that simply cannot decode fast enough this must not become a loop.
     /// </summary>
-    private static readonly TimeSpan ResyncCooldown = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan ResyncCooldown = TimeSpan.FromSeconds(5);
 
     private readonly CancellationTokenSource _shutdown = new();
     private Task? _pump;
@@ -53,7 +53,20 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             Math.Max(1, configuration.BottomLedCount),
             Math.Max(1, configuration.LeftLedCount));
         var logical = LogicalSamplingLayout.FromPhysicalLayout(physical);
-        var processor = new AmbilightFrameProcessor(physical, logical, _ => default);
+        // The detector is stateful across frames, so it is created once with the
+        // service rather than per frame. Disabled, sampling simply uses the whole
+        // frame, exactly as before this option existed.
+        var borderDetector = new BlackBorderDetector();
+        var processor = new AmbilightFrameProcessor(
+            physical,
+            logical,
+            frame => (Plugin.Instance?.Configuration.IgnoreBlackBorders ?? true)
+                ? borderDetector.Detect(frame)
+                : default,
+            Math.Clamp(
+                configuration.SamplingDepthPercent,
+                EdgeSampler.MinimumDepthPercent,
+                EdgeSampler.MaximumDepthPercent));
         _output = new WledRealtimeOutput(
             new WledEndpoint(configuration.WledHost, Math.Clamp(configuration.WledHttpPort, 1, ushort.MaxValue)),
             configuration.RealtimeProtocol,
@@ -152,13 +165,24 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                             // are showing an altogether earlier scene.
                             if (overdue > LateFrameResyncThreshold && DateTimeOffset.UtcNow - lastResync > ResyncCooldown)
                             {
-                                lastResync = DateTimeOffset.UtcNow;
+                                // Only a resync that actually happened may start the
+                                // cooldown. Charging a refusal against it leaves the
+                                // pipeline stranded for the whole window, which is
+                                // exactly how a lag of seconds survived unrepaired.
                                 if (_coordinator.RequestAnalysisResync())
                                 {
+                                    lastResync = DateTimeOffset.UtcNow;
+                                    pendingFrames.Clear();
                                     _logger.LogWarning(
                                         "Realtime Ambilight was {Overdue:F0} ms behind the picture and restarted the analysis decoder.",
                                         overdue.TotalMilliseconds);
-                                    pendingFrames.Clear();
+                                }
+                                else if (DateTimeOffset.UtcNow - lastLateReport > LateFrameReportInterval)
+                                {
+                                    lastLateReport = DateTimeOffset.UtcNow;
+                                    _logger.LogWarning(
+                                        "Realtime Ambilight is {Overdue:F0} ms behind the picture and could not restart the decoder; playback may be paused or between sessions.",
+                                        overdue.TotalMilliseconds);
                                 }
                             }
                             else if (overdue > LateFrameReportThreshold && DateTimeOffset.UtcNow - lastLateReport > LateFrameReportInterval)

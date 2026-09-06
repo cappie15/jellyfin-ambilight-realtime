@@ -14,15 +14,18 @@ public sealed class AmbilightFrameProcessor
     private readonly LedLayout _physicalLayout;
     private readonly LogicalSamplingLayout _logicalLayout;
     private readonly Func<AnalysisFrame, CropInsets> _cropResolver;
+    private readonly int _samplingDepthPercent;
 
     public AmbilightFrameProcessor(
         LedLayout physicalLayout,
         LogicalSamplingLayout logicalLayout,
-        Func<AnalysisFrame, CropInsets> cropResolver)
+        Func<AnalysisFrame, CropInsets> cropResolver,
+        int samplingDepthPercent = EdgeSampler.DefaultDepthPercent)
     {
         _physicalLayout = physicalLayout ?? throw new ArgumentNullException(nameof(physicalLayout));
         _logicalLayout = logicalLayout ?? throw new ArgumentNullException(nameof(logicalLayout));
         _cropResolver = cropResolver ?? throw new ArgumentNullException(nameof(cropResolver));
+        _samplingDepthPercent = Math.Clamp(samplingDepthPercent, EdgeSampler.MinimumDepthPercent, EdgeSampler.MaximumDepthPercent);
     }
 
     public byte[] Process(AnalysisFrame frame)
@@ -33,7 +36,8 @@ public sealed class AmbilightFrameProcessor
             frame.Width,
             frame.Height,
             _cropResolver(frame),
-            _logicalLayout);
+            _logicalLayout,
+            _samplingDepthPercent);
         var physicalFrame = LinearLightInterpolator.InterpolatePerimeter(
             _physicalLayout,
             _logicalLayout,
