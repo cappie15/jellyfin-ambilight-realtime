@@ -279,7 +279,7 @@ all-white calibration pattern.
 
 ---
 
-## Amendment 1 — 2026-09-05 — pending operator review
+## Amendment 1 — 2026-09-05 — **Accepted**, operator review 2026-09-06
 
 **The `hw.led.fps` headroom claim is refuted.** The survey table above reads
 `hw.led.fps 42` as meaning "our ~40 fps ceiling fits under the strip's refresh

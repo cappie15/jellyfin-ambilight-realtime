@@ -6,20 +6,20 @@ has reviewed it; only **Accepted** ADRs may be treated as settled.
 
 | ADR | Title | Core decision | Status |
 |---|---|---|---|
-| [001](ADR-001-server-side-realtime-analysis.md) | Server-side realtime analysis | Analyse on the server in realtime; never capture the client, never precompute | **Accepted** 2026-09-05 + **Amendment 1** pending |
-| [002](ADR-002-playback-device-centric-mapping.md) | Playback-device-centric mapping | Configuration is owned by `DeviceId`, never by a user | **Accepted** 2026-09-05 + **Amendment 1** pending |
-| [003](ADR-003-wled-only-v1.md) | WLED-only v1 | One output driver behind a narrow `ILedOutput` abstraction | **Accepted** 2026-09-05 + **Amendment 1** pending |
-| [004](ADR-004-wled-realtime-protocol-strategy.md) | WLED realtime protocol strategy | Multi-packet DDP; Hyperion raw RGB and its ~490 LED ceiling abandoned | **Accepted** 2026-09-05 + **Amendments 1-2** pending |
-| [005](ADR-005-logical-sampling-vs-physical-led-interpolation.md) | Logical sampling vs physical LED interpolation | ~100 logical samples interpolated in linear light to 831 physical LEDs | **Accepted** 2026-09-05 + **Amendment 1** pending |
-| [006](ADR-006-hdr-dolby-vision-normalization.md) | HDR/Dolby Vision normalization | GPU tone-mapping to linear-light BT.709; per-profile DV handling, P5 documented | **Accepted** 2026-09-05 + **Amendment 1** pending |
-| [007](ADR-007-jellyfin-playback-synchronization.md) | Jellyfin playback synchronization | Local monotonic clock corrected by push events; seeks detected by drift | **Accepted** 2026-09-05 + **Amendments 1-2** pending |
-| [008](ADR-008-companion-worker-vs-in-process.md) | Companion worker vs in-process | In-process, spawning `IMediaEncoder.EncoderPath`; no daemon, no bundled binary | **Accepted** 2026-09-05 + **Amendment 1** pending |
-| [009](ADR-009-zero-touch-installation.md) | Zero-touch installation architecture | Plugin repository only; nothing downloaded; capability gaps explained, not fixed | **Accepted** 2026-09-05 + **Amendment 1** pending |
+| [001](ADR-001-server-side-realtime-analysis.md) | Server-side realtime analysis | Analyse on the server in realtime; never capture the client, never precompute | **Accepted** 2026-09-05 + Am. 1 accepted |
+| [002](ADR-002-playback-device-centric-mapping.md) | Playback-device-centric mapping | Configuration is owned by `DeviceId`, never by a user | **Accepted** 2026-09-05 + Am. 1 accepted |
+| [003](ADR-003-wled-only-v1.md) | WLED-only v1 | One output driver behind a narrow `ILedOutput` abstraction | **Accepted** 2026-09-05 + Am. 1 accepted |
+| [004](ADR-004-wled-realtime-protocol-strategy.md) | WLED realtime protocol strategy | Multi-packet DDP; Hyperion raw RGB and its ~490 LED ceiling abandoned | **Accepted** 2026-09-05 + Am. 1-2 accepted |
+| [005](ADR-005-logical-sampling-vs-physical-led-interpolation.md) | Logical sampling vs physical LED interpolation | ~100 logical samples interpolated in linear light to 831 physical LEDs | **Accepted** 2026-09-05 + Am. 1 accepted |
+| [006](ADR-006-hdr-dolby-vision-normalization.md) | HDR/Dolby Vision normalization | GPU tone-mapping to linear-light BT.709; per-profile DV handling, P5 documented | **Accepted** 2026-09-05 + Am. 1 accepted |
+| [007](ADR-007-jellyfin-playback-synchronization.md) | Jellyfin playback synchronization | Local monotonic clock corrected by push events; seeks detected by drift | **Accepted** 2026-09-05 + Am. 1-2 accepted |
+| [008](ADR-008-companion-worker-vs-in-process.md) | Companion worker vs in-process | In-process, spawning `IMediaEncoder.EncoderPath`; no daemon, no bundled binary | **Accepted** 2026-09-05 + Am. 1 accepted |
+| [009](ADR-009-zero-touch-installation.md) | Zero-touch installation architecture | Plugin repository only; nothing downloaded; capability gaps explained, not fixed | **Accepted** 2026-09-05 + Am. 1 accepted |
 
-**All nine ADRs now carry at least one amendment awaiting operator review.**
-They come from two adversarial research passes (30 agents, ~3.6M tokens) plus
-measurement on the reference hardware. No base decision is overturned, but three
-findings are serious:
+**All nine ADRs are Accepted, with eleven amendments also accepted (operator review 2026-09-06).**
+The amendments come from two adversarial research passes (30 agents, ~3.6M
+tokens) plus measurement on the reference hardware. No base decision was
+overturned, but three findings were serious:
 
 - **ADR-006 Am.1** — Intel QSV silently drops the Dolby Vision RPU.
   `apply_dolbyvision=true` is accepted, errors nothing, and does nothing. VAAPI

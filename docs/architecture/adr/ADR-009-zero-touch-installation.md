@@ -151,7 +151,7 @@ This is recorded as a deliberate decision rather than an oversight (risk R1). A
 
 ---
 
-## Amendment 1 — 2026-09-05 — pending operator review
+## Amendment 1 — 2026-09-05 — **Accepted**, operator review 2026-09-06
 
 ### a. The first-run probe would run before FFmpeg exists
 

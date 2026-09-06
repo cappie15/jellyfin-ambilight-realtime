@@ -143,7 +143,7 @@ and §66 require end-to-end measurement with the operator and a phone camera.
 
 ---
 
-## Amendment 1 — 2026-09-05 — pending operator review
+## Amendment 1 — 2026-09-05 — **Accepted**, operator review 2026-09-06
 
 ### a. Freeze, as specified, does the opposite of what §37 requires
 
@@ -224,3 +224,14 @@ inside any perceptible sync error, so no discard pass is needed.
 Keyframe-only seek (`-noaccurate_seek`) is unusable: the reference asset has a
 rigid **2.000 s closed GOP** with no scene-cut keyframes, giving a landing error
 uniform over (−2000, 0] ms.
+
+### Decision B — debounce values, 2026-09-06
+
+Adopted as measured: **1.5 s** with a hardware decoder, **2.0 s** with software,
+plus the state interlock. The interlock is the part that matters; the timer alone
+was shown insufficient.
+
+Worst-case user-visible freeze of ~4.3 s on the software path is accepted for v1,
+mitigated by the fact that Amendment 1 makes freeze an active keepalive so the
+strip holds its last colour rather than going dark. Revisit if it proves annoying
+in practice — that is a judgement only the operator can make.

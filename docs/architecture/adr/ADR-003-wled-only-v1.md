@@ -106,7 +106,7 @@ resume automatically if playback is still active.
 
 ---
 
-## Amendment 1 — 2026-09-05 — pending operator review
+## Amendment 1 — 2026-09-05 — **Accepted**, operator review 2026-09-06
 
 Three corrections, one of them to a claim this ADR asserts as settled.
 
@@ -163,3 +163,18 @@ supporting argument — that a longer fade would be truncated — assumed 2500 m
 universal. It is a **per-controller setting**. With an explicit release (a), fade
 duration and the realtime timeout decouple entirely and the coincidence becomes
 decorative rather than load-bearing. The default stays 2.5 s.
+
+### Decision C — outage reporting, 2026-09-06
+
+**WARN log line + one edge-triggered `IActivityManager` entry per outage
+transition + a status field on the diagnostics endpoint. No viewer-facing toast.**
+
+`ISessionManager.SendMessageCommand` would put a message in front of whoever is
+watching a film, to report that a *decorative* subsystem is unavailable. §88
+priority 1 and this ADR's own opening line both argue against it. An admin-facing
+activity-log row is the right audience.
+
+Deduplication is entirely ours: `ActivityManager.CreateAsync` inserts
+unconditionally. If `Jellyfin.Database.Implementations` turns out not to be
+published as a package, this degrades to the log line and the status field alone,
+which still satisfies §18's "one outage = one notification" in spirit.

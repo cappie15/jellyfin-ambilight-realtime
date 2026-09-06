@@ -104,7 +104,7 @@ feature, exactly as §21 allows.
 
 ---
 
-## Amendment 1 — 2026-09-05 — pending operator review
+## Amendment 1 — 2026-09-05 — **Accepted**, operator review 2026-09-06
 
 **A second coupling channel into Jellyfin, not covered by the original decision.**
 

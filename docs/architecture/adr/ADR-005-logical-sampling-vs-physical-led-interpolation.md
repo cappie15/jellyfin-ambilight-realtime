@@ -135,7 +135,7 @@ expert-mode setting and may be revisited against a real A/B test.
 
 ---
 
-## Amendment 1 — 2026-09-05 — pending operator review
+## Amendment 1 — 2026-09-05 — **Accepted**, operator review 2026-09-06
 
 **a. The pipeline diagram has no place for three necessary stages.** As drawn it
 is `VIDEO → LOGICAL EDGE SAMPLES → COLOUR PROCESSING → INTERPOLATION → PHYSICAL

@@ -102,7 +102,7 @@ priority system in v1.
 
 ---
 
-## Amendment 1 — 2026-09-05 — pending operator review
+## Amendment 1 — 2026-09-05 — **Accepted**, operator review 2026-09-06
 
 **"Strongly typed and versioned, with migrations (§60)" describes a mechanism
 that does not exist.**

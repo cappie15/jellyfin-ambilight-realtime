@@ -268,3 +268,25 @@ with a measured order-of-magnitude behind it.
 - Any claim that a hardware DV path works must be verified by **comparing
   channel statistics against the software reference**, because the failure is
   silent. This belongs in the test suite.
+
+### Decision A — backend policy, 2026-09-06
+
+Not explicitly answered by the operator; decided here and easily reversed.
+
+**VAAPI + `scale_vaapi` is the default hardware path for *all* content. QSV moves
+to expert mode.**
+
+The measured alternative — QSV for SDR/HDR10/HLG, VAAPI for DV — is 2.6× cheaper
+in CPU (0.30 vs 0.79 cores). It is rejected anyway, because it keeps a path that
+fails **silently**: if DV detection ever misclassifies a file, QSV produces the
+green/cyan cast with no error, nothing in the logs, and no way for a user to know.
+§88 ranks correct colour (5) above low resource usage (7), and §32 forbids
+silently processing DV as ordinary SDR.
+
+One path that is always correct beats two paths where one is a trap. 0.79 of four
+cores is an acceptable price, and it is still 6.3× realtime.
+
+This deviates from §24's "Intel QSV is the primary optimized implementation".
+The justification is that §24 was written before it was known that QSV is
+*incorrect* for Dolby Vision on this stack. QSV remains available in expert mode
+for users who know their library contains no DV.
