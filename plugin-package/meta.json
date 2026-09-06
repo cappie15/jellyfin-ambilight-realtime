@@ -1,0 +1,14 @@
+{
+  "category": "General",
+  "description": "Server-side realtime Ambilight output to WLED",
+  "guid": "7d6d91ed-0f36-46ea-9868-9623283b6b51",
+  "name": "Realtime Ambilight",
+  "overview": "Realtime HDR-aware ambient lighting for Jellyfin playback",
+  "owner": "Realtime Ambilight contributors",
+  "targetAbi": "10.11.0.0",
+  "timestamp": "2026-09-06T13:00:00.0000000Z",
+  "version": "0.1.1",
+  "status": "Active",
+  "autoUpdate": false,
+  "assemblies": []
+}

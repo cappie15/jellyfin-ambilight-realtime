@@ -1,0 +1,133 @@
+<div data-role="page" id="realtimeAmbilightConfigurationPage" class="page type-interior pluginConfigurationPage" data-controller="__plugin/RealtimeAmbilight.js">
+    <div class="content-primary">
+        <div class="verticalSection">
+            <h2 class="sectionTitle">Realtime Ambilight</h2>
+            <p>Deze plugin analyseert het beeld op de server en stuurt daar tijdelijke realtime-kleuren mee naar WLED. Zodra het afspelen stopt, geeft de plugin de besturing weer terug aan WLED. De stroomlimiet van WLED wordt nooit aangepast.</p>
+        </div>
+
+        <form id="realtimeAmbilightConfigurationForm">
+
+            <div class="verticalSection">
+                <h3 class="sectionTitle">1. Bij welke tv horen deze leds?</h3>
+                <div class="selectContainer">
+                    <select is="emby-select" id="targetDeviceId" label="Afspeelapparaat"></select>
+                    <div class="fieldDescription">
+                        Kies het apparaat waarop je kijkt; alleen dat apparaat stuurt de leds aan. De lijst staat op laatst gebruikt, dus je tv staat meestal bovenaan.
+                        <br /><strong>Aanbevolen:</strong> kies je tv. Laat je dit op <em>Alle apparaten</em> staan, dan reageren de leds op élk apparaat dat afspeelt — ook op een telefoon in een andere kamer.
+                    </div>
+                    <div id="targetDeviceStatus" class="fieldDescription" aria-live="polite"></div>
+                    <button is="emby-button" type="button" id="refreshDevices" class="raised">Lijst verversen</button>
+                </div>
+
+                <br />
+                <label class="checkboxContainer">
+                    <input is="emby-checkbox" id="enabled" type="checkbox" />
+                    <span>Ambilight inschakelen</span>
+                </label>
+                <div class="fieldDescription">Zet dit uit om de leds meteen los te laten zonder de rest van je instellingen kwijt te raken. <strong>Standaard: aan.</strong></div>
+            </div>
+
+            <div class="verticalSection">
+                <h3 class="sectionTitle">2. Welke WLED-controller?</h3>
+                <p class="fieldDescription">De zoeker vraagt op het lokale netwerk wie zich als WLED aanmeldt en controleert dat daarna via de openbare infopagina van WLED. Er wordt niets aan je WLED gewijzigd.</p>
+                <button is="emby-button" type="button" id="findWled" class="raised">Zoek WLED op het netwerk</button>
+                <div id="wledFinderStatus" class="fieldDescription" aria-live="polite"></div>
+
+                <div id="wledCandidatesContainer" class="selectContainer" style="display:none">
+                    <select is="emby-select" id="wledCandidates" label="Gevonden WLED-controller"></select>
+                    <div class="fieldDescription">Het aantal leds achter elke naam helpt je de juiste controller te herkennen.</div>
+                </div>
+
+                <div id="manualWledContainer" style="display:none">
+                    <div class="inputContainer">
+                        <input is="emby-input" id="wledHost" type="text" label="WLED-adres" />
+                        <div class="fieldDescription">Alleen nodig als de zoeker niets vindt, bijvoorbeeld wanneer je WLED in een ander netwerk of VLAN hangt. Vul het IP-adres in dat je ook in je browser gebruikt, zoals <code>10.0.0.8</code>. <strong>Standaard: automatisch gevonden.</strong></div>
+                    </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" id="wledHttpPort" type="number" min="1" max="65535" label="WLED HTTP-poort" />
+                        <div class="fieldDescription">De webpoort van WLED, gebruikt om de status te lezen en de leds netjes vrij te geven. Alleen wijzigen als je WLED op een afwijkende poort draait. <strong>Standaard: 80.</strong></div>
+                    </div>
+                </div>
+
+                <div class="selectContainer">
+                    <select is="emby-select" id="realtimeProtocol" label="Realtime-protocol">
+                        <option value="0">Automatisch (aanbevolen)</option>
+                        <option value="1">Hyperion Raw RGB</option>
+                        <option value="2">DDP</option>
+                    </select>
+                    <div class="fieldDescription">Hoe de kleuren naar WLED gaan. Automatisch kiest het juiste protocol op basis van je aantal leds: Raw RGB tot 490 leds, daarna DDP. <strong>Standaard: automatisch</strong> — laat dit staan tenzij je een reden hebt om het te forceren.</div>
+                </div>
+            </div>
+
+            <div class="verticalSection">
+                <h3 class="sectionTitle">3. Beeld en leds gelijk laten lopen</h3>
+
+                <div class="inputContainer">
+                    <input is="emby-input" id="outputDelayMilliseconds" type="range" min="0" max="2000" step="25" label="Ledvertraging" />
+                    <div class="fieldDescription">
+                        Nu ingesteld: <strong id="outputDelayValue"></strong>.
+                        Je tv heeft zelf ook verwerkingstijd, dus de leds kunnen vóór het beeld uit lopen. Verhoog deze waarde alleen als je dat echt ziet, in kleine stapjes, tijdens een scène met duidelijke kleurwissels.
+                        <br /><strong>Standaard: 0 ms.</strong>
+                    </div>
+                </div>
+
+                <div class="inputContainer">
+                    <input is="emby-input" id="outputFramesPerSecond" type="number" min="1" max="60" label="Ledupdates per seconde" />
+                    <div class="fieldDescription">Hoe vaak de leds een nieuwe kleur krijgen. Hoger oogt vloeiender maar kost meer netwerkverkeer en CPU. <strong>Standaard: 30.</strong> Herstart Jellyfin na het wijzigen.</div>
+                </div>
+
+                <div class="inputContainer">
+                    <input is="emby-input" id="pauseKeepAliveSeconds" type="number" min="1" max="20" label="Vasthouden bij pauze (seconden)" />
+                    <div class="fieldDescription">Bij pauzeren blijft het laatste beeld op de leds staan. Zo springt WLED niet meteen terug naar zijn eigen effect als je even pauzeert. <strong>Standaard: 2 seconden.</strong></div>
+                </div>
+
+                <div class="inputContainer">
+                    <input is="emby-input" id="stopFadeMilliseconds" type="number" min="0" max="5000" step="50" label="Uitfaden bij stoppen (ms)" />
+                    <div class="fieldDescription">Hoe lang de leds naar zwart faden als je stopt, in plaats van abrupt uit te gaan. <code>0</code> schakelt het faden uit. <strong>Standaard: 250 ms.</strong></div>
+                </div>
+            </div>
+
+            <div class="verticalSection">
+                <h3 class="sectionTitle">4. Hoe zijn de leds om je tv verdeeld?</h3>
+                <p class="fieldDescription">Tel met de klok mee vanaf de <strong>linkerbovenhoek</strong>: eerst de bovenkant, dan rechts, dan onder, dan links. De vier getallen samen moeten precies gelijk zijn aan het aantal leds in je strip. Herstart Jellyfin na het wijzigen.</p>
+                <div class="inputContainer">
+                    <input is="emby-input" id="topLedCount" type="number" min="1" label="Leds aan de bovenkant" />
+                    <div class="fieldDescription"><strong>Standaard: 265.</strong></div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" id="rightLedCount" type="number" min="1" label="Leds aan de rechterkant" />
+                    <div class="fieldDescription"><strong>Standaard: 150.</strong></div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" id="bottomLedCount" type="number" min="1" label="Leds aan de onderkant" />
+                    <div class="fieldDescription"><strong>Standaard: 266</strong> — één meer dan boven, omdat de strip daar om de voet heen loopt.</div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" id="leftLedCount" type="number" min="1" label="Leds aan de linkerkant" />
+                    <div class="fieldDescription"><strong>Standaard: 150.</strong> Samen met de andere drie waarden is dat 831 leds.</div>
+                </div>
+            </div>
+
+            <div class="verticalSection">
+                <h3 class="sectionTitle">5. Beeldanalyse</h3>
+                <p class="fieldDescription">De analyse gaat uit van een 16:9-scherm. De hoogte hoef je daarom niet in te vullen: die volgt automatisch uit de breedte.</p>
+                <div class="inputContainer">
+                    <input is="emby-input" id="analysisWidth" type="number" min="16" max="1920" label="Analysebreedte (pixels)" />
+                    <div class="fieldDescription">
+                        Het beeld wordt naar dit formaat verkleind voordat de randkleuren worden bepaald. Analyseformaat wordt: <strong id="analysisSizeValue"></strong>.
+                        <br />Groter geeft nauwelijks zichtbaar meer detail maar kost wel meer CPU. <strong>Standaard: 160</strong> (dus 160 × 90).
+                    </div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" id="analysisFramesPerSecond" type="number" min="1" max="60" label="Analyses per seconde" />
+                    <div class="fieldDescription">Hoe vaak er een beeldje wordt geanalyseerd. Hoger dan de ledupdates per seconde heeft geen zin. <strong>Standaard: 30.</strong></div>
+                </div>
+            </div>
+
+            <div class="verticalSection">
+                <button is="emby-button" type="submit" class="raised button-submit block"><span>Opslaan</span></button>
+            </div>
+
+        </form>
+    </div>
+</div>

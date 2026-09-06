@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Jellyfin.Plugin.RealtimeAmbilight.Core</AssemblyName>
+    <RootNamespace>Jellyfin.Plugin.RealtimeAmbilight.Core</RootNamespace>
+  </PropertyGroup>
+</Project>
