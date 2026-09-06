@@ -16,7 +16,7 @@ export default function (view) {
 
     function setDelayLabel() {
         const value = Number(byId("outputDelayMilliseconds").value);
-        byId("outputDelayValue").textContent = value === 0 ? "0 ms (geen vertraging)" : `${value} ms`;
+        byId("outputDelayValue").textContent = value === 0 ? "0 ms (no delay)" : `${value} ms`;
     }
 
     function setAnalysisLabel() {
@@ -31,21 +31,21 @@ export default function (view) {
 
     function lastUsedLabel(value) {
         if (!value) {
-            return "nog niet gebruikt";
+            return "never used";
         }
         const used = new Date(value);
         if (Number.isNaN(used.getTime())) {
-            return "nog niet gebruikt";
+            return "never used";
         }
         const days = Math.floor((Date.now() - used.getTime()) / 86400000);
         if (days <= 0) {
-            return `vandaag ${used.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+            return `today at ${used.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
         }
-        return days === 1 ? "gisteren" : `${days} dagen geleden`;
+        return days === 1 ? "yesterday" : `${days} days ago`;
     }
 
     function deviceLabel(device) {
-        const name = device.CustomName || device.Name || "Naamloos apparaat";
+        const name = device.CustomName || device.Name || "Unnamed device";
         const app = device.AppName ? ` — ${device.AppName}` : "";
         const user = device.LastUserName ? `, ${device.LastUserName}` : "";
         return `${name}${app} (${lastUsedLabel(device.DateLastActivity)}${user})`;
@@ -56,7 +56,7 @@ export default function (view) {
     function populateDevices(devices, selectedDeviceId) {
         const select = byId("targetDeviceId");
         select.textContent = "";
-        select.add(new Option("Alle apparaten — niet gekoppeld", ""));
+        select.add(new Option("All devices — not bound", ""));
 
         devices
             .filter(device => device.Id)
@@ -66,20 +66,20 @@ export default function (view) {
         if (selectedDeviceId && !devices.some(device => device.Id === selectedDeviceId)) {
             // Keep a binding to a device Jellyfin has since forgotten visible and
             // intact, instead of silently resetting it to "all devices" on save.
-            select.add(new Option(`Opgeslagen apparaat (niet meer bekend bij Jellyfin)`, selectedDeviceId));
+            select.add(new Option("Saved device (no longer known to Jellyfin)", selectedDeviceId));
         }
 
         select.value = selectedDeviceId || "";
         byId("targetDeviceStatus").textContent = devices.length === 0
-            ? "Jellyfin kent nog geen afspeelapparaten. Speel eenmalig iets af op de tv en herlaad deze pagina."
-            : `${devices.length} bekende apparaten, nieuwste eerst.`;
+            ? "Jellyfin does not know any playback devices yet. Play something on the TV once, then reload this page."
+            : `${devices.length} known devices, most recently used first.`;
     }
 
     function loadDevices(selectedDeviceId) {
         return window.ApiClient.getJSON(window.ApiClient.getUrl("Devices"))
             .then(result => populateDevices(result.Items || [], selectedDeviceId))
             .catch(() => {
-                byId("targetDeviceStatus").textContent = "De apparatenlijst kon niet worden geladen.";
+                byId("targetDeviceStatus").textContent = "The device list could not be loaded.";
                 populateDevices([], selectedDeviceId);
             });
     }
@@ -99,24 +99,24 @@ export default function (view) {
             show("wledCandidatesContainer", true);
             show("manualWledContainer", false);
             byId("wledFinderStatus").textContent = candidates.length === 1
-                ? "Eén WLED-controller gevonden."
-                : `${candidates.length} WLED-controllers gevonden.`;
+                ? "Found one WLED controller."
+                : `Found ${candidates.length} WLED controllers.`;
         } else {
             show("wledCandidatesContainer", false);
             show("manualWledContainer", true);
-            byId("wledFinderStatus").textContent = "Geen WLED-controller gevonden. Vul hieronder zelf het adres in.";
+            byId("wledFinderStatus").textContent = "No WLED controller found. Enter the address yourself below.";
         }
     }
 
     function findWled() {
         byId("findWled").disabled = true;
-        byId("wledFinderStatus").textContent = "Zoeken op het lokale netwerk…";
+        byId("wledFinderStatus").textContent = "Scanning the local network…";
         return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Wled"))
             .then(populateCandidates)
             .catch(() => {
                 show("wledCandidatesContainer", false);
                 show("manualWledContainer", true);
-                byId("wledFinderStatus").textContent = "De zoeker is niet bereikbaar. Vul hieronder zelf het adres in.";
+                byId("wledFinderStatus").textContent = "The finder is unreachable. Enter the address yourself below.";
             })
             .finally(() => { byId("findWled").disabled = false; });
     }
@@ -148,7 +148,7 @@ export default function (view) {
         const usingFinder = byId("wledCandidatesContainer").style.display !== "none";
         const host = (usingFinder ? byId("wledCandidates").value : byId("wledHost").value.trim());
         if (!host) {
-            Dashboard.alert("Vul eerst een WLED-adres in of kies een gevonden controller.");
+            Dashboard.alert("Enter a WLED address first, or pick a discovered controller.");
             return;
         }
 
