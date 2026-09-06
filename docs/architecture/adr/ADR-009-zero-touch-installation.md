@@ -208,3 +208,66 @@ session had network access, the plugin template pins 10.11.5, and every source
 citation in the corpus is against tag **v10.11.11** — the shallow clone has no
 10.11.9 tag. That those packages exist on nuget.org is currently an assumption,
 and it is trivially settled by a restore.
+
+---
+
+## Amendment 2 — 2026-09-06 — latest stable target verified
+
+The source requirement targets only the latest stable Jellyfin release. NuGet
+now confirms that `Jellyfin.Controller` **10.11.11** is published for `net9.0`;
+the matching model package is available on the same release line. The initial
+plugin project therefore pins both packages to **10.11.11**.
+
+This supersedes the earlier 10.11.9 target decision. It does not add a
+compatibility layer or promise 10.11.9 support: the reference host must be
+upgraded before integration validation. CI and release validation must run
+against Jellyfin 10.11.11.
+
+---
+
+## Amendment 3 — 2026-09-06 — discovery transport settled: mDNS, not SSDP
+
+**Accepted.** Measured from the Jellyfin host (10.0.0.31) on 2026-09-06.
+
+**SSDP is not a viable transport for WLED.** An `M-SEARCH` for `ssdp:all` on the
+production LAN drew replies from four unrelated devices (a Synology NAS, an
+Android TV box, a HyperHDR instance and one further host) and **none** from the
+reference WLED controller. WLED's SSDP responder is part of its Alexa emulation
+and is silent unless that feature is enabled, so an SSDP-based finder would
+report "no controller found" on a perfectly healthy default installation. An
+earlier implementation of the finder used SSDP and would have found nothing here.
+
+**mDNS works, including on the ESP32_Ethernet board.** The open question in §b
+above — whether the responder binds the Ethernet interface — is answered: it
+does. A PTR query for `_wled._tcp.local` returned a single 192-byte answer
+carrying everything discovery needs, with no follow-up query required:
+
+| Record | Value |
+|---|---|
+| PTR | `_wled._tcp.local` → `wled-8e1b68` |
+| SRV | port `80`, target `wled-8e1b68.local` |
+| TXT | `mac=a4f00f8e1b68` |
+| A | `wled-8e1b68.local` → `10.0.0.8` |
+
+This confirms §b's description of the advertisement exactly. That captured packet
+is now a unit-test fixture, so the parser is verified against real controller
+output rather than a hand-written sample; the same test asserts that every
+truncation of it and a forged compression-pointer loop yield no half-built
+candidate.
+
+**Implementation.** `MdnsMessage` (Core) builds the query and reads PTR/SRV/A
+records; `WledDiscoveryService` (plugin) performs the I/O, then confirms each
+candidate against WLED's read-only `/json/info`. Addresses learned from the
+network are untrusted and are restricted to private IPv4 before anything connects
+to them; the already-configured host is admin-supplied and is probed as written.
+The endpoint is `GET /RealtimeAmbilight/Discovery/Wled`, carrying
+`[Authorize(Policy = "RequiresElevation")]` per §c — the same policy Jellyfin puts
+on its own `DevicesController`, since discovery scans the local network.
+
+**Verified end to end.** With the configured host deliberately set to an
+unreachable `192.168.254.254`, the endpoint still returned
+`[{"Host":"10.0.0.8","Name":"WLED","LedCount":831,"Version":"16.0.1"}]` in ~1.6 s,
+proving the result came from mDNS and not from the configured-host fallback, and
+that an unreachable candidate is correctly discarded. The §b amendment stands
+unchanged: manual entry remains the primary path and the page falls back to it
+whenever the scan returns nothing.

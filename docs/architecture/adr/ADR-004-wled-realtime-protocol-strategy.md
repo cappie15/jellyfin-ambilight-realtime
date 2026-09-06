@@ -410,3 +410,77 @@ ABL would dim the white calibration pattern. WLED's own model uses the bus
 `ledma: 30`, giving a theoretical ceiling of 831 × 30 = 24.9 A — still under the
 cap. **The §47 all-white pattern renders at full brightness and needs no
 explanatory note.** Q4 is closed without requiring visual confirmation.
+
+---
+
+## Amendment 3 — 2026-09-06 — retain both required realtime transports
+
+The original decision called DDP the only transport and stated that Hyperion Raw
+RGB was not used. That conflicts with the product requirement: Raw RGB is the
+low-latency baseline, while DDP is the scalable multi-packet transport. The
+existing DDP measurements prove that DDP addresses 831 LEDs correctly; they do
+not compare its end-to-end latency against Raw RGB on a smaller installation.
+
+**Amendment.** The plugin implements both transports behind the output layer:
+
+| Mode | Behaviour |
+|---|---|
+| Auto | Use the recorded latency result for this controller when available. Before a measurement, use Raw RGB as the provisional baseline for layouts of 490 LEDs or fewer; use DDP above that limit. |
+| Hyperion Raw RGB | Send exactly one RGB24 datagram to port 19446. Reject, explain and do not truncate layouts above 490 LEDs. |
+| DDP | Send RGB24 DDP packets to port 4048 with byte offsets, exact payload lengths, ordered packets and PUSH only on the final packet. |
+
+The Auto decision and diagnostics must state both the selected transport and why.
+Benchmarking is an implementation validation task, not an assumption embedded in
+the selection label. The packet tests cover 100, 490, 491, 831/832 and 1000+
+LED frames; controller tests must additionally measure latency for an eligible
+small layout before Auto is described as faster in either direction.
+
+---
+
+## Amendment 4 — 2026-09-06 — the explicit release call is removed
+
+**Accepted.** Measured against the reference controller (firmware 16.0.1,
+`if.live.timeout = 25`, i.e. 2.5 s) from the Jellyfin host on 2026-09-06.
+
+The implementation contained a control-plane release that posted
+`{"live": false}` to `/json/state` after the stop fade. Two independent defects
+were found in it, and it has been removed.
+
+**1. It never succeeded.** WLED answered every such request with
+`400 Bad Request`:
+
+| Request framing | Result |
+|---|---|
+| `Content-Length: 14` | `HTTP/1.1 200 OK` |
+| `Transfer-Encoding: chunked` | **`HTTP/1.1 400 Bad Request`** |
+
+`HttpClient.PostAsJsonAsync` sends `JsonContent`, which does not compute a
+content length, so .NET framed the body as chunked. WLED's ESPAsyncWebServer
+does not accept a chunked request body. The failure was not cosmetic: the
+exception propagated out of `IHostedService.StopAsync`, and Jellyfin logged it
+as **`[FTL] Error while starting server`** while shutting down.
+
+**2. Even when framed correctly, it made the handover worse.** Time from the
+last realtime datagram until `info.live` returned to `false`, three trials each:
+
+| Stop behaviour | Trials | Median |
+|---|---|---|
+| Cease transmission only | 2.27 / 2.25 / 2.26 s | **2.26 s** |
+| Cease transmission, then `{"live": false}` | 5.05 / 5.06 / 5.06 s | 5.06 s |
+
+Posting to `/json/state` re-arms the realtime lock for one further timeout
+period rather than releasing it, so the explicit call more than doubled the time
+before WLED resumed its own effect. `{"lor": 0}` behaves identically (5.03 s).
+
+**Decision.** `WledRealtimeOutput.ReleaseAsync` now releases by ceasing
+transmission, as the §39 finding above already concluded, and additionally drops
+the retained frame under the send gate so no keepalive can resend after a
+release. `IWledControlClient` and `WledJsonControlClient` are deleted; the plugin
+now has no WLED control-plane writer at all, which strengthens the invariant that
+it never modifies WLED configuration. `StopAsync` additionally swallows and logs
+any failure, because a hosted service must never abort Jellyfin's shutdown.
+
+**Caveat unchanged.** The §61-style hazard still stands: a controller configured
+with a long `if.live.timeout` (e.g. `650` = 65 s) would hold the LEDs for that
+period after playback stops. No release payload is currently known that shortens
+it, so such a controller must be corrected in WLED's own settings.
