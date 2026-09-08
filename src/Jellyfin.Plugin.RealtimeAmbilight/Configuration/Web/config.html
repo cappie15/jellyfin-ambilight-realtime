@@ -402,8 +402,8 @@
 
                     <br /><br />
                     <div class="inputContainer">
-                        <input is="emby-input" id="hueBrightnessPercent" type="range" min="1" max="100" step="1" label="Overall Hue brightness" />
-                        <div class="fieldDescription">Now: <strong id="hueBrightnessValue"></strong>. A 1% minimum stays on underneath this while synchronised, even at a dark scene. <strong>Default: 100%.</strong></div>
+                        <input is="emby-input" id="hueBrightnessPercent" type="range" min="1" max="200" step="1" label="Overall Hue brightness" />
+                        <div class="fieldDescription">Now: <strong id="hueBrightnessValue"></strong>. A 1% minimum stays on underneath this while synchronised, even at a dark scene. Above 100% pushes already-dim scenes brighter than the source picture -- different content (SDR, HDR10, tonemapped) never reaches the same peak brightness, so this compensates without needing a different setting per pipe. <strong>Default: 100%.</strong></div>
                     </div>
 
                     <div class="inputContainer">

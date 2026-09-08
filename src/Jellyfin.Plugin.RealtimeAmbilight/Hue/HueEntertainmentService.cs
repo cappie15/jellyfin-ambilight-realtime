@@ -399,7 +399,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             return;
         }
 
-        var brightnessFraction = Math.Clamp(configuration.HueBrightnessPercent, 1, 100) / 100d;
+        var brightnessFraction = Math.Clamp(configuration.HueBrightnessPercent, 1, 200) / 100d;
         byte[]? packet = null;
 
         if (_stateMachine.State == HueEntertainmentState.Streaming && _latestFrames.TryTake(out var frame) && frame is not null)

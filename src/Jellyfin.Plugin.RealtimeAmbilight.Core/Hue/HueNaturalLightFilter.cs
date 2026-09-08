@@ -121,8 +121,15 @@ public sealed class HueNaturalLightFilter
     /// previous state to ease from.
     /// </param>
     /// <param name="overallBrightnessFraction">
-    /// The operator's own overall-brightness control, 0-1. Applied before the
-    /// floor, so the floor is what survives dimming, not what gets dimmed.
+    /// The operator's own overall-brightness control, 0-2 (1 = unchanged,
+    /// above 1 boosts). Applied before the floor, so the floor is what
+    /// survives dimming, not what gets dimmed. The boost half of this range
+    /// exists for the same reason WLED's own Brightness control was widened
+    /// past 100%: nothing upstream of this can push a pixel brighter than
+    /// its own tonemapped source value, so content that never reaches peak
+    /// brightness in the source reads as dim on the light regardless of the
+    /// bulb's own real output -- confirmed as the same root cause on Hue as
+    /// on WLED, reported live for both.
     /// </param>
     public LinearRgb Apply(int channelId, LinearRgb target, double elapsedMilliseconds, double overallBrightnessFraction = 1d)
     {
@@ -164,7 +171,7 @@ public sealed class HueNaturalLightFilter
         state.SmoothedBrightness = Math.Clamp(rateLimitedBrightness, 0d, 1d);
         state.Initialized = true;
 
-        var dimmed = state.SmoothedBrightness * Math.Clamp(overallBrightnessFraction, 0d, 1d);
+        var dimmed = state.SmoothedBrightness * Math.Clamp(overallBrightnessFraction, 0d, 2d);
         // The 1% floor (and the warm-white fallback it would be tinted by,
         // via state.LastValidHueColour/state.SmoothedColour above) exists so
         // a black cut *mid-session* -- after real colour has actually been

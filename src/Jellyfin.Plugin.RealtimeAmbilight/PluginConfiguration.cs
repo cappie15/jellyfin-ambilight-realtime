@@ -316,7 +316,13 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// <summary>Display name of the selected entertainment configuration, shown on the settings page.</summary>
     public string HueEntertainmentConfigurationName { get; set; } = string.Empty;
 
-    /// <summary>Overall Hue brightness as a percentage, 1-100.</summary>
+    /// <summary>
+    /// Overall Hue brightness as a percentage, 1-200. Above 100% boosts
+    /// past the source picture's own value, for the same reason WLED's own
+    /// Brightness control was widened past 100%: nothing upstream can push
+    /// a pixel brighter than its own tonemapped source value, so content
+    /// that never reaches peak brightness always reads as dim on the bulb.
+    /// </summary>
     public int HueBrightnessPercent { get; set; } = 100;
 
     /// <summary>What the paired lights do once a synchronised session ends.</summary>

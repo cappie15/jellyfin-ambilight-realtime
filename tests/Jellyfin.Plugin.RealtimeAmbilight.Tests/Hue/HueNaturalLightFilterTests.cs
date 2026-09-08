@@ -144,6 +144,23 @@ public class HueNaturalLightFilterTests
     }
 
     [Fact]
+    public void OverallBrightnessAbove100PercentBoostsAScenePastTheSourcesOwnValue()
+    {
+        // Same reasoning as WLED's own Brightness control widening past
+        // 100%: nothing upstream can push a pixel brighter than its own
+        // source value, so a fraction above 1 is the only way to compensate
+        // for content that never reaches peak brightness in the source.
+        var dim = new HueNaturalLightFilter();
+        var boosted = new HueNaturalLightFilter();
+        var target = new LinearRgb(0.4f, 0.4f, 0.4f);
+
+        var dimResult = dim.Apply(0, target, elapsedMilliseconds: 0, overallBrightnessFraction: 1d);
+        var boostedResult = boosted.Apply(0, target, elapsedMilliseconds: 0, overallBrightnessFraction: 2d);
+
+        Assert.True(boostedResult.Red > dimResult.Red, $"expected boosted ({boostedResult.Red}) brighter than unboosted ({dimResult.Red})");
+    }
+
+    [Fact]
     public void AReconnectGapSnapsInsteadOfEasingInFromTheOldValue()
     {
         var filter = new HueNaturalLightFilter();
