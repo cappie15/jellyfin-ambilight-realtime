@@ -706,6 +706,7 @@ export default function (view) {
                 byId("sendWhiteChannel").checked = config.SendWhiteChannel === true;
                 byId("hueEnabled").checked = config.HueEnabled === true;
                 byId("hueBrightnessPercent").value = config.HueBrightnessPercent || 100;
+                byId("hueResponsePercent").value = config.HueResponsePercent ?? 50;
                 byId("hueEndBehaviour").value = String(config.HueEndBehaviour ?? 0);
                 if (config.HueEntertainmentConfigurationId && config.HueEntertainmentConfigurationId !== "00000000-0000-0000-0000-000000000000") {
                     show("hueSelectionSection", true);
@@ -786,6 +787,7 @@ export default function (view) {
             HueEntertainmentConfigurationId: byId("hueEntertainmentConfig").value || "00000000-0000-0000-0000-000000000000",
             HueEntertainmentConfigurationName: byId("hueEntertainmentConfig").selectedOptions[0]?.textContent || "",
             HueBrightnessPercent: Number(byId("hueBrightnessPercent").value),
+            HueResponsePercent: Number(byId("hueResponsePercent").value),
             HueEndBehaviour: Number(byId("hueEndBehaviour").value)
         };
         numericFields.forEach(field => { config[fieldKey(field)] = Number(byId(field).value); });
@@ -848,13 +850,21 @@ export default function (view) {
                 const state = status.State ?? status.state;
                 const issue = status.Issue ?? status.issue;
                 const paired = status.Paired ?? status.paired;
+                const bridgeHost = status.BridgeHost ?? status.bridgeHost ?? "";
                 byId("hueStatusLine").textContent = paired
                     ? describeHueState(state, issue)
                     : "Not paired. Scan for a bridge below to get started.";
                 show("hueSelectionSection", paired);
+                // "Scan the network for a bridge" only makes sense before
+                // pairing; once paired, the only relevant bridge action is to
+                // unlink it (moved up next to the status line, as a plain
+                // link rather than another raised button competing with it).
+                show("huePairingSection", !paired);
+                byId("hueUnlink").style.display = paired ? "inline" : "none";
+                byId("hueUnlink").textContent = bridgeHost ? `Unlink bridge ${bridgeHost}` : "Unlink this bridge";
                 byId("hueStartPairing").textContent = paired ? "Bridge paired" : "Pair with this bridge";
                 if (paired && !hueSelectedBridgeHost) {
-                    hueSelectedBridgeHost = status.BridgeHost ?? status.bridgeHost ?? "";
+                    hueSelectedBridgeHost = bridgeHost;
                 }
 
                 return paired;
@@ -910,13 +920,21 @@ export default function (view) {
 
         const button = byId("hueStartPairing");
         button.disabled = true;
+        const totalSeconds = 30;
         let attemptsLeft = 15;
-        // The button's own label carries the primary state -- "press the
-        // button now", then "bridge paired" -- since that is what is actually
-        // being asked of the operator at each step; the line underneath is
-        // only ever supplementary detail (a countdown, a failure reason).
-        button.textContent = "Press the button on the bridge now…";
+        // A live countdown, not just a static "press the button" label --
+        // it tells the operator exactly how long they actually have left to
+        // walk to the bridge, updated every second independently of the 2 s
+        // poll cycle so it counts down smoothly rather than jumping in pairs.
+        let secondsLeft = totalSeconds;
+        const updateCountdown = () => { button.textContent = `Press the button on the bridge now… (${secondsLeft}s)`; };
+        updateCountdown();
         byId("huePairingStatus").textContent = "";
+        const countdown = setInterval(() => {
+            secondsLeft = Math.max(0, secondsLeft - 1);
+            updateCountdown();
+        }, 1000);
+        const stopCountdown = () => clearInterval(countdown);
 
         const attempt = () => window.ApiClient.ajax({
             type: "POST",
@@ -925,6 +943,7 @@ export default function (view) {
         }).then(result => {
             const success = result.Success ?? result.success;
             if (success) {
+                stopCountdown();
                 button.textContent = "Bridge paired";
                 button.disabled = false;
                 byId("huePairingStatus").textContent = "";
@@ -934,6 +953,7 @@ export default function (view) {
             attemptsLeft--;
             const reason = result.FailureReason ?? result.failureReason ?? "";
             if (attemptsLeft <= 0) {
+                stopCountdown();
                 button.textContent = "Pair with this bridge";
                 byId("huePairingStatus").textContent = `Gave up: ${reason || "the bridge did not respond in time"}.`;
                 button.disabled = false;
@@ -943,6 +963,7 @@ export default function (view) {
             byId("huePairingStatus").textContent = reason || "Waiting for the link button…";
             return new Promise(resolve => setTimeout(resolve, 2000)).then(attempt);
         }).catch(() => {
+            stopCountdown();
             button.textContent = "Pair with this bridge";
             byId("huePairingStatus").textContent = "The bridge could not be reached.";
             button.disabled = false;
@@ -980,7 +1001,8 @@ export default function (view) {
             .catch(() => {});
     }
 
-    function unlinkHue() {
+    function unlinkHue(event) {
+        event.preventDefault();
         if (!window.confirm("Forget the stored Hue credentials? This does not change anything on the bridge itself.")) {
             return Promise.resolve();
         }
@@ -996,6 +1018,13 @@ export default function (view) {
 
     function setHueBrightnessLabel() {
         byId("hueBrightnessValue").textContent = `${byId("hueBrightnessPercent").value}%`;
+    }
+
+    function setHueResponseLabel() {
+        const value = Number(byId("hueResponsePercent").value);
+        byId("hueResponseValue").textContent = value === 50
+            ? "Balanced (50)"
+            : value < 50 ? `Reactive (${value})` : `Smooth (${value})`;
     }
 
     populateWallColourPresets();
@@ -1062,4 +1091,5 @@ export default function (view) {
     byId("hueRefreshConfigs").addEventListener("click", refreshHueEntertainmentConfigs);
     byId("hueUnlink").addEventListener("click", unlinkHue);
     byId("hueBrightnessPercent").addEventListener("input", setHueBrightnessLabel);
+    byId("hueResponsePercent").addEventListener("input", setHueResponseLabel);
 }

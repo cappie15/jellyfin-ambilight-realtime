@@ -169,7 +169,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         switch (_stateMachine.State)
         {
             case HueEntertainmentState.Ready:
-                if (currentSession is not null && _lifecycleTask is null)
+                if (currentSession is not null && LifecycleTaskIsFree())
                 {
                     _stateMachine.ConnectRequested();
                     _lifecycleTask = ConnectAndStreamAsync(configuration, currentSession);
@@ -205,7 +205,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                     _stateMachine.RecoveryAbandoned();
                     _channel = null;
                 }
-                else if (DateTimeOffset.UtcNow >= _nextRetryAt && _lifecycleTask is null)
+                else if (DateTimeOffset.UtcNow >= _nextRetryAt && LifecycleTaskIsFree())
                 {
                     _stateMachine.ConnectRequested();
                     _lifecycleTask = ConnectAndStreamAsync(configuration, currentSession);
@@ -216,17 +216,55 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             case HueEntertainmentState.Connecting:
             case HueEntertainmentState.Stopping:
                 // A background task owns this transition; observe it once done.
-                if (_lifecycleTask is { IsCompleted: true })
-                {
-                    _lifecycleTask = null;
-                }
-
+                LifecycleTaskIsFree();
                 break;
 
             case HueEntertainmentState.Unpaired:
             case HueEntertainmentState.RelinkRequired:
                 break;
         }
+    }
+
+    /// <summary>
+    /// True when no lifecycle task is in flight -- and clears
+    /// <see cref="_lifecycleTask"/> the moment one is found already complete,
+    /// rather than leaving it set.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ConnectAndStreamAsync"/>/<see cref="StopAsync(PluginConfiguration)"/>
+    /// used to null this field themselves, in their own <c>finally</c>. That
+    /// is a race: when either method throws before its first genuine
+    /// <c>await</c> -- exactly what happened live, from a double-close bug in
+    /// the underlying HueApi.Entertainment library's own
+    /// <c>StreamingHueClient.Close()</c> -- the whole method body, including
+    /// its <c>finally</c>, runs synchronously to completion *before* the
+    /// caller's own <c>_lifecycleTask = StopAsync(...)</c> assignment
+    /// statement finishes. The callee's <c>_lifecycleTask = null</c> then
+    /// gets silently overwritten a moment later by that same assignment
+    /// storing the (already-completed) returned task -- leaving
+    /// <c>_lifecycleTask</c> permanently non-null with nothing left to ever
+    /// clear it, since <see cref="HueEntertainmentState.Ready"/>'s own guard
+    /// only ever checked for exactly <see langword="null"/>. Streaming
+    /// silently never resumed for the rest of that Jellyfin process, with no
+    /// further log line of any kind, until this was found and fixed. Now
+    /// ownership of clearing this field lives in exactly one place -- here --
+    /// checked wherever a "nothing in flight" decision is made, tolerating a
+    /// completed-but-not-yet-cleared task the same as a null one.
+    /// </remarks>
+    private bool LifecycleTaskIsFree()
+    {
+        if (_lifecycleTask is null)
+        {
+            return true;
+        }
+
+        if (_lifecycleTask.IsCompleted)
+        {
+            _lifecycleTask = null;
+            return true;
+        }
+
+        return false;
     }
 
     private async Task ConnectAndStreamAsync(PluginConfiguration configuration, string sessionId)
@@ -245,7 +283,11 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             }
 
             _channels = selected.Channels;
-            _frameProcessor ??= new HueFrameProcessor(new PlaybackMonotonicTimeAdapter(), () => true);
+            // Built fresh on every connect, not cached for the service's
+            // whole lifetime: cheap to construct, and it means a changed
+            // HueResponsePercent takes effect on the next reconnect (stop
+            // then resume playback) rather than needing a full restart.
+            _frameProcessor = new HueFrameProcessor(new PlaybackMonotonicTimeAdapter(), () => true, responsePercent: configuration.HueResponsePercent);
 
             if (_snapshot?.PlaybackSessionId != sessionId)
             {
@@ -272,10 +314,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             _logger.LogWarning(exception, "Hue Entertainment could not connect.");
             ReportTransientFailure(HueEntertainmentIssue.TemporarilyUnreachable);
         }
-        finally
-        {
-            _lifecycleTask = null;
-        }
+        // No finally clearing _lifecycleTask here -- see LifecycleTaskIsFree's remarks.
     }
 
     private async Task<HueSessionSnapshot?> CaptureSnapshotAsync(
@@ -354,15 +393,43 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         _stateMachine.ConnectionLost(issue);
     }
 
+    /// <remarks>
+    /// Closing the channel and applying the end-of-session light behaviour
+    /// are deliberately isolated from each other, each in its own try/catch,
+    /// rather than one try around both (as this used to be). Observed live:
+    /// <c>StreamingHueClient.Dispose()</c> (via the inherited
+    /// <c>Close()</c>) reliably throws <see cref="ObjectDisposedException"/>
+    /// -- a double-close bug in the underlying HueApi.Entertainment library
+    /// itself (its DTLS transport's own <c>Close()</c> already cascades into
+    /// closing the shared UDP socket; <c>Dispose()</c> then tries to close
+    /// the same socket again). Harmless for the stream itself, since the
+    /// bridge's own realtime timeout reclaims it regardless -- but with one
+    /// shared try, that exception used to skip the end-of-session command
+    /// (warm-white-dim or restore) entirely, every single time, leaving the
+    /// lights showing whatever colour streaming last left them in until the
+    /// bridge's own timeout eventually caught up. Splitting them means a
+    /// failure to close the local socket can never prevent the light command
+    /// that actually matters to the operator from running.
+    /// </remarks>
     private async Task StopAsync(PluginConfiguration configuration)
     {
         try
         {
-            _channel?.Close();
             _channel?.Dispose();
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogWarning(exception, "Hue Entertainment did not close its local connection cleanly; the bridge's own timeout will reclaim the stream.");
+        }
+        finally
+        {
             _channel = null;
-            _frameProcessor?.Reset();
+        }
 
+        _frameProcessor?.Reset();
+
+        try
+        {
             var credentials = _credentials;
             if (credentials is not null)
             {
@@ -371,13 +438,14 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            _logger.LogWarning(exception, "Hue Entertainment did not stop cleanly; the bridge's own timeout will reclaim the stream.");
+            _logger.LogWarning(exception, "Hue Entertainment could not apply the end-of-session light behaviour.");
         }
         finally
         {
             _stateMachine.StopCompleted();
-            _lifecycleTask = null;
         }
+
+        // No finally clearing _lifecycleTask here -- see LifecycleTaskIsFree's remarks.
     }
 
     private async Task ApplyEndBehaviourAsync(PluginConfiguration configuration, HueCredentials credentials)
@@ -415,8 +483,16 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                 return;
             }
 
-            _channel?.Close();
-            _channel?.Dispose();
+            try
+            {
+                _channel?.Dispose();
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // Same known double-close bug as StopAsync -- see its remarks.
+                _logger.LogWarning(exception, "Hue Entertainment did not close its local connection cleanly; the bridge's own timeout will reclaim the stream.");
+            }
+
             _channel = null;
         }
         finally
@@ -463,7 +539,15 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             }
         }
 
-        _channel?.Dispose();
+        try
+        {
+            _channel?.Dispose();
+        }
+        catch (Exception)
+        {
+            // Best-effort during disposal; same known double-close bug as StopAsync.
+        }
+
         _shutdown.Dispose();
     }
 

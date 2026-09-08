@@ -347,7 +347,10 @@
                         one entertainment area, automatic room-shaped mapping from the area you already set up in the
                         Hue app -- this plugin never creates or edits lights, rooms, or entertainment areas itself.
                     </p>
-                    <div id="hueStatusLine" class="fieldDescription" aria-live="polite" style="margin:.5em 0"></div>
+                    <div style="display:flex;align-items:baseline;gap:.6em;flex-wrap:wrap;margin:.5em 0">
+                        <span id="hueStatusLine" class="fieldDescription" aria-live="polite"></span>
+                        <a href="#" id="hueUnlink" style="display:none">Unlink this bridge</a>
+                    </div>
                 </div>
 
                 <div class="verticalSection" id="huePairingSection">
@@ -384,6 +387,11 @@
                         <div class="fieldDescription">Now: <strong id="hueBrightnessValue"></strong>. A 1% minimum stays on underneath this while synchronised, even at a dark scene. <strong>Default: 100%.</strong></div>
                     </div>
 
+                    <div class="inputContainer">
+                        <input is="emby-input" id="hueResponsePercent" type="range" min="0" max="100" step="1" label="Ambilight response" />
+                        <div class="fieldDescription">Now: <strong id="hueResponseValue"></strong>. Reactive tracks a cut or a flash almost instantly, like an intense Ambilight; smooth eases colour into a new scene over a second or more so the lighting stays ambience rather than something that draws the eye away from the content. <strong>Default: balanced (50).</strong> Takes effect on the next reconnect (stop and resume playback), not mid-stream.</div>
+                    </div>
+
                     <div class="selectContainer">
                         <select is="emby-select" id="hueEndBehaviour" label="When playback stops">
                             <option value="0">Warm white, dim (15%, recommended)</option>
@@ -398,11 +406,6 @@
                         <span>Enable Hue Entertainment</span>
                     </label>
                     <div class="fieldDescription">Starts automatically when the bound TV plays, same as WLED. <strong>Default: off.</strong> Saved together with the rest of this page -- use the <strong>Save</strong> button at the very bottom.</div>
-
-                    <div style="margin-top:1.5em">
-                        <button is="emby-button" type="button" id="hueUnlink" class="raised">Unlink this bridge</button>
-                        <div class="fieldDescription">Forgets the stored credentials here. Does not change anything on the bridge itself.</div>
-                    </div>
                 </div>
             </div>
 

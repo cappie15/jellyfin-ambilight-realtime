@@ -239,13 +239,24 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// <summary>Display name of the selected entertainment configuration, shown on the settings page.</summary>
     public string HueEntertainmentConfigurationName { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Overall Hue brightness as a percentage, 1-100. The only colour-adjacent
-    /// control this integration exposes to the operator; the natural-light
-    /// filter's own smoothing parameters are internal and not user-facing.
-    /// </summary>
+    /// <summary>Overall Hue brightness as a percentage, 1-100.</summary>
     public int HueBrightnessPercent { get; set; } = 100;
 
     /// <summary>What the paired lights do once a synchronised session ends.</summary>
     public Core.Hue.HueEndBehaviour HueEndBehaviour { get; set; } = Core.Hue.HueEndBehaviour.WarmWhiteDim;
+
+    /// <summary>
+    /// How the Hue lights follow the picture, 0 (very reactive/intense) to
+    /// 100 (beautifully smooth), <c>50</c> by default. Scales
+    /// <see cref="Core.Hue.HueNaturalLightFilter"/>'s colour/brightness time
+    /// constants and its brightness rate clamp -- reactive means the lights
+    /// track a cut or a flash almost instantly, smooth means colour eases
+    /// into a new scene over a second or more so the lighting reads as
+    /// ambience rather than something competing for attention with the
+    /// content itself. Read once when a Hue connection is (re-)established,
+    /// like <see cref="SendWhiteChannel"/>'s own hardware-shaped settings --
+    /// restart Jellyfin (or reconnect: stop then resume playback) after
+    /// changing it for the new value to take effect.
+    /// </summary>
+    public int HueResponsePercent { get; set; } = 50;
 }

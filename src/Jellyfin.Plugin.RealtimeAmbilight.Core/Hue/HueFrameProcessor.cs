@@ -39,19 +39,21 @@ public sealed class HueFrameProcessor
     private readonly LogicalSamplingLayout _samplingLayout;
     private readonly int _samplingDepthPercent;
     private readonly IMonotonicTime _monotonicTime;
-    private readonly HueNaturalLightFilter _filter = new();
+    private readonly HueNaturalLightFilter _filter;
     private TimeSpan? _lastProcessedAt;
 
     public HueFrameProcessor(
         IMonotonicTime monotonicTime,
         Func<bool>? ignoreBlackBordersResolver = null,
         int samplingDepthPercent = EdgeSampler.DefaultDepthPercent,
-        LogicalSamplingLayout? samplingLayout = null)
+        LogicalSamplingLayout? samplingLayout = null,
+        int responsePercent = 50)
     {
         _monotonicTime = monotonicTime ?? throw new ArgumentNullException(nameof(monotonicTime));
         _ignoreBlackBordersResolver = ignoreBlackBordersResolver ?? (static () => true);
         _samplingDepthPercent = Math.Clamp(samplingDepthPercent, EdgeSampler.MinimumDepthPercent, EdgeSampler.MaximumDepthPercent);
         _samplingLayout = samplingLayout ?? DefaultSamplingLayout;
+        _filter = new HueNaturalLightFilter(responsePercent);
     }
 
     /// <param name="overallBrightnessFraction">The operator's overall Hue brightness control, 0-1.</param>

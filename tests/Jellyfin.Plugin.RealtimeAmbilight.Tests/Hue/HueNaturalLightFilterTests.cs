@@ -163,5 +163,35 @@ public class HueNaturalLightFilterTests
         Assert.True(freshChannel.Blue > freshChannel.Red);
     }
 
+    [Fact]
+    public void AMoreReactiveResponseFollowsANewTargetFasterThanASmootherOne()
+    {
+        var reactive = new HueNaturalLightFilter(responsePercent: 0);
+        var smooth = new HueNaturalLightFilter(responsePercent: 100);
+        reactive.Apply(0, new LinearRgb(0f, 0f, 0f), elapsedMilliseconds: 0);
+        smooth.Apply(0, new LinearRgb(0f, 0f, 0f), elapsedMilliseconds: 0);
+
+        var reactiveAfterOneFrame = reactive.Apply(0, new LinearRgb(1f, 1f, 1f), elapsedMilliseconds: 33);
+        var smoothAfterOneFrame = smooth.Apply(0, new LinearRgb(1f, 1f, 1f), elapsedMilliseconds: 33);
+
+        Assert.True(MaxComponent(reactiveAfterOneFrame) > MaxComponent(smoothAfterOneFrame));
+    }
+
+    [Fact]
+    public void ResponsePercentIsClampedToItsZeroToOneHundredRange()
+    {
+        // Out-of-range input (a stored value from before validation, or a
+        // bad manual edit of the configuration file) must not crash or
+        // silently extrapolate past the intended extremes.
+        var belowRange = new HueNaturalLightFilter(responsePercent: -50);
+        var aboveRange = new HueNaturalLightFilter(responsePercent: 500);
+
+        var belowResult = belowRange.Apply(0, new LinearRgb(1f, 1f, 1f), elapsedMilliseconds: 0);
+        var aboveResult = aboveRange.Apply(0, new LinearRgb(1f, 1f, 1f), elapsedMilliseconds: 0);
+
+        Assert.True(MaxComponent(belowResult) > 0.9f);
+        Assert.True(MaxComponent(aboveResult) > 0.9f);
+    }
+
     private static float MaxComponent(LinearRgb colour) => Math.Max(colour.Red, Math.Max(colour.Green, colour.Blue));
 }
