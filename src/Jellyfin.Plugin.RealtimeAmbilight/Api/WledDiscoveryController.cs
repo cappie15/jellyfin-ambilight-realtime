@@ -59,6 +59,32 @@ public sealed class WledDiscoveryController : ControllerBase
     {
         return Ok(await _discoveryService.DiscoverAsync(cancellationToken).ConfigureAwait(false));
     }
+
+    /// <summary>
+    /// Turns off WLED's "force max brightness" for realtime data, so the
+    /// operator need not log into WLED separately to fix it. The one WLED
+    /// write this plugin ever offers, and only once the operator has opted in;
+    /// the ABL power budget is never part of the request and this endpoint
+    /// cannot change it.
+    /// </summary>
+    [HttpPost("FixForceMaxBrightness")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> FixForceMaxBrightnessAsync([FromQuery] string host, [FromQuery] int port, CancellationToken cancellationToken)
+    {
+        if (Plugin.Instance?.Configuration.AllowWledControl != true)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "Turn on \"Allow this plugin to fix WLED settings\" first.");
+        }
+
+        var fixedIt = await _discoveryService
+            .TryDisableForceMaxBrightnessAsync(host, Math.Clamp(port, 1, ushort.MaxValue), cancellationToken)
+            .ConfigureAwait(false);
+        return fixedIt
+            ? NoContent()
+            : StatusCode(StatusCodes.Status502BadGateway, "WLED did not accept the change.");
+    }
 }
 
 /// <summary>
@@ -171,6 +197,7 @@ public sealed class CalibrationPreviewRequest
         return new PerimeterColourTuning(
             Value("BrightnessPercent"), Value("SaturationPercent"),
             Value("RedGainPercent"), Value("GreenGainPercent"), Value("BlueGainPercent"),
+            Value("BlackLevelFloorPercent", 0),
             WallColourHex, Value("WallColourCorrectionPercent"),
             Value("TopBrightnessPercent"), Value("TopRedGainPercent"), Value("TopGreenGainPercent"), Value("TopBlueGainPercent"),
             Value("RightBrightnessPercent"), Value("RightRedGainPercent"), Value("RightGreenGainPercent"), Value("RightBlueGainPercent"),

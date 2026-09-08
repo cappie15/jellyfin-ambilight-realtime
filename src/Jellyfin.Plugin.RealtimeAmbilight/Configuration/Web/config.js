@@ -4,7 +4,7 @@ export default function (view) {
     const sideTuningFields = sideNames.flatMap(side => ["brightness", "redGain", "greenGain", "blueGain"].map(field => `${side}${field[0].toUpperCase()}${field.slice(1)}Percent`));
     const colourTuningFields = [
         "brightnessPercent", "saturationPercent", "redGainPercent", "greenGainPercent", "blueGainPercent",
-        "wallColourCorrectionPercent", ...sideTuningFields
+        "blackLevelFloorPercent", "wallColourCorrectionPercent", ...sideTuningFields
     ];
     const numericFields = [
         "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond", "stopFadeMilliseconds",
@@ -16,12 +16,27 @@ export default function (view) {
         BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160, AnalysisFramesPerSecond: 30,
         SamplingDepthPercent: 10, BrightnessPercent: 100, SaturationPercent: 100,
         RedGainPercent: 100, GreenGainPercent: 100, BlueGainPercent: 100,
+        BlackLevelFloorPercent: 0,
         WallColourCorrectionPercent: 100,
         TopBrightnessPercent: 100, TopRedGainPercent: 100, TopGreenGainPercent: 100, TopBlueGainPercent: 100,
         RightBrightnessPercent: 100, RightRedGainPercent: 100, RightGreenGainPercent: 100, RightBlueGainPercent: 100,
         BottomBrightnessPercent: 100, BottomRedGainPercent: 100, BottomGreenGainPercent: 100, BottomBlueGainPercent: 100,
         LeftBrightnessPercent: 100, LeftRedGainPercent: 100, LeftGreenGainPercent: 100, LeftBlueGainPercent: 100
     };
+    const wallColourPresets = [
+        { label: "White — no correction", hex: "#ffffff" },
+        { label: "Off-white", hex: "#efe9df" },
+        { label: "Light grey", hex: "#b7b6b2" },
+        { label: "Warm grey (greige)", hex: "#a89f8f" },
+        { label: "Anthracite grey", hex: "#4b4c4c" },
+        { label: "Charcoal / almost black", hex: "#2b2b2b" },
+        { label: "Sand / beige", hex: "#d8c9a8" },
+        { label: "Taupe", hex: "#8a7866" },
+        { label: "Sage green", hex: "#8a9a83" },
+        { label: "Hunter / forest green", hex: "#33422f" },
+        { label: "Navy blue", hex: "#1f2c44" },
+        { label: "Terracotta", hex: "#b1583a" }
+    ];
     const ledCountFields = ["topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount"];
     let loadedConfig = null;
     let discoveredControllers = [];
@@ -44,6 +59,8 @@ export default function (view) {
         ["red", "green", "blue"].forEach(channel => {
             byId(`${channel}GainValue`).textContent = `${byId(`${channel}GainPercent`).value}%`;
         });
+        const blackFloor = Number(byId("blackLevelFloorPercent").value);
+        byId("blackLevelFloorValue").textContent = blackFloor === 0 ? "0% (off)" : `${blackFloor}%`;
         byId("wallColourCorrectionValue").textContent = `${byId("wallColourCorrectionPercent").value}%`;
         sideNames.forEach(side => {
             ["brightness", "redGain", "greenGain", "blueGain"].forEach(field => {
@@ -65,10 +82,44 @@ export default function (view) {
         }).join("");
     }
 
-    function arrangeSettingsSections() {
-        // Physical layout comes before colour calibration: a calibration cannot
-        // be meaningful until the plugin knows which LEDs belong to each edge.
-        byId("ledLayoutSection").closest(".verticalSection").after(byId("calibrationSection"));
+    function switchTab(tab) {
+        view.querySelectorAll(".raTab").forEach(button => {
+            button.setAttribute("aria-selected", String(button.dataset.tab === tab));
+        });
+        view.querySelectorAll(".raTabPanel").forEach(panel => {
+            panel.hidden = panel.dataset.tabPanel !== tab;
+        });
+        try {
+            window.localStorage.setItem("realtimeAmbilight.activeTab", tab);
+        } catch {
+            // Private browsing or disabled storage: the tab still switches, it
+            // just will not be remembered for next time.
+        }
+    }
+
+    function restoreLastTab() {
+        let saved = null;
+        try {
+            saved = window.localStorage.getItem("realtimeAmbilight.activeTab");
+        } catch {
+            saved = null;
+        }
+        const valid = [...view.querySelectorAll(".raTab")].some(button => button.dataset.tab === saved);
+        switchTab(valid ? saved : "tv");
+    }
+
+    function populateWallColourPresets() {
+        const select = byId("wallColourPreset");
+        select.textContent = "";
+        wallColourPresets.forEach(preset => select.add(new Option(preset.label, preset.hex)));
+        select.add(new Option("Custom…", "custom"));
+    }
+
+    function syncWallColourPresetFromHex(hex) {
+        const normalized = (hex || "#ffffff").toLowerCase();
+        const match = wallColourPresets.find(preset => preset.hex === normalized);
+        byId("wallColourPreset").value = match ? match.hex : "custom";
+        show("wallColourCustomContainer", !match);
     }
 
     function addRangeScales() {
@@ -346,20 +397,61 @@ export default function (view) {
         }
 
         const [hostName, hostPort] = host.split(":");
-        return { hostName, port: Number(hostPort) || Number(byId("wledHttpPort").value) || 80 };
+        // Keys here become query parameters: the controller binds "host" and
+        // "port" ([FromQuery]), so the object's own property names matter.
+        return { host: hostName, port: Number(hostPort) || Number(byId("wledHttpPort").value) || 80 };
     }
 
     // Ask the controller about the settings that silently override our output.
     function checkControllerSettings() {
         const connection = currentWledConnection();
+        const abl = byId("wledAblStatus");
         if (!connection) {
+            abl.textContent = "";
             return Promise.resolve();
         }
 
         return window.ApiClient
             .getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Settings", connection))
-            .then(settings => show("maxBrightnessWarning", Boolean(settings && settings.ForcesMaxBrightness)))
-            .catch(() => show("maxBrightnessWarning", false));
+            .then(settings => {
+                show("maxBrightnessWarning", Boolean(settings && settings.ForcesMaxBrightness));
+                const maxPower = settings?.MaxPowerMilliamps ?? settings?.maxPowerMilliamps;
+                abl.textContent = maxPower > 0
+                    ? `Power limit (ABL) on WLED: ${maxPower} mA — read-only, this plugin never changes it.`
+                    : "";
+            })
+            .catch(() => {
+                show("maxBrightnessWarning", false);
+                abl.textContent = "";
+            });
+    }
+
+    function fixForceMaxBrightness() {
+        const connection = currentWledConnection();
+        const status = byId("fixForceMaxBrightnessStatus");
+        if (!connection) {
+            return Promise.resolve();
+        }
+
+        byId("fixForceMaxBrightness").disabled = true;
+        status.textContent = "Turning it off…";
+        return window.ApiClient.ajax({
+            type: "POST",
+            url: window.ApiClient.getUrl("RealtimeAmbilight/Discovery/FixForceMaxBrightness", connection)
+        }).then(() => {
+            status.textContent = "Done. Checking WLED again…";
+            return checkControllerSettings();
+        }).then(() => {
+            if (byId("maxBrightnessWarning").style.display !== "none") {
+                status.textContent = "WLED still reports it as on; you may need to change it in WLED directly.";
+            } else {
+                status.textContent = "Fixed.";
+            }
+        }).catch(error => {
+            status.textContent = error?.status === 403
+                ? "Turn on \"Allow this plugin to fix WLED settings\" above, save, and try again."
+                : (error?.responseText || "WLED did not accept the change.");
+        }).finally(() => { byId("fixForceMaxBrightness").disabled = false; });
     }
 
     function checkControllerStatus() {
@@ -408,6 +500,10 @@ export default function (view) {
                 byId("ignoreBlackBorders").checked = config.IgnoreBlackBorders !== false;
                 byId("correctLedGamma").checked = config.CorrectLedGamma !== false;
                 byId("autoDetectLedGamma").checked = config.AutoDetectLedGamma !== false;
+                byId("allowWledControl").checked = config.AllowWledControl === true;
+                byId("allowWledControlSummary").textContent = config.AllowWledControl === true
+                    ? "This plugin may fix WLED settings for you."
+                    : "This plugin only reads WLED until you turn this on.";
                 numericFields.forEach(field => {
                     const key = fieldKey(field);
                     const value = field === "realtimeProtocol"
@@ -416,9 +512,11 @@ export default function (view) {
                     byId(field).value = value;
                 });
                 byId("wledHost").value = config.WledHost || "";
-                byId("wallColourHex").value = /^#[0-9a-f]{6}$/i.test(config.WallColourHex || "")
-                    ? config.WallColourHex
+                const wallColourHex = /^#[0-9a-f]{6}$/i.test(config.WallColourHex || "")
+                    ? config.WallColourHex.toLowerCase()
                     : "#ffffff";
+                byId("wallColourHex").value = wallColourHex;
+                syncWallColourPresetFromHex(wallColourHex);
                 selectAnalysisWidth(Math.max(16, Number(config.AnalysisWidth) || defaults.AnalysisWidth));
                 view.querySelectorAll('input[type="range"]').forEach(range => range.dispatchEvent(new Event("input")));
                 setDelayLabel();
@@ -453,6 +551,7 @@ export default function (view) {
             IgnoreBlackBorders: byId("ignoreBlackBorders").checked,
             CorrectLedGamma: byId("correctLedGamma").checked,
             AutoDetectLedGamma: byId("autoDetectLedGamma").checked,
+            AllowWledControl: byId("allowWledControl").checked,
             TargetDeviceId: byId("targetDeviceId").value,
             TargetDeviceName: targetDeviceName(),
             WledHost: hostName,
@@ -470,9 +569,11 @@ export default function (view) {
             .finally(() => Dashboard.hideLoadingMsg());
     }
 
-    arrangeSettingsSections();
+    populateWallColourPresets();
     createSideTuningCards();
     addRangeScales();
+    restoreLastTab();
+    view.querySelectorAll(".raTab").forEach(button => button.addEventListener("click", () => switchTab(button.dataset.tab)));
     view.addEventListener("viewshow", load);
     byId("realtimeAmbilightConfigurationForm").addEventListener("submit", save);
     byId("outputDelayMilliseconds").addEventListener("input", setDelayLabel);
@@ -518,4 +619,20 @@ export default function (view) {
     });
     byId("startCalibrationPreview").addEventListener("click", () => startCalibrationPreview());
     byId("stopCalibrationPreview").addEventListener("click", stopCalibrationPreview);
+    byId("wallColourPreset").addEventListener("change", () => {
+        const value = byId("wallColourPreset").value;
+        if (value === "custom") {
+            show("wallColourCustomContainer", true);
+        } else {
+            show("wallColourCustomContainer", false);
+            byId("wallColourHex").value = value;
+        }
+        refreshLiveCalibrationPreview();
+    });
+    byId("allowWledControl").addEventListener("change", () => {
+        byId("allowWledControlSummary").textContent = byId("allowWledControl").checked
+            ? "This plugin may fix WLED settings for you. Save to keep it that way."
+            : "This plugin only reads WLED until you turn this on.";
+    });
+    byId("fixForceMaxBrightness").addEventListener("click", fixForceMaxBrightness);
 }

@@ -295,6 +295,15 @@ public sealed class WledDiscoveryService
                     && liveRoot.TryGetProperty("maxbri", out var maxBrightness)
                     && maxBrightness.ValueKind == JsonValueKind.True;
 
+                // Shown read-only on the settings page. This plugin never writes
+                // it: it is the controller's own protection for the strip and
+                // power supply, and changing it from here is deliberately not offered.
+                var maxPowerMilliamps = root.TryGetProperty("led", out var led)
+                    && led.TryGetProperty("maxpwr", out var maxPower)
+                    && maxPower.TryGetInt32(out var parsedMaxPower)
+                        ? parsedMaxPower
+                        : 0;
+
                 var appliesGamma = !realtimeExempt && colourGamma > 1d;
                 _logger.LogInformation(
                     "WLED {Host} reports colour gamma {Gamma} and realtime gamma {RealtimeGamma}; sending {Encoding} values.",
@@ -312,7 +321,8 @@ public sealed class WledDiscoveryService
 
                 return new WledRealtimeSettings(
                     appliesGamma ? Rgb24Encoding.Bt709 : Rgb24Encoding.Linear,
-                    forcesMaxBrightness);
+                    forcesMaxBrightness,
+                    maxPowerMilliamps);
             }
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException
@@ -320,6 +330,55 @@ public sealed class WledDiscoveryService
         {
             _logger.LogWarning("Could not read the realtime settings from WLED {Host}; keeping the configured choice.", authority);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Turns off WLED's "force max brightness" for realtime data -- the one
+    /// WLED setting this plugin can write, and only when the operator has
+    /// opted in on the settings page. The request body names nothing else, so
+    /// it cannot touch the ABL power budget or any other WLED configuration
+    /// regardless of what else the operator has set on the controller.
+    /// </summary>
+    public async Task<bool> TryDisableForceMaxBrightnessAsync(string host, int port, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(host);
+        var authority = port == 80 ? host : string.Create(CultureInfo.InvariantCulture, $"{host}:{port}");
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(ProbeTimeout);
+
+            var client = _httpClientFactory.CreateClient();
+            // A fixed-length StringContent, not PostAsJsonAsync's streamed
+            // JsonContent: WLED's ESPAsyncWebServer rejects a chunked request
+            // body with 400 Bad Request, the same failure that once broke the
+            // realtime stop call (see the deleted IWledControlClient's history).
+            using var content = new StringContent(
+                """{"if":{"live":{"maxbri":false}}}""",
+                System.Text.Encoding.UTF8,
+                "application/json");
+            using var response = await client
+                .PostAsync(new Uri($"http://{authority}/json/cfg"), content, timeout.Token)
+                .ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "WLED {Host} rejected the request to turn off \"force max brightness\": {StatusCode}.",
+                    authority,
+                    response.StatusCode);
+                return false;
+            }
+
+            _logger.LogInformation("Turned off \"force max brightness\" on WLED {Host}.", authority);
+            return true;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or UriFormatException
+            || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            _logger.LogWarning(exception, "Could not reach WLED {Host} to turn off \"force max brightness\".", authority);
+            return false;
         }
     }
 
@@ -338,7 +397,7 @@ public sealed class WledDiscoveryService
 }
 
 /// <summary>Controller settings that change how realtime output looks.</summary>
-public sealed record WledRealtimeSettings(Rgb24Encoding Encoding, bool ForcesMaxBrightness);
+public sealed record WledRealtimeSettings(Rgb24Encoding Encoding, bool ForcesMaxBrightness, int MaxPowerMilliamps);
 
 /// <summary>Reachability and temporary realtime ownership reported by WLED.</summary>
 public sealed record WledControllerStatus(bool IsOnline, bool IsRealtimeActive)

@@ -460,6 +460,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
         return new PerimeterColourTuning(
             configuration.BrightnessPercent, configuration.SaturationPercent,
             configuration.RedGainPercent, configuration.GreenGainPercent, configuration.BlueGainPercent,
+            configuration.BlackLevelFloorPercent,
             configuration.WallColourHex, configuration.WallColourCorrectionPercent,
             configuration.TopBrightnessPercent, configuration.TopRedGainPercent, configuration.TopGreenGainPercent, configuration.TopBlueGainPercent,
             configuration.RightBrightnessPercent, configuration.RightRedGainPercent, configuration.RightGreenGainPercent, configuration.RightBlueGainPercent,

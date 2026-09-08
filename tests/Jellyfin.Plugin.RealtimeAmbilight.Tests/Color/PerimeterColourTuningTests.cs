@@ -37,6 +37,38 @@ public sealed class PerimeterColourTuningTests
     }
 
     [Fact]
+    public void BlackLevelFloorTurnsOffOnlyTheDarkestLeds()
+    {
+        var tuning = PerimeterColourTuning.Default with { BlackLevelFloorPercent = 5 };
+        var adjustment = tuning.ToAdjustment();
+        var layout = new LedLayout(1, 1, 1, 1);
+
+        var belowFloor = adjustment.Apply(new LinearRgb(0.02f, 0.02f, 0.02f), 0, layout);
+        Assert.Equal(0f, belowFloor.Red);
+        Assert.Equal(0f, belowFloor.Green);
+        Assert.Equal(0f, belowFloor.Blue);
+
+        var full = adjustment.Apply(new LinearRgb(1f, 1f, 1f), 0, layout);
+        Assert.Equal(1f, full.Red, 4);
+        Assert.Equal(1f, full.Green, 4);
+        Assert.Equal(1f, full.Blue, 4);
+    }
+
+    [Fact]
+    public void BlackLevelFloorPreservesHueAboveTheFloor()
+    {
+        var tuning = PerimeterColourTuning.Default with { BlackLevelFloorPercent = 5 };
+        var adjustment = tuning.ToAdjustment();
+        var layout = new LedLayout(1, 1, 1, 1);
+
+        var result = adjustment.Apply(new LinearRgb(0.5f, 0.25f, 0f), 0, layout);
+
+        Assert.True(result.Red > result.Green);
+        Assert.Equal(0f, result.Blue);
+        Assert.Equal(2f, result.Red / result.Green, 2);
+    }
+
+    [Fact]
     public void SideTrimOnlyChangesItsOwnPhysicalRun()
     {
         var tuning = PerimeterColourTuning.Default with { RightBlueGainPercent = 125 };

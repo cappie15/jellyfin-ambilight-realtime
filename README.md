@@ -148,20 +148,52 @@ handling take effect during operation.
 
 ### Room calibration
 
-The settings page has a short **Calibrate this room** flow for the two things
-that differ between installations: LED bins and the wall behind the television.
-First choose the wall's paint colour; the plugin applies a bounded inverse
-reflectance correction, so it adds a little of the primary that the wall absorbs
-most. It cannot make a very dark wall reflect light it does not have.
+The settings page is organised into four tabs -- **TV**, **WLED**, **Ambilight**
+and **Advanced** -- so the sliders that matter for calibration are not mixed in
+with connection and performance settings. The **Ambilight** tab has a short
+flow for the things that differ between installations: overall level, the wall
+behind the television, and each side on its own.
 
-For the precise pass, open the generated test-pattern link full-screen in the
-TV's browser and keep the Jellyfin dashboard on a phone or laptop. Pick one
-side and one reference colour (soft white, red, green or blue), then start the
-live preview. The plugin lights only that physical side through the regular
-realtime protocol while the TV shows the same colour at its edge. Adjust that
-side's brightness and RGB trims until the wall glow meets the on-screen edge;
-repeat for the four sides and save. The preview never writes WLED configuration,
-and real playback automatically takes priority over a forgotten preview.
+Global brightness, colour intensity and a **black level floor** live at the
+top: a picture edge darker than the floor drives that LED fully off instead of
+a dim, often colour-cast glow, rather than every dark scene keeping a faint
+wash of light around the whole room.
+
+Pick the wall's paint colour from a list of common presets (or choose
+"Custom…" for the exact colour with a picker); the plugin applies a bounded
+inverse reflectance correction, so it adds back a little of the primary the
+wall absorbs most. It cannot make a very dark wall reflect light it does not
+have.
+
+For the precise pass, open **Fine-tune each side** and generate a test-pattern
+link to open full-screen in the TV's browser, keeping the Jellyfin dashboard on
+a phone or laptop. Pick one side and one reference colour (soft white, red,
+green or blue), then start the live preview. The plugin lights only that
+physical side through the regular realtime protocol while the TV shows the
+same colour at its edge. Adjust that side's brightness and RGB trims until the
+wall glow meets the on-screen edge; repeat for the four sides and save. The
+preview never writes WLED configuration, and real playback automatically takes
+priority over a forgotten preview.
+
+Output is temporally dithered: WLED drives its LEDs straight from the byte
+value, and linear light gives the darkest tones the fewest of the 256
+available steps even though the eye resolves the most detail there, which
+otherwise reads as visible "steps" on a slow fade to black. The encoder carries
+each channel's rounding error into the next frame instead of discarding it, so
+the strip alternates between two adjacent byte values in the right proportion
+-- far above flicker fusion at any output rate this plugin uses -- instead of
+holding one brightness for several frames and then jumping to the next.
+
+### Controlling WLED from the plugin
+
+The **WLED** tab is read-only by default: the plugin only ever reads WLED's
+configuration to show its status and warn about settings that fight the
+Ambilight. Checking **"Allow this plugin to fix WLED settings"** lets it also
+turn off WLED's "force max brightness" for realtime data with one click,
+instead of requiring a separate login to WLED's own interface. This is the
+only WLED setting the plugin can write, and the request never names the ABL
+power budget (`maxpwr`) or anything else -- that value is only ever displayed,
+never changed by this plugin.
 
 ### Transports
 

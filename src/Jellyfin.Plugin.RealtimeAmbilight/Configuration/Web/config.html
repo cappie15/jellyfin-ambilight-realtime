@@ -1,231 +1,293 @@
 <div data-role="page" id="realtimeAmbilightConfigurationPage" class="page type-interior pluginConfigurationPage" data-controller="__plugin/RealtimeAmbilight.js">
+    <style>
+        #realtimeAmbilightConfigurationPage .raTabBar { display: flex; gap: .5em; flex-wrap: wrap; margin: 0 0 1.3em; }
+        #realtimeAmbilightConfigurationPage .raTab { padding: .6em 1.3em; border-radius: 1.7em; border: 1px solid rgba(127, 127, 127, .5); background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+        #realtimeAmbilightConfigurationPage .raTab[aria-selected="true"] { background: rgba(127, 127, 127, .22); border-color: currentColor; }
+        #realtimeAmbilightConfigurationPage .raTabPanel[hidden] { display: none; }
+    </style>
     <div class="content-primary">
         <div class="verticalSection">
             <h2 class="sectionTitle">Realtime Ambilight</h2>
             <p>Matches WLED to the picture while Jellyfin plays. WLED regains control when playback ends.</p>
         </div>
 
+        <div class="raTabBar" id="raTabBar" role="tablist">
+            <button type="button" class="raTab" data-tab="tv" role="tab">TV</button>
+            <button type="button" class="raTab" data-tab="wled" role="tab">WLED</button>
+            <button type="button" class="raTab" data-tab="ambilight" role="tab">Ambilight</button>
+            <button type="button" class="raTab" data-tab="advanced" role="tab">Advanced</button>
+        </div>
+
         <form id="realtimeAmbilightConfigurationForm">
 
-            <div class="verticalSection">
-                <h3 class="sectionTitle">1. Which TV do these LEDs belong to?</h3>
-                <div class="selectContainer">
-                    <select is="emby-select" id="targetDeviceId" label="Playback device"></select>
-                    <button is="emby-button" type="button" id="refreshDevices" class="raised" style="margin-top:.7em">Refresh list</button>
-                    <div class="fieldDescription">
-                        Only this device drives the LEDs. A new installation selects the most recently used device.
-                    </div>
-                    <div id="targetDeviceStatus" class="fieldDescription" aria-live="polite"></div>
-                </div>
-
-                <br />
-                <label class="checkboxContainer">
-                    <input is="emby-checkbox" id="enabled" type="checkbox" />
-                    <span>Enable Ambilight</span>
-                </label>
-                <div class="fieldDescription">Turns output off without losing settings. <strong>Default: on.</strong></div>
-            </div>
-
-            <div class="verticalSection">
-                <h3 class="sectionTitle">2. Which WLED controller?</h3>
-                <p class="fieldDescription">Finds WLED controllers on your network. Nothing is changed on WLED.</p>
-                <button is="emby-button" type="button" id="findWled" class="raised">Scan the network for WLED</button>
-
-                <div id="wledCandidatesContainer" class="selectContainer" style="display:none">
-                    <select is="emby-select" id="wledCandidates" label="Discovered WLED controller"></select>
-                    <div class="fieldDescription">The LED count helps identify the controller.</div>
-                </div>
-
-                <div id="manualWledContainer" style="display:none">
-                    <div class="inputContainer">
-                        <input is="emby-input" id="wledHost" type="text" label="WLED address" />
-                        <div class="fieldDescription">Use only when scanning finds nothing. Example: <code>10.0.0.8</code>.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <input is="emby-input" id="wledHttpPort" type="number" min="1" max="65535" label="WLED HTTP port" />
-                        <div class="fieldDescription">Only change this for a non-standard WLED web port. <strong>Default: 80.</strong></div>
-                    </div>
-                </div>
-                <div id="wledFinderStatus" class="fieldDescription" aria-live="polite"></div>
-                <div id="wledLiveStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em"></div>
-                <button is="emby-button" type="button" id="refreshWledStatus" class="raised">Refresh controller status</button>
-
-            </div>
-
-            <div class="verticalSection">
-                <h3 class="sectionTitle">3. Keeping the picture and the LEDs in step</h3>
-
-                <div class="inputContainer">
-                    <input is="emby-input" id="outputDelayMilliseconds" type="range" min="0" max="2000" step="25" label="LED delay" />
-                    <div class="fieldDescription">
-                        Currently set to: <strong id="outputDelayValue"></strong>.
-                        Raise this only when the LEDs visibly lead the picture. <strong>Default: 0 ms.</strong>
-                    </div>
-                </div>
-
-                <div class="inputContainer">
-                    <input is="emby-input" id="outputFramesPerSecond" type="number" min="1" max="60" label="LED updates per second" />
-                    <div class="fieldDescription">Higher is smoother but costs more CPU. <strong>Default: 30.</strong> Restart after changing.</div>
-                </div>
-
-                <label class="checkboxContainer">
-                    <input is="emby-checkbox" id="holdWhilePaused" type="checkbox" />
-                    <span>Hold the picture while paused</span>
-                </label>
-                <div class="fieldDescription">Keep the paused frame on the wall. <strong>Default: on.</strong></div>
-
-                <div class="inputContainer">
-                    <input is="emby-input" id="stopFadeMilliseconds" type="number" min="0" max="5000" step="50" label="Fade out on stop (ms)" />
-                    <div class="fieldDescription"><code>0</code> cuts immediately. <strong>Default: 250 ms.</strong></div>
-                </div>
-            </div>
-
-            <div class="verticalSection" id="calibrationSection">
-                <h3 class="sectionTitle">5. Color calibration</h3>
-                <p class="fieldDescription">Open the colourful reference image on the TV, then match its selected edge to the wall glow. Stop playback first.</p>
-                <div id="maxBrightnessWarning" class="fieldDescription" style="display:none;border-left:3px solid currentColor;padding-left:.8em;margin-bottom:1em"><strong>WLED forces maximum realtime brightness.</strong> Turn that off in WLED, or lower LED brightness here.</div>
-                <div style="display:flex;gap:2em;flex-wrap:wrap;align-items:flex-start">
-                    <div style="flex:1 1 20em;min-width:18em"><div class="inputContainer">
-                        <input is="emby-input" id="brightnessPercent" type="range" min="1" max="100" step="1" label="LED brightness" />
-                        <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. <strong>Default: 100%.</strong></div>
-                    </div></div>
-                    <div style="flex:1 1 20em;min-width:18em"><div class="inputContainer">
-                        <input is="emby-input" id="saturationPercent" type="range" min="50" max="200" step="5" label="Colour intensity" />
-                        <div class="fieldDescription">Now: <strong id="saturationValue"></strong>. <strong>Default: 100%.</strong></div>
-                    </div></div>
-                </div>
-                <div class="fieldDescription"><strong>Global white balance.</strong> Start at 100%; adjust only when every side has the same colour cast.</div>
-                <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
-                    <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="redGainPercent" type="range" min="50" max="150" step="1" label="Red" /><div class="fieldDescription">Now: <strong id="redGainValue"></strong></div></div></div>
-                    <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="greenGainPercent" type="range" min="50" max="150" step="1" label="Green" /><div class="fieldDescription">Now: <strong id="greenGainValue"></strong></div></div></div>
-                    <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="blueGainPercent" type="range" min="50" max="150" step="1" label="Blue" /><div class="fieldDescription">Now: <strong id="blueGainValue"></strong></div></div></div>
-                </div>
-                <div class="inputContainer">
-                    <input id="wallColourHex" type="color" value="#ffffff" aria-label="Wall colour" style="width:4.5em;height:2.6em;padding:.2em;vertical-align:middle" />
-                    <label for="wallColourHex" style="margin-left:.6em">Wall colour</label>
-                    <div class="fieldDescription">Choose the paint colour behind the TV. White means no correction.</div>
-                </div>
-                <div class="inputContainer">
-                    <input is="emby-input" id="wallColourCorrectionPercent" type="range" min="0" max="100" step="5" label="Wall correction" />
-                    <div class="fieldDescription">Now: <strong id="wallColourCorrectionValue"></strong>. <strong>Default: 100%.</strong></div>
-                </div>
-                <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-end">
-                    <div class="selectContainer" style="min-width:12em;flex:1 1 12em"><select is="emby-select" id="calibrationSide" label="Side"><option value="Top">Top</option><option value="Right">Right</option><option value="Bottom">Bottom</option><option value="Left">Left</option></select></div>
-                    <div class="selectContainer" style="min-width:12em;flex:1 1 12em"><select is="emby-select" id="calibrationColour" label="Reference colour"><option value="White">Soft white</option><option value="Red">Red</option><option value="Green">Green</option><option value="Blue">Blue</option></select></div>
-                </div>
-                <div class="inputContainer">
-                    <input is="emby-input" id="calibrationPatternUrl" type="text" readonly="readonly" label="Open this link on the TV" />
-                    <button is="emby-button" type="button" id="copyCalibrationUrl" class="raised">Copy link</button>
-                    <a is="emby-linkbutton" id="openCalibrationPattern" target="_blank" rel="noopener" style="margin-left:.7em">Open here</a>
-                </div>
-                <div style="display:flex;gap:.7em;flex-wrap:wrap"><button is="emby-button" type="button" id="startCalibrationPreview" class="raised">Start preview</button><button is="emby-button" type="button" id="stopCalibrationPreview" class="raised">Stop</button></div>
-                <div id="calibrationPreviewStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em">Choose a side and colour, then start the preview.</div>
-                <div class="fieldDescription" style="margin-top:1.2em"><strong>Side trims.</strong> Start at 100%. Adjust brightness or RGB until the glow matches the TV edge; save when finished.</div>
-                <div id="sideTuningCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16em,1fr));gap:1em;margin-top:.7em"></div>
-            </div>
-
-            <div class="verticalSection">
-                <details id="ledLayoutSection">
-                    <summary style="cursor:pointer;list-style:revert">
-                        <span class="sectionTitle" style="display:inline">4. How are the LEDs arranged around your TV?</span>
-                        <div class="fieldDescription" style="margin-top:.3em">Set once, then left alone. <strong id="ledLayoutSummary"></strong></div>
-                    </summary>
-                <div style="padding:.8em 0 0 1.25em">
-                <p class="fieldDescription">Count clockwise from top-left: top, right, bottom, left. Total must match the strip. Restart after changing.</p>
-                <div class="fieldDescription">Total: <strong id="ledTotalValue"></strong><span id="ledTotalCheck"></span></div>
-                <div style="max-width:34em;margin:1em auto 1.3em">
-                    <div id="ledLayoutDiagram" role="img" aria-label="16 by 9 TV LED layout" style="--sampling-inset:10%;position:relative;aspect-ratio:16/9;background:#111;border:3px solid #777;border-radius:.25em;overflow:hidden;color:#fff;font:600 12px system-ui,sans-serif;text-shadow:0 1px 2px #000">
-                        <div id="samplingArea" style="position:absolute;inset:var(--sampling-inset);border:1px dashed rgba(255,255,255,.75);box-shadow:0 0 0 100vmax rgba(234,142,26,.26);pointer-events:none"></div>
-                        <div id="topLedDiagramLabel" style="position:absolute;top:.45em;left:50%;transform:translateX(-50%);white-space:nowrap"></div>
-                        <div id="rightLedDiagramLabel" style="position:absolute;right:.45em;top:50%;transform:translateY(-50%);writing-mode:vertical-rl;white-space:nowrap"></div>
-                        <div id="bottomLedDiagramLabel" style="position:absolute;bottom:.45em;left:50%;transform:translateX(-50%);white-space:nowrap"></div>
-                        <div id="leftLedDiagramLabel" style="position:absolute;left:.45em;top:50%;transform:translateY(-50%) rotate(180deg);writing-mode:vertical-rl;white-space:nowrap"></div>
-                        <div style="position:absolute;inset:50% auto auto 50%;transform:translate(-50%,-50%);color:#bbb;text-align:center;font-weight:400;white-space:nowrap">16 : 9<br /><span id="samplingDiagramLabel"></span></div>
-                    </div>
-                    <div class="fieldDescription" style="text-align:center;margin-top:.5em">Orange is the sampled edge range.</div>
-                </div>
-                <div class="inputContainer">
-                    <input is="emby-input" id="topLedCount" type="number" min="1" label="LEDs along the top" />
-                    <div class="fieldDescription"><strong>Default: 265.</strong></div>
-                </div>
-                <div class="inputContainer">
-                    <input is="emby-input" id="rightLedCount" type="number" min="1" label="LEDs down the right side" />
-                    <div class="fieldDescription"><strong>Default: 150.</strong></div>
-                </div>
-                <div class="inputContainer">
-                    <input is="emby-input" id="bottomLedCount" type="number" min="1" label="LEDs along the bottom" />
-                    <div class="fieldDescription"><strong>Default: 266.</strong> It need not match the top: count what is actually there.</div>
-                </div>
-                <div class="inputContainer">
-                    <input is="emby-input" id="leftLedCount" type="number" min="1" label="LEDs up the left side" />
-                    <div class="fieldDescription"><strong>Default: 150.</strong> Together with the other three that makes 831 LEDs.</div>
-                </div>
-                </div>
-                </details>
-            </div>
-
-            <div class="verticalSection">
-                <details id="advancedPictureSettings">
-                    <summary style="cursor:pointer;list-style:revert"><span class="sectionTitle" style="display:inline">6. Advanced picture settings</span><div class="fieldDescription" style="margin-top:.3em">Optional: sampling, gamma and black bars.</div></summary>
-                <p class="fieldDescription" style="margin-top:1em">Leave these at their defaults unless you need lower CPU use or a different edge response.</p>
-
-                <div class="selectContainer">
-                    <select is="emby-select" id="realtimeProtocol" label="Realtime protocol">
-                        <option value="0">Automatic (recommended)</option>
-                        <option value="1">Hyperion Raw RGB</option>
-                        <option value="2">DDP</option>
-                    </select>
-                    <div class="fieldDescription">Automatic chooses the right protocol. Restart after changing.</div>
-                </div>
-
-                <div style="display:flex;gap:2em;flex-wrap:wrap;align-items:flex-start">
-                    <div style="flex:1 1 20em;min-width:18em">
-                        <div class="selectContainer">
-                            <select is="emby-select" id="analysisWidth" label="Sampling resolution">
-                                <option value="96">96 × 54 — lightest</option>
-                                <option value="128">128 × 72 — light</option>
-                                <option value="160">160 × 90 — recommended</option>
-                                <option value="240">240 × 135 — more detail</option>
-                                <option value="320">320 × 180 — high</option>
-                                <option value="480">480 × 270 — highest</option>
-                            </select>
-                            <div class="fieldDescription"><strong>Default: 160 × 90.</strong> Lower saves CPU; higher adds detail.</div>
+            <div class="raTabPanel" data-tab-panel="tv">
+                <div class="verticalSection">
+                    <h3 class="sectionTitle">Which TV do these LEDs belong to?</h3>
+                    <div class="selectContainer">
+                        <select is="emby-select" id="targetDeviceId" label="Playback device"></select>
+                        <button is="emby-button" type="button" id="refreshDevices" class="raised" style="margin-top:.7em">Refresh list</button>
+                        <div class="fieldDescription">
+                            Only this device drives the LEDs. A new installation selects the most recently used device.
                         </div>
+                        <div id="targetDeviceStatus" class="fieldDescription" aria-live="polite"></div>
                     </div>
-                    <div style="flex:1 1 20em;min-width:18em">
+
+                    <br />
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="enabled" type="checkbox" />
+                        <span>Enable Ambilight</span>
+                    </label>
+                    <div class="fieldDescription">Turns output off without losing settings. <strong>Default: on.</strong></div>
+                </div>
+            </div>
+
+            <div class="raTabPanel" data-tab-panel="wled" hidden>
+                <div class="verticalSection">
+                    <h3 class="sectionTitle">Which WLED controller?</h3>
+                    <p class="fieldDescription">Finds WLED controllers on your network.</p>
+                    <button is="emby-button" type="button" id="findWled" class="raised">Scan the network for WLED</button>
+
+                    <div id="wledCandidatesContainer" class="selectContainer" style="display:none">
+                        <select is="emby-select" id="wledCandidates" label="Discovered WLED controller"></select>
+                        <div class="fieldDescription">The LED count helps identify the controller.</div>
+                    </div>
+
+                    <div id="manualWledContainer" style="display:none">
                         <div class="inputContainer">
-                            <input is="emby-input" id="analysisFramesPerSecond" type="number" min="1" max="60" label="Sampling frames per second" />
-                            <div class="fieldDescription"><strong>Default: 30.</strong> Do not exceed the LED update rate.</div>
+                            <input is="emby-input" id="wledHost" type="text" label="WLED address" />
+                            <div class="fieldDescription">Use only when scanning finds nothing. Example: <code>10.0.0.8</code>.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <input is="emby-input" id="wledHttpPort" type="number" min="1" max="65535" label="WLED HTTP port" />
+                            <div class="fieldDescription">Only change this for a non-standard WLED web port. <strong>Default: 80.</strong></div>
+                        </div>
+                    </div>
+                    <div id="wledFinderStatus" class="fieldDescription" aria-live="polite"></div>
+                    <div id="wledLiveStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em"></div>
+                    <div id="wledAblStatus" class="fieldDescription"></div>
+                    <button is="emby-button" type="button" id="refreshWledStatus" class="raised">Refresh controller status</button>
+                </div>
+
+                <div class="verticalSection">
+                    <h3 class="sectionTitle">Controlling WLED from here</h3>
+                    <p class="fieldDescription">
+                        Normally this plugin only reads WLED, so it never needs a separate login. With the box below
+                        checked, it may also fix the one WLED setting that fights the sliders on the Ambilight tab.
+                        It will never touch the power limit (ABL) shown above — that stays whatever you set in WLED.
+                    </p>
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="allowWledControl" type="checkbox" />
+                        <span>Allow this plugin to fix WLED settings</span>
+                    </label>
+                    <div class="fieldDescription">Off by default. <strong id="allowWledControlSummary"></strong></div>
+                    <div id="maxBrightnessWarning" class="fieldDescription" style="display:none;border-left:3px solid currentColor;padding-left:.8em;margin-top:1em">
+                        <strong>WLED forces maximum realtime brightness.</strong> It ignores its own brightness slider while the Ambilight runs.
+                        <div style="margin-top:.6em">
+                            <button is="emby-button" type="button" id="fixForceMaxBrightness" class="raised">Turn it off in WLED</button>
+                            <span id="fixForceMaxBrightnessStatus" class="fieldDescription" aria-live="polite"></span>
                         </div>
                     </div>
                 </div>
 
-                <div class="fieldDescription">Analysis size: <strong id="analysisSizeValue"></strong></div>
+                <div class="verticalSection">
+                    <details id="ledLayoutSection">
+                        <summary style="cursor:pointer;list-style:revert">
+                            <span class="sectionTitle" style="display:inline">How are the LEDs arranged around your TV?</span>
+                            <div class="fieldDescription" style="margin-top:.3em">Set once, then left alone. <strong id="ledLayoutSummary"></strong></div>
+                        </summary>
+                    <div style="padding:.8em 0 0 1.25em">
+                    <p class="fieldDescription">Count clockwise from top-left: top, right, bottom, left. Total must match the strip. Restart after changing.</p>
+                    <div class="fieldDescription">Total: <strong id="ledTotalValue"></strong><span id="ledTotalCheck"></span></div>
+                    <div style="max-width:34em;margin:1em auto 1.3em">
+                        <div id="ledLayoutDiagram" role="img" aria-label="16 by 9 TV LED layout" style="--sampling-inset:10%;position:relative;aspect-ratio:16/9;background:#111;border:3px solid #777;border-radius:.25em;overflow:hidden;color:#fff;font:600 12px system-ui,sans-serif;text-shadow:0 1px 2px #000">
+                            <div id="samplingArea" style="position:absolute;inset:var(--sampling-inset);border:1px dashed rgba(255,255,255,.75);box-shadow:0 0 0 100vmax rgba(234,142,26,.26);pointer-events:none"></div>
+                            <div id="topLedDiagramLabel" style="position:absolute;top:.45em;left:50%;transform:translateX(-50%);white-space:nowrap"></div>
+                            <div id="rightLedDiagramLabel" style="position:absolute;right:.45em;top:50%;transform:translateY(-50%);writing-mode:vertical-rl;white-space:nowrap"></div>
+                            <div id="bottomLedDiagramLabel" style="position:absolute;bottom:.45em;left:50%;transform:translateX(-50%);white-space:nowrap"></div>
+                            <div id="leftLedDiagramLabel" style="position:absolute;left:.45em;top:50%;transform:translateY(-50%) rotate(180deg);writing-mode:vertical-rl;white-space:nowrap"></div>
+                            <div style="position:absolute;inset:50% auto auto 50%;transform:translate(-50%,-50%);color:#bbb;text-align:center;font-weight:400;white-space:nowrap">16 : 9<br /><span id="samplingDiagramLabel"></span></div>
+                        </div>
+                        <div class="fieldDescription" style="text-align:center;margin-top:.5em">Orange is the sampled edge range.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" id="topLedCount" type="number" min="1" label="LEDs along the top" />
+                        <div class="fieldDescription"><strong>Default: 265.</strong></div>
+                    </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" id="rightLedCount" type="number" min="1" label="LEDs down the right side" />
+                        <div class="fieldDescription"><strong>Default: 150.</strong></div>
+                    </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" id="bottomLedCount" type="number" min="1" label="LEDs along the bottom" />
+                        <div class="fieldDescription"><strong>Default: 266.</strong> It need not match the top: count what is actually there.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" id="leftLedCount" type="number" min="1" label="LEDs up the left side" />
+                        <div class="fieldDescription"><strong>Default: 150.</strong> Together with the other three that makes 831 LEDs.</div>
+                    </div>
+                    </div>
+                    </details>
+                </div>
+            </div>
 
-                <br />
-                <div class="inputContainer">
-                    <input is="emby-input" id="samplingDepthPercent" type="range" min="1" max="30" step="1" label="Sampling edge range" />
-                    <div class="fieldDescription">Now: <strong id="samplingDepthValue"></strong>. Lower is more literal; higher is calmer. <strong>Default: 10%.</strong></div>
+            <div class="raTabPanel" data-tab-panel="ambilight" hidden>
+                <div class="verticalSection" id="calibrationSection">
+                    <h3 class="sectionTitle">Color calibration</h3>
+                    <p class="fieldDescription">Start with the picture as recorded, then adjust only what this room needs: overall level, the wall behind the TV, and — if you want to go further — each side on its own.</p>
+
+                    <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
+                        <div style="flex:1 1 16em;min-width:14em"><div class="inputContainer">
+                            <input is="emby-input" id="brightnessPercent" type="range" min="1" max="100" step="1" label="LED brightness" />
+                            <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. <strong>Default: 100%.</strong></div>
+                        </div></div>
+                        <div style="flex:1 1 16em;min-width:14em"><div class="inputContainer">
+                            <input is="emby-input" id="saturationPercent" type="range" min="50" max="200" step="5" label="Colour intensity" />
+                            <div class="fieldDescription">Now: <strong id="saturationValue"></strong>. <strong>Default: 100%.</strong></div>
+                        </div></div>
+                        <div style="flex:1 1 16em;min-width:14em"><div class="inputContainer">
+                            <input is="emby-input" id="blackLevelFloorPercent" type="range" min="0" max="20" step="1" label="Black level floor" />
+                            <div class="fieldDescription">Now: <strong id="blackLevelFloorValue"></strong>. Picture edges darker than this go fully off instead of glowing dim. <strong>Default: 0% (off).</strong></div>
+                        </div></div>
+                    </div>
+
+                    <div class="fieldDescription" style="margin-top:.5em"><strong>Global white balance.</strong> Start at 100%; adjust only when every side has the same colour cast.</div>
+                    <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
+                        <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="redGainPercent" type="range" min="50" max="150" step="1" label="Red" /><div class="fieldDescription">Now: <strong id="redGainValue"></strong></div></div></div>
+                        <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="greenGainPercent" type="range" min="50" max="150" step="1" label="Green" /><div class="fieldDescription">Now: <strong id="greenGainValue"></strong></div></div></div>
+                        <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="blueGainPercent" type="range" min="50" max="150" step="1" label="Blue" /><div class="fieldDescription">Now: <strong id="blueGainValue"></strong></div></div></div>
+                    </div>
+
+                    <div class="fieldDescription" style="margin-top:1em"><strong>Wall behind the TV.</strong> A coloured wall absorbs one primary colour more than the others; this adds a little of it back, within what the LEDs can do.</div>
+                    <div class="selectContainer" style="max-width:24em">
+                        <select is="emby-select" id="wallColourPreset" label="Wall colour"></select>
+                        <div class="fieldDescription">Pick the closest match, or "Custom…" to match the exact paint colour.</div>
+                    </div>
+                    <div id="wallColourCustomContainer" class="inputContainer" style="display:none">
+                        <input id="wallColourHex" type="color" value="#ffffff" aria-label="Custom wall colour" style="width:4.5em;height:2.6em;padding:.2em;vertical-align:middle" />
+                        <label for="wallColourHex" style="margin-left:.6em">Exact wall colour</label>
+                    </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" id="wallColourCorrectionPercent" type="range" min="0" max="100" step="5" label="Wall correction strength" />
+                        <div class="fieldDescription">Now: <strong id="wallColourCorrectionValue"></strong>. <strong>Default: 100%.</strong></div>
+                    </div>
+
+                    <div style="margin-top:1.3em">
+                    <details id="perSideFineTuning">
+                        <summary style="cursor:pointer;list-style:revert">
+                            <span class="sectionTitle" style="display:inline">Fine-tune each side (optional)</span>
+                            <div class="fieldDescription" style="margin-top:.3em">Open a live reference on the TV and match each edge by eye.</div>
+                        </summary>
+                        <div style="padding:.8em 0 0 1.25em">
+                        <p class="fieldDescription">Open the reference link full-screen in the TV's own browser, keep this page on a phone or laptop, then start the preview. Stop playback first: real video always takes priority.</p>
+                        <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-end">
+                            <div class="selectContainer" style="min-width:12em;flex:1 1 12em"><select is="emby-select" id="calibrationSide" label="Side"><option value="Top">Top</option><option value="Right">Right</option><option value="Bottom">Bottom</option><option value="Left">Left</option></select></div>
+                            <div class="selectContainer" style="min-width:12em;flex:1 1 12em"><select is="emby-select" id="calibrationColour" label="Reference colour"><option value="White">Soft white</option><option value="Red">Red</option><option value="Green">Green</option><option value="Blue">Blue</option></select></div>
+                        </div>
+                        <div class="inputContainer">
+                            <input is="emby-input" id="calibrationPatternUrl" type="text" readonly="readonly" label="Open this link on the TV" />
+                            <button is="emby-button" type="button" id="copyCalibrationUrl" class="raised">Copy link</button>
+                            <a is="emby-linkbutton" id="openCalibrationPattern" target="_blank" rel="noopener" style="margin-left:.7em">Open here</a>
+                        </div>
+                        <div style="display:flex;gap:.7em;flex-wrap:wrap"><button is="emby-button" type="button" id="startCalibrationPreview" class="raised">Start preview</button><button is="emby-button" type="button" id="stopCalibrationPreview" class="raised">Stop</button></div>
+                        <div id="calibrationPreviewStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em">Choose a side and colour, then start the preview.</div>
+                        <div class="fieldDescription" style="margin-top:1.2em"><strong>Side trims.</strong> Start at 100%. Adjust brightness or RGB until the glow matches the TV edge; save when finished.</div>
+                        <div id="sideTuningCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16em,1fr));gap:1em;margin-top:.7em"></div>
+                        </div>
+                    </details>
+                    </div>
+                </div>
+            </div>
+
+            <div class="raTabPanel" data-tab-panel="advanced" hidden>
+                <div class="verticalSection">
+                    <h3 class="sectionTitle">Keeping the picture and the LEDs in step</h3>
+
+                    <div class="inputContainer">
+                        <input is="emby-input" id="outputDelayMilliseconds" type="range" min="0" max="2000" step="25" label="LED delay" />
+                        <div class="fieldDescription">
+                            Currently set to: <strong id="outputDelayValue"></strong>.
+                            Raise this only when the LEDs visibly lead the picture. <strong>Default: 0 ms.</strong>
+                        </div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <input is="emby-input" id="outputFramesPerSecond" type="number" min="1" max="60" label="LED updates per second" />
+                        <div class="fieldDescription">Higher is smoother but costs more CPU. <strong>Default: 30.</strong> Restart after changing.</div>
+                    </div>
+
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="holdWhilePaused" type="checkbox" />
+                        <span>Hold the picture while paused</span>
+                    </label>
+                    <div class="fieldDescription">Keep the paused frame on the wall. <strong>Default: on.</strong></div>
+
+                    <div class="inputContainer">
+                        <input is="emby-input" id="stopFadeMilliseconds" type="number" min="0" max="5000" step="50" label="Fade out on stop (ms)" />
+                        <div class="fieldDescription"><code>0</code> cuts immediately. <strong>Default: 250 ms.</strong></div>
+                    </div>
                 </div>
 
-                <label class="checkboxContainer">
-                    <input is="emby-checkbox" id="autoDetectLedGamma" type="checkbox" />
-                    <span>Match LED brightness to the picture, read from the controller</span>
-                </label>
-                <div class="fieldDescription">Uses the gamma setting reported by WLED. <strong>Default: on.</strong></div>
+                <div class="verticalSection">
+                    <h3 class="sectionTitle">Advanced picture settings</h3>
+                    <p class="fieldDescription">Leave these at their defaults unless you need lower CPU use or a different edge response.</p>
 
-                <label class="checkboxContainer">
-                    <input is="emby-checkbox" id="correctLedGamma" type="checkbox" />
-                    <span>Correct brightness manually</span>
-                </label>
-                <div class="fieldDescription">Used when automatic detection is unavailable. <strong>Default: on.</strong></div>
+                    <div class="selectContainer">
+                        <select is="emby-select" id="realtimeProtocol" label="Realtime protocol">
+                            <option value="0">Automatic (recommended)</option>
+                            <option value="1">Hyperion Raw RGB</option>
+                            <option value="2">DDP</option>
+                        </select>
+                        <div class="fieldDescription">Automatic chooses the right protocol. Restart after changing.</div>
+                    </div>
 
-                <label class="checkboxContainer">
-                    <input is="emby-checkbox" id="ignoreBlackBorders" type="checkbox" />
-                    <span>Ignore black borders</span>
-                </label>
-                <div class="fieldDescription">Prevents wide-screen black bars from turning the LEDs off. <strong>Default: on.</strong></div>
-                </details>
+                    <div style="display:flex;gap:2em;flex-wrap:wrap;align-items:flex-start">
+                        <div style="flex:1 1 20em;min-width:18em">
+                            <div class="selectContainer">
+                                <select is="emby-select" id="analysisWidth" label="Sampling resolution">
+                                    <option value="96">96 × 54 — lightest</option>
+                                    <option value="128">128 × 72 — light</option>
+                                    <option value="160">160 × 90 — recommended</option>
+                                    <option value="240">240 × 135 — more detail</option>
+                                    <option value="320">320 × 180 — high</option>
+                                    <option value="480">480 × 270 — highest</option>
+                                </select>
+                                <div class="fieldDescription"><strong>Default: 160 × 90.</strong> Lower saves CPU; higher adds detail.</div>
+                            </div>
+                        </div>
+                        <div style="flex:1 1 20em;min-width:18em">
+                            <div class="inputContainer">
+                                <input is="emby-input" id="analysisFramesPerSecond" type="number" min="1" max="60" label="Sampling frames per second" />
+                                <div class="fieldDescription"><strong>Default: 30.</strong> Do not exceed the LED update rate.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="fieldDescription">Analysis size: <strong id="analysisSizeValue"></strong></div>
+
+                    <br />
+                    <div class="inputContainer">
+                        <input is="emby-input" id="samplingDepthPercent" type="range" min="1" max="30" step="1" label="Sampling edge range" />
+                        <div class="fieldDescription">Now: <strong id="samplingDepthValue"></strong>. Lower is more literal; higher is calmer. <strong>Default: 10%.</strong></div>
+                    </div>
+
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="autoDetectLedGamma" type="checkbox" />
+                        <span>Match LED brightness to the picture, read from the controller</span>
+                    </label>
+                    <div class="fieldDescription">Uses the gamma setting reported by WLED. <strong>Default: on.</strong></div>
+
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="correctLedGamma" type="checkbox" />
+                        <span>Correct brightness manually</span>
+                    </label>
+                    <div class="fieldDescription">Used when automatic detection is unavailable. <strong>Default: on.</strong></div>
+
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="ignoreBlackBorders" type="checkbox" />
+                        <span>Ignore black borders</span>
+                    </label>
+                    <div class="fieldDescription">Prevents wide-screen black bars from turning the LEDs off. <strong>Default: on.</strong></div>
+                </div>
             </div>
 
             <div class="verticalSection">

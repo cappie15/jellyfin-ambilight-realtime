@@ -11,6 +11,7 @@ public readonly record struct PerimeterColourTuning(
     int RedGainPercent,
     int GreenGainPercent,
     int BlueGainPercent,
+    int BlackLevelFloorPercent,
     string? WallColourHex,
     int WallColourCorrectionPercent,
     int TopBrightnessPercent,
@@ -31,7 +32,7 @@ public readonly record struct PerimeterColourTuning(
     int LeftBlueGainPercent)
 {
     public static PerimeterColourTuning Default => new(
-        100, 100, 100, 100, 100, "#ffffff", 100,
+        100, 100, 100, 100, 100, 0, "#ffffff", 100,
         100, 100, 100, 100,
         100, 100, 100, 100,
         100, 100, 100, 100,
@@ -52,7 +53,8 @@ public readonly record struct PerimeterColourTuning(
             Side(TopBrightnessPercent, TopRedGainPercent, TopGreenGainPercent, TopBlueGainPercent),
             Side(RightBrightnessPercent, RightRedGainPercent, RightGreenGainPercent, RightBlueGainPercent),
             Side(BottomBrightnessPercent, BottomRedGainPercent, BottomGreenGainPercent, BottomBlueGainPercent),
-            Side(LeftBrightnessPercent, LeftRedGainPercent, LeftGreenGainPercent, LeftBlueGainPercent));
+            Side(LeftBrightnessPercent, LeftRedGainPercent, LeftGreenGainPercent, LeftBlueGainPercent),
+            Math.Clamp(BlackLevelFloorPercent, 0, 20) / 100f);
     }
 
     private static ColourAdjustment Side(int brightness, int red, int green, int blue)

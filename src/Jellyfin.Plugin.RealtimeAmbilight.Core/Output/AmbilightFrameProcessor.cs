@@ -17,6 +17,7 @@ public sealed class AmbilightFrameProcessor
     private readonly int _samplingDepthPercent;
     private readonly Func<Rgb24Encoding> _encodingResolver;
     private readonly Func<PerimeterColourAdjustment> _adjustmentResolver;
+    private readonly DitheredRgb24Encoder _encoder = new();
 
     public AmbilightFrameProcessor(
         LedLayout physicalLayout,
@@ -60,6 +61,6 @@ public sealed class AmbilightFrameProcessor
             }
         }
 
-        return Rgb24Encoder.Encode(physicalFrame, _encodingResolver());
+        return _encoder.Encode(physicalFrame, _encodingResolver());
     }
 }

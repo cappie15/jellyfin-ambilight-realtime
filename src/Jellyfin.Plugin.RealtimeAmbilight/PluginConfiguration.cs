@@ -114,6 +114,12 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public int BlueGainPercent { get; set; } = 100;
 
     /// <summary>
+    /// Below this fraction of picture-edge luminance, a physical LED is driven
+    /// fully off instead of a dim, often colour-cast glow. Zero disables it.
+    /// </summary>
+    public int BlackLevelFloorPercent { get; set; }
+
+    /// <summary>
     /// The apparent paint colour behind the television. A white value means no
     /// correction; a coloured value lets the renderer counter its reflectance
     /// as far as the LEDs' headroom permits.
@@ -171,4 +177,14 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public int AnalysisHeight { get; set; } = 90;
 
     public int AnalysisFramesPerSecond { get; set; } = 30;
+
+    /// <summary>
+    /// Lets the settings page write the one WLED setting it can fix directly
+    /// (turning off "force max brightness" for realtime data), instead of
+    /// requiring a separate login to WLED's own interface. Off by default: the
+    /// plugin only ever reads WLED's configuration until an operator opts in.
+    /// This never extends to the ABL power budget, which the settings page
+    /// only ever displays.
+    /// </summary>
+    public bool AllowWledControl { get; set; }
 }

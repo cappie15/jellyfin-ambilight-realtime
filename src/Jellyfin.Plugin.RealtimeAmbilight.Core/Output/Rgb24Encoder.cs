@@ -51,14 +51,24 @@ public static class Rgb24Encoder
         return rgb24;
     }
 
-    private static byte EncodeComponent(float linearComponent, Rgb24Encoding encoding)
+    /// <summary>
+    /// The transfer function alone, as a fraction of full scale. Shared with
+    /// <see cref="DitheredRgb24Encoder"/>, which needs the pre-quantization
+    /// value rather than the rounded byte.
+    /// </summary>
+    public static float ToTransferValue(float linearComponent, Rgb24Encoding encoding)
     {
         var linear = Math.Clamp(linearComponent, 0f, 1f);
-        var value = encoding == Rgb24Encoding.Linear
+        return encoding == Rgb24Encoding.Linear
             ? linear
             : linear < 0.018f
                 ? linear * 4.5f
                 : (1.099f * MathF.Pow(linear, 0.45f)) - 0.099f;
+    }
+
+    private static byte EncodeComponent(float linearComponent, Rgb24Encoding encoding)
+    {
+        var value = ToTransferValue(linearComponent, encoding);
         return checked((byte)Math.Clamp((int)MathF.Round(value * byte.MaxValue), byte.MinValue, byte.MaxValue));
     }
 }

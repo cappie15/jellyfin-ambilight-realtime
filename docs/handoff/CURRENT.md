@@ -2,10 +2,19 @@
 
 ## Last known commit and worktree
 
-`main` is at `428088f` and pushed to `origin/main`; the worktree is clean. The
-earlier note that `.git` was read-only no longer holds -- it is writable, and
-nineteen commits from `16b02fa` onwards carry the whole implementation, the
-CI workflow, the packaging script and this handover.
+`main` is at `87abe1a` and pushed to `origin/main` (as of 2026-09-08); the
+worktree carries further **uncommitted** work described below (tabbed
+settings page, black level floor, temporal dithering, wall colour presets,
+guarded WLED control). The earlier note that `.git` was read-only no longer
+holds -- it is writable, and commits from `16b02fa` onwards carry the whole
+implementation, the CI workflow, the packaging script and this handover.
+
+This dev environment *is* the live host (`10.0.0.31`), not a separate box --
+no SSH/remote hop is needed, only `sudo`. A prior session left the repo
+working tree (including `.git`) owned by `root`; if `git`/`dotnet` commands
+fail with permission errors, `sudo chown -R <user> /opt/dev/jellyfin-ambilight-realtime`
+first, and use fresh `DOTNET_CLI_HOME`/`NUGET_PACKAGES` tmp dirs rather than
+reusing ones a different user created.
 
 Pushing needs the `workflow` OAuth scope because the repository contains
 `.github/workflows/ci.yml`; the operator granted it with
@@ -23,6 +32,78 @@ record the exact validation commands/results and all uncommitted work so another
 engineer can continue without relying on chat history.
 
 ## Build and test status
+
+**PASS (2026-09-08, settings-page redesign and calibration follow-ups).**
+
+```bash
+DOTNET_CLI_HOME=/tmp/jfar2-dotnet-cli \
+NUGET_PACKAGES=/tmp/jfar2-nuget-packages \
+dotnet build src/Jellyfin.Plugin.RealtimeAmbilight/Jellyfin.Plugin.RealtimeAmbilight.csproj \
+    --configuration Release --no-incremental -p:UseSharedCompilation=false
+
+DOTNET_ROLL_FORWARD=Major dotnet test \
+tests/Jellyfin.Plugin.RealtimeAmbilight.Tests/Jellyfin.Plugin.RealtimeAmbilight.Tests.csproj \
+    --configuration Release --no-restore -p:UseSharedCompilation=false
+```
+
+Zero warnings/errors; test suite **80/80**. Deployed to the live host and
+verified: plugin loads, config page returns 200, `maxpwr` unchanged. This
+round was driven by direct operator feedback on the room-calibration UI from
+the previous session:
+
+- **Settings page reorganised into four tabs** (TV / WLED / Ambilight /
+  Advanced), hand-rolled (no dependency on Jellyfin's own tab widget, which
+  is not guaranteed present in a bare plugin config page), with the active
+  tab remembered in `localStorage`. The old numbered-section scheme and the
+  `arrangeSettingsSections()` DOM-reordering hack are gone; each element now
+  lives directly under its tab in source order.
+- **Black level floor** (`BlackLevelFloorPercent`, 0-20%, default 0):
+  `PerimeterColourAdjustment.Apply` gates on the sampled pixel's own
+  luminance *before* any brightness/saturation/gain, rescaling the headroom
+  above the floor back to full range so there is no jump at the boundary and
+  hue/saturation survive the fade to black. Applied globally, not per side.
+- **Temporal dithering** (`DitheredRgb24Encoder`, wired into
+  `AmbilightFrameProcessor`, replacing the static `Rgb24Encoder.Encode` call):
+  carries each channel's rounding error into the next output frame. This is
+  the fix for the reported "hobbyist-looking steps" on light-to-dark
+  transitions -- not a WLED setting, root cause was linear-light 8-bit giving
+  the darkest tones (where the eye is most sensitive) the fewest of the 256
+  available steps, so a slow fade held one byte value for several frames and
+  then jumped. See `Rgb24Encoder.ToTransferValue` (extracted, shared by both
+  encoders) and the dithering tests for the exact behaviour.
+- **Wall colour presets**: a curated list of common paint colours (greys,
+  greige, anthracite, sage/hunter green, navy, terracotta, ...) in a
+  dropdown, with "Custom…" at the end revealing the exact-colour picker only
+  then. Values are approximate sRGB guesses, not tied to a specific paint
+  brand.
+- **Guarded WLED control**: `AllowWledControl` (default **off**) gates a new
+  `POST RealtimeAmbilight/Discovery/FixForceMaxBrightness`
+  (`WledDiscoveryService.TryDisableForceMaxBrightnessAsync`) that writes
+  *only* `{"if":{"live":{"maxbri":false}}}` to WLED's `/json/cfg` -- nothing
+  else is ever in that payload, so it structurally cannot touch the ABL power
+  budget (`led.maxpwr`). The uses a fixed-length `StringContent`, not
+  `PostAsJsonAsync`, for the same chunked-encoding reason the old realtime
+  stop call once failed (see the HDR/colour history below). `maxpwr` is now
+  also parsed and displayed read-only on the WLED tab
+  (`WledRealtimeSettings.MaxPowerMilliamps`). This was verified live: the
+  configured WLED already had `if.live.maxbri: false` and `led.maxpwr: 40000`
+  before and after, and the write path itself was **not exercised against the
+  live controller this session** -- there was nothing to fix, and flipping a
+  live safety setting just to test it was avoided. Exercise it for real the
+  next time a WLED reset or reconfiguration turns "force max brightness" back
+  on.
+- **Bug fix, found while wiring the above**: `currentWledConnection()` in
+  `config.js` returned `{ hostName, port }`, but
+  `WledDiscoveryController`'s `[FromQuery] string host` binds on `host`. Every
+  call built from it (`Discovery/Settings`, `Discovery/Status`, and now
+  `Discovery/FixForceMaxBrightness`) was therefore silently sending no host at
+  all. This shipped in the previous session's calibration commit and was
+  never caught because that work was validated at the HTTP/backend layer, not
+  by exercising the actual settings-page JavaScript in a browser. Fixed by
+  renaming the returned key to `host`. **This is exactly the risk the
+  "verify a deployment by grepping the built assembly" rule doesn't cover: a
+  frontend/backend contract mismatch needs the page actually clicked through
+  in a browser, which has still not been done this session.**
 
 **PASS (2026-09-06, room-calibration worktree changes).**
 
@@ -545,27 +626,35 @@ A warning appears above the brightness slider when the controller reports
 
 ## Next actions (ordered)
 
-1. **Finish the colour calibration.** Brightness, colour intensity and white
+1. **Actually click through the redesigned settings page in a browser.**
+   Everything in the 2026-09-08 entry above was verified at the HTTP/backend
+   layer and by static ID cross-checks, not by loading the page and using it
+   -- which is exactly how the `hostName`/`host` mismatch shipped undetected
+   last time. Check all four tabs render, the wall colour preset dropdown
+   populates and round-trips through save/load, the black level floor slider
+   updates its live preview, and (only if there's a reason to, since it
+   writes to the real controller) the "Turn it off in WLED" button.
+2. **Finish the colour calibration.** Brightness, colour intensity and white
    balance are all at 100% and the operator finds that too bright on this
-   installation. Put candidates on the strip one reel at a time, take the
-   operator's choice, and write it into the configuration.
-2. Decide whether a warm **tint** is wanted. A gain cannot add red to a pure
+   installation. Use the per-side preview flow to pick real values and save
+   them.
+3. Decide whether a warm **tint** is wanted. A gain cannot add red to a pure
    blue sky; only a tint can, and it deviates from the picture. Not implemented
    pending that decision.
-3. Run a full TV checklist while tailing the log: start, pause, resume, seek and
+4. Run a full TV checklist while tailing the log: start, pause, resume, seek and
    stop, on SD, HD and HDR. Confirm all four pipeline markers appear, that the
    configured fade is visible on stop, that resuming does not show WLED's own
    effect in between, and `maxpwr=40000` each time.
-4. Verify the device binding filters: play on a device other than the bound TV
+5. Verify the device binding filters: play on a device other than the bound TV
    and confirm the LEDs stay dark, then play on the TV and confirm they do not.
    The `ignored playback on device` log line reports both sides of any mismatch.
-5. Find out why the decoder loses its lead under real playback when it holds it
+6. Find out why the decoder loses its lead under real playback when it holds it
    perfectly standalone. Instrument the gap between stamped frame position and
    clock over a whole film rather than reasoning from restarts.
-6. Calibrate `OutputDelayMilliseconds` from 0 ms upwards, only when the LEDs are
+7. Calibrate `OutputDelayMilliseconds` from 0 ms upwards, only when the LEDs are
    demonstrably ahead of the picture.
-7. Add source-profile detection and separately validate HDR10, HLG and Dolby
+8. Add source-profile detection and separately validate HDR10, HLG and Dolby
    Vision before claiming HDR support. The HDR graph now runs, but only HDR10
    has been seen working.
-8. Publish a release: tag it, attach the packaged zip and host the manifest so
+9. Publish a release: tag it, attach the packaged zip and host the manifest so
    `sourceUrl` resolves. Build and manifest generation already exist.
