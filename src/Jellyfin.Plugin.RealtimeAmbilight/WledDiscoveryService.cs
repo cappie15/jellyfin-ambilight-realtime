@@ -208,6 +208,49 @@ public sealed class WledDiscoveryService
     }
 
     /// <summary>
+    /// Reads the controller's public liveness state for the settings page. This
+    /// is intentionally separate from configuration detection: a controller can
+    /// be online even when its configuration endpoint is unavailable.
+    /// </summary>
+    public async Task<WledControllerStatus> ReadStatusAsync(string host, int port, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return WledControllerStatus.Offline;
+        }
+
+        var authority = port == 80 ? host : string.Create(CultureInfo.InvariantCulture, $"{host}:{port}");
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(ProbeTimeout);
+            var client = _httpClientFactory.CreateClient();
+            using var response = await client
+                .GetAsync(new Uri($"http://{authority}/json/info"), timeout.Token)
+                .ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return WledControllerStatus.Offline;
+            }
+
+            var body = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
+            await using (body.ConfigureAwait(false))
+            {
+                using var document = await JsonDocument.ParseAsync(body, cancellationToken: timeout.Token).ConfigureAwait(false);
+                var root = document.RootElement;
+                var realtimeActive = root.TryGetProperty("live", out var live)
+                    && live.ValueKind == JsonValueKind.True;
+                return new WledControllerStatus(true, realtimeActive);
+            }
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or UriFormatException
+            || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            return WledControllerStatus.Offline;
+        }
+    }
+
+    /// <summary>
     /// Reads the controller settings that change how realtime output looks.
     /// </summary>
     public async Task<WledRealtimeSettings?> ReadRealtimeSettingsAsync(string host, int port, CancellationToken cancellationToken)
@@ -296,6 +339,12 @@ public sealed class WledDiscoveryService
 
 /// <summary>Controller settings that change how realtime output looks.</summary>
 public sealed record WledRealtimeSettings(Rgb24Encoding Encoding, bool ForcesMaxBrightness);
+
+/// <summary>Reachability and temporary realtime ownership reported by WLED.</summary>
+public sealed record WledControllerStatus(bool IsOnline, bool IsRealtimeActive)
+{
+    public static WledControllerStatus Offline { get; } = new(false, false);
+}
 
 /// <summary>Read-only WLED discovery data shown on the settings page.</summary>
 public sealed record WledDiscoveryResult(string Host, string Name, int LedCount, string Version);

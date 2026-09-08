@@ -18,6 +18,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private readonly WledRealtimeOutput _output;
     private readonly LatestFrameOutputScheduler _scheduler;
     private readonly ILogger<JellyfinWledOutputService> _logger;
+    private readonly LedLayout _physicalLayout;
     /// <summary>
     /// How often the held frame is resent while playback is paused. WLED drops
     /// out of realtime once no data arrives for its configured realtime timeout,
@@ -61,6 +62,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private Task? _pump;
     private Rgb24Encoding _encoding;
     private readonly int _ledCount;
+    private CalibrationPreview? _calibrationPreview;
 
     public JellyfinWledOutputService(
         PlaybackEventCoordinator coordinator,
@@ -71,20 +73,20 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
         _discoveryService = discoveryService ?? throw new ArgumentNullException(nameof(discoveryService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         var configuration = Plugin.Instance?.Configuration ?? new PluginConfiguration();
-        var physical = new LedLayout(
+        _physicalLayout = new LedLayout(
             Math.Max(1, configuration.TopLedCount),
             Math.Max(1, configuration.RightLedCount),
             Math.Max(1, configuration.BottomLedCount),
             Math.Max(1, configuration.LeftLedCount));
-        var logical = LogicalSamplingLayout.FromPhysicalLayout(physical);
-        _ledCount = physical.TotalLedCount;
+        var logical = LogicalSamplingLayout.FromPhysicalLayout(_physicalLayout);
+        _ledCount = _physicalLayout.TotalLedCount;
         _encoding = configuration.CorrectLedGamma ? Rgb24Encoding.Linear : Rgb24Encoding.Bt709;
         // The detector is stateful across frames, so it is created once with the
         // service rather than per frame. Disabled, sampling simply uses the whole
         // frame, exactly as before this option existed.
         var borderDetector = new BlackBorderDetector();
         var processor = new AmbilightFrameProcessor(
-            physical,
+            _physicalLayout,
             logical,
             frame => (Plugin.Instance?.Configuration.IgnoreBlackBorders ?? true)
                 ? borderDetector.Detect(frame)
@@ -94,18 +96,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                 EdgeSampler.MinimumDepthPercent,
                 EdgeSampler.MaximumDepthPercent),
             () => _encoding,
-            static () =>
-            {
-                var current = Plugin.Instance?.Configuration;
-                return current is null
-                    ? ColourAdjustment.None
-                    : ColourAdjustment.FromPercentages(
-                        current.BrightnessPercent,
-                        current.SaturationPercent,
-                        current.RedGainPercent,
-                        current.GreenGainPercent,
-                        current.BlueGainPercent);
-            });
+            static () => BuildColourTuning(Plugin.Instance?.Configuration).ToAdjustment());
         _output = new WledRealtimeOutput(
             new WledEndpoint(configuration.WledHost, Math.Clamp(configuration.WledHttpPort, 1, ushort.MaxValue)),
             configuration.RealtimeProtocol,
@@ -117,6 +108,32 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     {
         await DetectEncodingAsync(cancellationToken).ConfigureAwait(false);
         _pump = Task.Run(RunPumpAsync, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Temporarily takes the same realtime output path used by playback and
+    /// paints exactly one physical side. The browser pattern is intentionally
+    /// separate so an installer can open it on a TV browser while keeping the
+    /// Jellyfin dashboard and sliders on a phone or laptop.
+    /// </summary>
+    public async Task<bool> ShowCalibrationPreviewAsync(CalibrationPreview preview, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(preview);
+        if (_coordinator.ActiveSessionId is not null)
+        {
+            return false;
+        }
+
+        Volatile.Write(ref _calibrationPreview, preview);
+        await _output.SendFrameAsync(BuildCalibrationFrame(preview), cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>Returns control to WLED after an installer leaves calibration.</summary>
+    public async Task StopCalibrationPreviewAsync(CancellationToken cancellationToken)
+    {
+        Volatile.Write(ref _calibrationPreview, null);
+        await _output.ReleaseAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -178,6 +195,29 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
 
                 wasOutputEnabled = true;
                 var currentSession = _coordinator.ActiveSessionId;
+                var calibration = Volatile.Read(ref _calibrationPreview);
+                if (calibration is not null && currentSession is null)
+                {
+                    // The initial frame is sent by ShowCalibrationPreviewAsync;
+                    // one keepalive per second maintains WLED's temporary
+                    // ownership without sending 30 identical frames per second.
+                    if (DateTimeOffset.UtcNow - lastSend >= PauseKeepAliveInterval)
+                    {
+                        await _output.KeepAliveAsync(_shutdown.Token).ConfigureAwait(false);
+                        lastSend = DateTimeOffset.UtcNow;
+                    }
+
+                    continue;
+                }
+
+                if (calibration is not null)
+                {
+                    // Never let a forgotten preview steal a real film. Playback
+                    // wins and the next normal frame takes control immediately.
+                    Volatile.Write(ref _calibrationPreview, null);
+                    _logger.LogInformation("Realtime Ambilight calibration preview ended because playback started.");
+                }
+
                 if (previousSession is not null && currentSession is null)
                 {
                     pendingFrames.Clear();
@@ -380,5 +420,50 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
 
         _output.Dispose();
         _shutdown.Dispose();
+    }
+
+    private byte[] BuildCalibrationFrame(CalibrationPreview preview)
+    {
+        var frame = new LinearRgb[_ledCount];
+        var start = preview.Side switch
+        {
+            CalibrationSide.Top => 0,
+            CalibrationSide.Right => _physicalLayout.TopLedCount,
+            CalibrationSide.Bottom => _physicalLayout.TopLedCount + _physicalLayout.RightLedCount,
+            CalibrationSide.Left => _physicalLayout.TopLedCount + _physicalLayout.RightLedCount + _physicalLayout.BottomLedCount,
+            _ => throw new ArgumentOutOfRangeException(nameof(preview)),
+        };
+        var count = preview.Side switch
+        {
+            CalibrationSide.Top => _physicalLayout.TopLedCount,
+            CalibrationSide.Right => _physicalLayout.RightLedCount,
+            CalibrationSide.Bottom => _physicalLayout.BottomLedCount,
+            CalibrationSide.Left => _physicalLayout.LeftLedCount,
+            _ => throw new ArgumentOutOfRangeException(nameof(preview)),
+        };
+
+        for (var index = start; index < start + count; index++)
+        {
+            frame[index] = preview.Adjustment.Apply(preview.Colour, index, _physicalLayout);
+        }
+
+        return Rgb24Encoder.Encode(frame, _encoding);
+    }
+
+    private static PerimeterColourTuning BuildColourTuning(PluginConfiguration? configuration)
+    {
+        if (configuration is null)
+        {
+            return PerimeterColourTuning.Default;
+        }
+
+        return new PerimeterColourTuning(
+            configuration.BrightnessPercent, configuration.SaturationPercent,
+            configuration.RedGainPercent, configuration.GreenGainPercent, configuration.BlueGainPercent,
+            configuration.WallColourHex, configuration.WallColourCorrectionPercent,
+            configuration.TopBrightnessPercent, configuration.TopRedGainPercent, configuration.TopGreenGainPercent, configuration.TopBlueGainPercent,
+            configuration.RightBrightnessPercent, configuration.RightRedGainPercent, configuration.RightGreenGainPercent, configuration.RightBlueGainPercent,
+            configuration.BottomBrightnessPercent, configuration.BottomRedGainPercent, configuration.BottomGreenGainPercent, configuration.BottomBlueGainPercent,
+            configuration.LeftBrightnessPercent, configuration.LeftRedGainPercent, configuration.LeftGreenGainPercent, configuration.LeftBlueGainPercent);
     }
 }

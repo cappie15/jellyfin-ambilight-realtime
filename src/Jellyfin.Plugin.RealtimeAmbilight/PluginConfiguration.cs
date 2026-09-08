@@ -10,7 +10,7 @@ namespace Jellyfin.Plugin.RealtimeAmbilight;
 /// </summary>
 public sealed class PluginConfiguration : BasePluginConfiguration
 {
-    public int ConfigSchemaVersion { get; set; } = 2;
+    public int ConfigSchemaVersion { get; set; } = 3;
 
     /// <summary>Master safety switch. Disabled output never takes WLED realtime control.</summary>
     public bool Enabled { get; set; } = true;
@@ -112,6 +112,38 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public int GreenGainPercent { get; set; } = 100;
 
     public int BlueGainPercent { get; set; } = 100;
+
+    /// <summary>
+    /// The apparent paint colour behind the television. A white value means no
+    /// correction; a coloured value lets the renderer counter its reflectance
+    /// as far as the LEDs' headroom permits.
+    /// </summary>
+    public string WallColourHex { get; set; } = "#ffffff";
+
+    /// <summary>How much of <see cref="WallColourHex"/> compensation to apply.</summary>
+    public int WallColourCorrectionPercent { get; set; } = 100;
+
+    // Per-side trims are intentionally explicit rather than arrays: Jellyfin's
+    // XML configuration stays stable, readable and additive across upgrades.
+    public int TopBrightnessPercent { get; set; } = 100;
+    public int TopRedGainPercent { get; set; } = 100;
+    public int TopGreenGainPercent { get; set; } = 100;
+    public int TopBlueGainPercent { get; set; } = 100;
+
+    public int RightBrightnessPercent { get; set; } = 100;
+    public int RightRedGainPercent { get; set; } = 100;
+    public int RightGreenGainPercent { get; set; } = 100;
+    public int RightBlueGainPercent { get; set; } = 100;
+
+    public int BottomBrightnessPercent { get; set; } = 100;
+    public int BottomRedGainPercent { get; set; } = 100;
+    public int BottomGreenGainPercent { get; set; } = 100;
+    public int BottomBlueGainPercent { get; set; } = 100;
+
+    public int LeftBrightnessPercent { get; set; } = 100;
+    public int LeftRedGainPercent { get; set; } = 100;
+    public int LeftGreenGainPercent { get; set; } = 100;
+    public int LeftBlueGainPercent { get; set; } = 100;
 
     public bool CorrectLedGamma { get; set; } = true;
 

@@ -24,6 +24,39 @@ engineer can continue without relying on chat history.
 
 ## Build and test status
 
+**PASS (2026-09-06, room-calibration worktree changes).**
+
+```bash
+DOTNET_CLI_HOME=/tmp/jfar-dotnet-cli \
+NUGET_PACKAGES=/tmp/jfar-nuget-packages \
+dotnet build src/Jellyfin.Plugin.RealtimeAmbilight/Jellyfin.Plugin.RealtimeAmbilight.csproj \
+    --configuration Release --no-restore --no-incremental -p:UseSharedCompilation=false
+
+DOTNET_CLI_HOME=/tmp/jfar-dotnet-cli \
+NUGET_PACKAGES=/tmp/jfar-nuget-packages \
+DOTNET_ROLL_FORWARD=Major \
+dotnet test tests/Jellyfin.Plugin.RealtimeAmbilight.Tests/Jellyfin.Plugin.RealtimeAmbilight.Tests.csproj \
+    --configuration Release --no-restore -p:UseSharedCompilation=false
+```
+
+The plugin build completed with zero warnings/errors and the test suite passed
+**75/75**. The worktree now contains an uncommitted room-calibration feature:
+global wall-colour compensation, persistent brightness/RGB trims for top/right/
+bottom/left, and an administrator-only preview endpoint plus anonymous static
+TV test-pattern endpoint. The test pattern contains no credentials or server
+data. The preview uses the normal temporary WLED realtime transport, never
+writes WLED configuration, releases on stop, and yields immediately when
+playback starts.
+
+The settings page was subsequently reorganized for installation use: TV,
+controller, timing, **Color calibration**, LED layout, then collapsed advanced
+picture settings. Color calibration now contains global brightness/saturation/
+white balance, wall compensation, the TV test-pattern preview and per-side
+trims. The layout editor includes a live 16:9 diagram with the four LED counts
+and the current sampled edge band. Every slider shows min/current/max values.
+`GET /RealtimeAmbilight/Discovery/Status` reads WLED's public `/json/info` and
+the page displays online, realtime-active or unreachable; it remains read-only.
+
 **PASS (2026-09-06).**
 
 ```bash

@@ -2,7 +2,7 @@
     <div class="content-primary">
         <div class="verticalSection">
             <h2 class="sectionTitle">Realtime Ambilight</h2>
-            <p>This plugin analyses the picture on the server and sends temporary realtime colours to WLED while something is playing. When playback stops it hands control back to WLED. Your WLED power limit is never changed.</p>
+            <p>Matches WLED to the picture while Jellyfin plays. WLED regains control when playback ends.</p>
         </div>
 
         <form id="realtimeAmbilightConfigurationForm">
@@ -11,12 +11,11 @@
                 <h3 class="sectionTitle">1. Which TV do these LEDs belong to?</h3>
                 <div class="selectContainer">
                     <select is="emby-select" id="targetDeviceId" label="Playback device"></select>
+                    <button is="emby-button" type="button" id="refreshDevices" class="raised" style="margin-top:.7em">Refresh list</button>
                     <div class="fieldDescription">
-                        Pick the device you actually watch on; only that device drives the LEDs. Devices that are connected right now come first, then the rest by last used, so your TV is usually near the top.
-                        <br /><strong>Recommended:</strong> pick your TV. If you leave this on <em>All devices</em>, the LEDs react to every device that plays something &mdash; including a phone in another room.
+                        Only this device drives the LEDs. A new installation selects the most recently used device.
                     </div>
                     <div id="targetDeviceStatus" class="fieldDescription" aria-live="polite"></div>
-                    <button is="emby-button" type="button" id="refreshDevices" class="raised">Refresh list</button>
                 </div>
 
                 <br />
@@ -24,39 +23,33 @@
                     <input is="emby-checkbox" id="enabled" type="checkbox" />
                     <span>Enable Ambilight</span>
                 </label>
-                <div class="fieldDescription">Turn this off to hand the LEDs back without losing the rest of your settings. WLED takes the strip over again about two and a half seconds later. <strong>Default: on.</strong></div>
+                <div class="fieldDescription">Turns output off without losing settings. <strong>Default: on.</strong></div>
             </div>
 
             <div class="verticalSection">
                 <h3 class="sectionTitle">2. Which WLED controller?</h3>
-                <p class="fieldDescription">The finder asks the local network which devices announce themselves as WLED, then confirms each one through WLED's public info page. Nothing on your WLED is modified.</p>
+                <p class="fieldDescription">Finds WLED controllers on your network. Nothing is changed on WLED.</p>
                 <button is="emby-button" type="button" id="findWled" class="raised">Scan the network for WLED</button>
-                <div id="wledFinderStatus" class="fieldDescription" aria-live="polite"></div>
 
                 <div id="wledCandidatesContainer" class="selectContainer" style="display:none">
                     <select is="emby-select" id="wledCandidates" label="Discovered WLED controller"></select>
-                    <div class="fieldDescription">The LED count after each name helps you recognise the right controller.</div>
+                    <div class="fieldDescription">The LED count helps identify the controller.</div>
                 </div>
 
                 <div id="manualWledContainer" style="display:none">
                     <div class="inputContainer">
                         <input is="emby-input" id="wledHost" type="text" label="WLED address" />
-                        <div class="fieldDescription">Only needed when the scan finds nothing, for example when your WLED is on a different network or VLAN. Enter the same address you use in your browser, such as <code>10.0.0.8</code>. <strong>Default: discovered automatically.</strong></div>
+                        <div class="fieldDescription">Use only when scanning finds nothing. Example: <code>10.0.0.8</code>.</div>
                     </div>
                     <div class="inputContainer">
                         <input is="emby-input" id="wledHttpPort" type="number" min="1" max="65535" label="WLED HTTP port" />
-                        <div class="fieldDescription">WLED's web port, used only to read its public status page while searching. The LED colours themselves do not travel over this port. Only change this if your WLED runs on a non-standard port. <strong>Default: 80.</strong></div>
+                        <div class="fieldDescription">Only change this for a non-standard WLED web port. <strong>Default: 80.</strong></div>
                     </div>
                 </div>
+                <div id="wledFinderStatus" class="fieldDescription" aria-live="polite"></div>
+                <div id="wledLiveStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em"></div>
+                <button is="emby-button" type="button" id="refreshWledStatus" class="raised">Refresh controller status</button>
 
-                <div class="selectContainer">
-                    <select is="emby-select" id="realtimeProtocol" label="Realtime protocol">
-                        <option value="0">Automatic (recommended)</option>
-                        <option value="1">Hyperion Raw RGB</option>
-                        <option value="2">DDP</option>
-                    </select>
-                    <div class="fieldDescription">How the colours reach WLED. Automatic picks the right protocol for your LED count: Raw RGB up to 490 LEDs, DDP above that. <strong>Default: automatic</strong> &mdash; leave it alone unless you have a reason to force one.</div>
-                </div>
             </div>
 
             <div class="verticalSection">
@@ -66,29 +59,69 @@
                     <input is="emby-input" id="outputDelayMilliseconds" type="range" min="0" max="2000" step="25" label="LED delay" />
                     <div class="fieldDescription">
                         Currently set to: <strong id="outputDelayValue"></strong>.
-                        Your TV needs processing time of its own, so the LEDs can run ahead of the picture. Only raise this when you actually see that happen, in small steps, during a scene with clear colour changes.
-                        <br /><strong>Default: 0 ms.</strong>
+                        Raise this only when the LEDs visibly lead the picture. <strong>Default: 0 ms.</strong>
                     </div>
                 </div>
 
                 <div class="inputContainer">
                     <input is="emby-input" id="outputFramesPerSecond" type="number" min="1" max="60" label="LED updates per second" />
-                    <div class="fieldDescription">How often the LEDs get a new colour. Higher looks smoother but costs more network traffic and CPU. <strong>Default: 30.</strong> Restart Jellyfin after changing this.</div>
+                    <div class="fieldDescription">Higher is smoother but costs more CPU. <strong>Default: 30.</strong> Restart after changing.</div>
                 </div>
 
                 <label class="checkboxContainer">
                     <input is="emby-checkbox" id="holdWhilePaused" type="checkbox" />
                     <span>Hold the picture while paused</span>
                 </label>
-                <div class="fieldDescription">
-                    When on, the frame you paused on stays on the LEDs for as long as playback is paused. Resuming continues the Ambilight, and stopping fades the LEDs out as configured below.
-                    <br />When off, the LEDs go back to WLED's own effect about two and a half seconds after you pause. <strong>Default: on.</strong>
-                </div>
+                <div class="fieldDescription">Keep the paused frame on the wall. <strong>Default: on.</strong></div>
 
                 <div class="inputContainer">
                     <input is="emby-input" id="stopFadeMilliseconds" type="number" min="0" max="5000" step="50" label="Fade out on stop (ms)" />
-                    <div class="fieldDescription">How long the LEDs fade to black when you stop, rather than cutting out abruptly. <code>0</code> disables the fade. <strong>Default: 250 ms.</strong></div>
+                    <div class="fieldDescription"><code>0</code> cuts immediately. <strong>Default: 250 ms.</strong></div>
                 </div>
+            </div>
+
+            <div class="verticalSection" id="calibrationSection">
+                <h3 class="sectionTitle">5. Color calibration</h3>
+                <p class="fieldDescription">Open the colourful reference image on the TV, then match its selected edge to the wall glow. Stop playback first.</p>
+                <div id="maxBrightnessWarning" class="fieldDescription" style="display:none;border-left:3px solid currentColor;padding-left:.8em;margin-bottom:1em"><strong>WLED forces maximum realtime brightness.</strong> Turn that off in WLED, or lower LED brightness here.</div>
+                <div style="display:flex;gap:2em;flex-wrap:wrap;align-items:flex-start">
+                    <div style="flex:1 1 20em;min-width:18em"><div class="inputContainer">
+                        <input is="emby-input" id="brightnessPercent" type="range" min="1" max="100" step="1" label="LED brightness" />
+                        <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. <strong>Default: 100%.</strong></div>
+                    </div></div>
+                    <div style="flex:1 1 20em;min-width:18em"><div class="inputContainer">
+                        <input is="emby-input" id="saturationPercent" type="range" min="50" max="200" step="5" label="Colour intensity" />
+                        <div class="fieldDescription">Now: <strong id="saturationValue"></strong>. <strong>Default: 100%.</strong></div>
+                    </div></div>
+                </div>
+                <div class="fieldDescription"><strong>Global white balance.</strong> Start at 100%; adjust only when every side has the same colour cast.</div>
+                <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
+                    <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="redGainPercent" type="range" min="50" max="150" step="1" label="Red" /><div class="fieldDescription">Now: <strong id="redGainValue"></strong></div></div></div>
+                    <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="greenGainPercent" type="range" min="50" max="150" step="1" label="Green" /><div class="fieldDescription">Now: <strong id="greenGainValue"></strong></div></div></div>
+                    <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="blueGainPercent" type="range" min="50" max="150" step="1" label="Blue" /><div class="fieldDescription">Now: <strong id="blueGainValue"></strong></div></div></div>
+                </div>
+                <div class="inputContainer">
+                    <input id="wallColourHex" type="color" value="#ffffff" aria-label="Wall colour" style="width:4.5em;height:2.6em;padding:.2em;vertical-align:middle" />
+                    <label for="wallColourHex" style="margin-left:.6em">Wall colour</label>
+                    <div class="fieldDescription">Choose the paint colour behind the TV. White means no correction.</div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" id="wallColourCorrectionPercent" type="range" min="0" max="100" step="5" label="Wall correction" />
+                    <div class="fieldDescription">Now: <strong id="wallColourCorrectionValue"></strong>. <strong>Default: 100%.</strong></div>
+                </div>
+                <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-end">
+                    <div class="selectContainer" style="min-width:12em;flex:1 1 12em"><select is="emby-select" id="calibrationSide" label="Side"><option value="Top">Top</option><option value="Right">Right</option><option value="Bottom">Bottom</option><option value="Left">Left</option></select></div>
+                    <div class="selectContainer" style="min-width:12em;flex:1 1 12em"><select is="emby-select" id="calibrationColour" label="Reference colour"><option value="White">Soft white</option><option value="Red">Red</option><option value="Green">Green</option><option value="Blue">Blue</option></select></div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" id="calibrationPatternUrl" type="text" readonly="readonly" label="Open this link on the TV" />
+                    <button is="emby-button" type="button" id="copyCalibrationUrl" class="raised">Copy link</button>
+                    <a is="emby-linkbutton" id="openCalibrationPattern" target="_blank" rel="noopener" style="margin-left:.7em">Open here</a>
+                </div>
+                <div style="display:flex;gap:.7em;flex-wrap:wrap"><button is="emby-button" type="button" id="startCalibrationPreview" class="raised">Start preview</button><button is="emby-button" type="button" id="stopCalibrationPreview" class="raised">Stop</button></div>
+                <div id="calibrationPreviewStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em">Choose a side and colour, then start the preview.</div>
+                <div class="fieldDescription" style="margin-top:1.2em"><strong>Side trims.</strong> Start at 100%. Adjust brightness or RGB until the glow matches the TV edge; save when finished.</div>
+                <div id="sideTuningCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16em,1fr));gap:1em;margin-top:.7em"></div>
             </div>
 
             <div class="verticalSection">
@@ -97,8 +130,20 @@
                         <span class="sectionTitle" style="display:inline">4. How are the LEDs arranged around your TV?</span>
                         <div class="fieldDescription" style="margin-top:.3em">Set once, then left alone. <strong id="ledLayoutSummary"></strong></div>
                     </summary>
-                <p class="fieldDescription">Count clockwise starting at the <strong>top-left corner</strong>: first the top, then the right side, then the bottom, then the left. The four numbers together must match the number of LEDs in your strip exactly. Restart Jellyfin after changing them.</p>
+                <div style="padding:.8em 0 0 1.25em">
+                <p class="fieldDescription">Count clockwise from top-left: top, right, bottom, left. Total must match the strip. Restart after changing.</p>
                 <div class="fieldDescription">Total: <strong id="ledTotalValue"></strong><span id="ledTotalCheck"></span></div>
+                <div style="max-width:34em;margin:1em auto 1.3em">
+                    <div id="ledLayoutDiagram" role="img" aria-label="16 by 9 TV LED layout" style="--sampling-inset:10%;position:relative;aspect-ratio:16/9;background:#111;border:3px solid #777;border-radius:.25em;overflow:hidden;color:#fff;font:600 12px system-ui,sans-serif;text-shadow:0 1px 2px #000">
+                        <div id="samplingArea" style="position:absolute;inset:var(--sampling-inset);border:1px dashed rgba(255,255,255,.75);box-shadow:0 0 0 100vmax rgba(234,142,26,.26);pointer-events:none"></div>
+                        <div id="topLedDiagramLabel" style="position:absolute;top:.45em;left:50%;transform:translateX(-50%);white-space:nowrap"></div>
+                        <div id="rightLedDiagramLabel" style="position:absolute;right:.45em;top:50%;transform:translateY(-50%);writing-mode:vertical-rl;white-space:nowrap"></div>
+                        <div id="bottomLedDiagramLabel" style="position:absolute;bottom:.45em;left:50%;transform:translateX(-50%);white-space:nowrap"></div>
+                        <div id="leftLedDiagramLabel" style="position:absolute;left:.45em;top:50%;transform:translateY(-50%) rotate(180deg);writing-mode:vertical-rl;white-space:nowrap"></div>
+                        <div style="position:absolute;inset:50% auto auto 50%;transform:translate(-50%,-50%);color:#bbb;text-align:center;font-weight:400;white-space:nowrap">16 : 9<br /><span id="samplingDiagramLabel"></span></div>
+                    </div>
+                    <div class="fieldDescription" style="text-align:center;margin-top:.5em">Orange is the sampled edge range.</div>
+                </div>
                 <div class="inputContainer">
                     <input is="emby-input" id="topLedCount" type="number" min="1" label="LEDs along the top" />
                     <div class="fieldDescription"><strong>Default: 265.</strong></div>
@@ -115,12 +160,23 @@
                     <input is="emby-input" id="leftLedCount" type="number" min="1" label="LEDs up the left side" />
                     <div class="fieldDescription"><strong>Default: 150.</strong> Together with the other three that makes 831 LEDs.</div>
                 </div>
+                </div>
                 </details>
             </div>
 
             <div class="verticalSection">
-                <h3 class="sectionTitle">5. Picture analysis</h3>
-                <p class="fieldDescription">The picture is scaled down before its edge colours are measured, and a band along each side is what the LEDs follow — you set how wide that band is below. Analysis assumes 16:9, so the height follows from the width.</p>
+                <details id="advancedPictureSettings">
+                    <summary style="cursor:pointer;list-style:revert"><span class="sectionTitle" style="display:inline">6. Advanced picture settings</span><div class="fieldDescription" style="margin-top:.3em">Optional: sampling, gamma and black bars.</div></summary>
+                <p class="fieldDescription" style="margin-top:1em">Leave these at their defaults unless you need lower CPU use or a different edge response.</p>
+
+                <div class="selectContainer">
+                    <select is="emby-select" id="realtimeProtocol" label="Realtime protocol">
+                        <option value="0">Automatic (recommended)</option>
+                        <option value="1">Hyperion Raw RGB</option>
+                        <option value="2">DDP</option>
+                    </select>
+                    <div class="fieldDescription">Automatic chooses the right protocol. Restart after changing.</div>
+                </div>
 
                 <div style="display:flex;gap:2em;flex-wrap:wrap;align-items:flex-start">
                     <div style="flex:1 1 20em;min-width:18em">
@@ -133,19 +189,13 @@
                                 <option value="320">320 × 180 — high</option>
                                 <option value="480">480 × 270 — highest</option>
                             </select>
-                            <div class="fieldDescription">
-                                <strong>Default: 160 × 90.</strong> Bigger does not make the colours more accurate, because each LED already averages a whole band of pixels; it mainly costs CPU and GPU.
-                                <br />96 × 54 and 128 × 72 suit a low-power NAS or a Raspberry Pi. 160 × 90 is right for almost everything. 240 × 135 and above only pay off on a machine with power to spare, or if you later sample many small zones.
-                            </div>
+                            <div class="fieldDescription"><strong>Default: 160 × 90.</strong> Lower saves CPU; higher adds detail.</div>
                         </div>
                     </div>
                     <div style="flex:1 1 20em;min-width:18em">
                         <div class="inputContainer">
                             <input is="emby-input" id="analysisFramesPerSecond" type="number" min="1" max="60" label="Sampling frames per second" />
-                            <div class="fieldDescription">
-                                How often a frame is analysed. <strong>Default: 30.</strong>
-                                <br />There is no point going above your film's own frame rate — most films are 24 fps — or above the LED updates per second. Higher only costs more work for the same picture.
-                            </div>
+                            <div class="fieldDescription"><strong>Default: 30.</strong> Do not exceed the LED update rate.</div>
                         </div>
                     </div>
                 </div>
@@ -155,85 +205,27 @@
                 <br />
                 <div class="inputContainer">
                     <input is="emby-input" id="samplingDepthPercent" type="range" min="1" max="30" step="1" label="Sampling edge range" />
-                    <div class="fieldDescription">
-                        Currently: <strong id="samplingDepthValue"></strong> inward from each side.
-                        <br /><strong>Recommended: 10%.</strong> That takes in enough of the picture to stay steady without letting the middle of the image bleed into the edges.
-                        <br />Lower gives a sharper, more literal match to the very edge of the picture, but reacts to small details and can look restless. Higher gives a calmer, more averaged glow. Towards 30% each side starts reflecting the whole scene instead of the part nearest it, so all four sides drift towards the same colour.
-                    </div>
-                </div>
-
-                <div style="display:flex;gap:2em;flex-wrap:wrap;align-items:flex-start">
-                    <div style="flex:1 1 20em;min-width:18em">
-                        <div id="maxBrightnessWarning" class="fieldDescription" style="display:none;border-left:3px solid currentColor;padding-left:.8em;margin-bottom:1em">
-                            <strong>Your WLED has "force max brightness" enabled for realtime data.</strong>
-                            It therefore ignores its own brightness slider while the Ambilight runs and drives the strip at full, which on the reference installation was three times brighter than the same colour shown normally. Turn it off under Sync Interfaces in WLED, or lower the LED brightness here.
-                        </div>
-                        <div class="inputContainer">
-                            <input is="emby-input" id="brightnessPercent" type="range" min="1" max="100" step="1" label="LED brightness" />
-                            <div class="fieldDescription">
-                                Currently: <strong id="brightnessValue"></strong>.
-                                <br /><strong>Default: 100%</strong>, which matches the brightness of the picture itself. WLED normally ignores its own brightness slider for realtime data, so this is the dial that dims the Ambilight without dimming everything else your controller does.
-                            </div>
-                        </div>
-                    </div>
-                    <div style="flex:1 1 20em;min-width:18em">
-                        <div class="inputContainer">
-                            <input is="emby-input" id="saturationPercent" type="range" min="50" max="200" step="5" label="Colour intensity" />
-                            <div class="fieldDescription">
-                                Currently: <strong id="saturationValue"></strong>.
-                                <br /><strong>Default: 100%</strong>, faithful to the picture. Above that, colours are pushed away from grey without becoming brighter, which makes a night sky read as deep blue rather than pale blue. Greys and whites are unaffected at any setting.
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="fieldDescription" style="margin-top:1em"><strong>White balance.</strong> LED white is rarely the same white your television shows, and the room's own walls tint it further. Nudge a channel up to warm or cool the whole picture; leave all three at 100% for no correction.</div>
-                <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
-                    <div style="flex:1 1 13em;min-width:11em">
-                        <div class="inputContainer">
-                            <input is="emby-input" id="redGainPercent" type="range" min="50" max="150" step="1" label="Red" />
-                            <div class="fieldDescription">Now: <strong id="redGainValue"></strong></div>
-                        </div>
-                    </div>
-                    <div style="flex:1 1 13em;min-width:11em">
-                        <div class="inputContainer">
-                            <input is="emby-input" id="greenGainPercent" type="range" min="50" max="150" step="1" label="Green" />
-                            <div class="fieldDescription">Now: <strong id="greenGainValue"></strong></div>
-                        </div>
-                    </div>
-                    <div style="flex:1 1 13em;min-width:11em">
-                        <div class="inputContainer">
-                            <input is="emby-input" id="blueGainPercent" type="range" min="50" max="150" step="1" label="Blue" />
-                            <div class="fieldDescription">Now: <strong id="blueGainValue"></strong></div>
-                        </div>
-                    </div>
+                    <div class="fieldDescription">Now: <strong id="samplingDepthValue"></strong>. Lower is more literal; higher is calmer. <strong>Default: 10%.</strong></div>
                 </div>
 
                 <label class="checkboxContainer">
                     <input is="emby-checkbox" id="autoDetectLedGamma" type="checkbox" />
                     <span>Match LED brightness to the picture, read from the controller</span>
                 </label>
-                <div class="fieldDescription">
-                    LEDs get brighter in step with the number they are sent, but a picture does not store brightness that way: half the brightness on screen is stored as roughly three quarters. Uncorrected, a dark scene is driven about thirteen times brighter than it should be, so the LEDs stay lit through the dark, and colours look pale because the weakest channel of each colour is lifted the most.
-                    <br />WLED reports both the gamma it applies and whether realtime data is exempt from it, so this is read from your controller at startup rather than guessed. <strong>Default: on.</strong> Restart Jellyfin after changing the setting in WLED.
-                </div>
+                <div class="fieldDescription">Uses the gamma setting reported by WLED. <strong>Default: on.</strong></div>
 
                 <label class="checkboxContainer">
                     <input is="emby-checkbox" id="correctLedGamma" type="checkbox" />
                     <span>Correct brightness manually</span>
                 </label>
-                <div class="fieldDescription">
-                    Only used when the controller cannot be read, or when the box above is off. On means the plugin corrects brightness itself, which is right for a controller that does not; off sends display-encoded values for a controller that applies its own gamma. <strong>Default: on.</strong>
-                </div>
+                <div class="fieldDescription">Used when automatic detection is unavailable. <strong>Default: on.</strong></div>
 
                 <label class="checkboxContainer">
                     <input is="emby-checkbox" id="ignoreBlackBorders" type="checkbox" />
                     <span>Ignore black borders</span>
                 </label>
-                <div class="fieldDescription">
-                    Films wider than your screen are shown with black bars above and below. Without this the LEDs sample the bars and simply stay dark. <strong>Default: on.</strong>
-                    <br />Detection needs the bars to hold still for a few frames, so a fade to black keeps the last known picture area instead of collapsing onto nothing.
-                </div>
+                <div class="fieldDescription">Prevents wide-screen black bars from turning the LEDs off. <strong>Default: on.</strong></div>
+                </details>
             </div>
 
             <div class="verticalSection">

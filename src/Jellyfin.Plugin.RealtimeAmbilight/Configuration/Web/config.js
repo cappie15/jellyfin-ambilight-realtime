@@ -1,20 +1,33 @@
 export default function (view) {
     const pluginId = "7d6d91ed-0f36-46ea-9868-9623283b6b51";
+    const sideNames = ["top", "right", "bottom", "left"];
+    const sideTuningFields = sideNames.flatMap(side => ["brightness", "redGain", "greenGain", "blueGain"].map(field => `${side}${field[0].toUpperCase()}${field.slice(1)}Percent`));
+    const colourTuningFields = [
+        "brightnessPercent", "saturationPercent", "redGainPercent", "greenGainPercent", "blueGainPercent",
+        "wallColourCorrectionPercent", ...sideTuningFields
+    ];
     const numericFields = [
         "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond", "stopFadeMilliseconds",
-        "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisFramesPerSecond", "samplingDepthPercent", "brightnessPercent", "saturationPercent", "redGainPercent", "greenGainPercent", "blueGainPercent"
+        "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisFramesPerSecond", "samplingDepthPercent", ...colourTuningFields
     ];
     const defaults = {
         WledHttpPort: 80, RealtimeProtocol: 0, OutputDelayMilliseconds: 0, OutputFramesPerSecond: 30,
         StopFadeMilliseconds: 250, TopLedCount: 265, RightLedCount: 150,
         BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160, AnalysisFramesPerSecond: 30,
         SamplingDepthPercent: 10, BrightnessPercent: 100, SaturationPercent: 100,
-        RedGainPercent: 100, GreenGainPercent: 100, BlueGainPercent: 100
+        RedGainPercent: 100, GreenGainPercent: 100, BlueGainPercent: 100,
+        WallColourCorrectionPercent: 100,
+        TopBrightnessPercent: 100, TopRedGainPercent: 100, TopGreenGainPercent: 100, TopBlueGainPercent: 100,
+        RightBrightnessPercent: 100, RightRedGainPercent: 100, RightGreenGainPercent: 100, RightBlueGainPercent: 100,
+        BottomBrightnessPercent: 100, BottomRedGainPercent: 100, BottomGreenGainPercent: 100, BottomBlueGainPercent: 100,
+        LeftBrightnessPercent: 100, LeftRedGainPercent: 100, LeftGreenGainPercent: 100, LeftBlueGainPercent: 100
     };
     const ledCountFields = ["topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount"];
     let loadedConfig = null;
     let discoveredControllers = [];
     let knownDevices = [];
+    let calibrationPreviewIsActive = false;
+    let calibrationPreviewTimer = null;
     const byId = id => view.querySelector(`#${id}`);
     const fieldKey = field => field[0].toUpperCase() + field.slice(1);
     const show = (id, visible) => { byId(id).style.display = visible ? "block" : "none"; };
@@ -31,11 +44,130 @@ export default function (view) {
         ["red", "green", "blue"].forEach(channel => {
             byId(`${channel}GainValue`).textContent = `${byId(`${channel}GainPercent`).value}%`;
         });
+        byId("wallColourCorrectionValue").textContent = `${byId("wallColourCorrectionPercent").value}%`;
+        sideNames.forEach(side => {
+            ["brightness", "redGain", "greenGain", "blueGain"].forEach(field => {
+                const id = `${side}${field[0].toUpperCase()}${field.slice(1)}Percent`;
+                byId(`${side}${field[0].toUpperCase()}${field.slice(1)}Value`).textContent = `${byId(id).value}%`;
+            });
+        });
+    }
+
+    function createSideTuningCards() {
+        byId("sideTuningCards").innerHTML = sideNames.map(side => {
+            const title = side[0].toUpperCase() + side.slice(1);
+            const control = (field, label, min, max) => {
+                const id = `${side}${field[0].toUpperCase()}${field.slice(1)}Percent`;
+                const valueId = `${side}${field[0].toUpperCase()}${field.slice(1)}Value`;
+                return `<div class="inputContainer" style="margin:.45em 0"><input is="emby-input" id="${id}" type="range" min="${min}" max="${max}" step="1" label="${label}" /><div class="fieldDescription">Now: <strong id="${valueId}"></strong></div></div>`;
+            };
+            return `<div style="border-left:3px solid currentColor;padding-left:.8em"><strong>${title}</strong>${control("brightness", "Brightness", 1, 100)}${control("redGain", "Red", 50, 150)}${control("greenGain", "Green", 50, 150)}${control("blueGain", "Blue", 50, 150)}</div>`;
+        }).join("");
+    }
+
+    function arrangeSettingsSections() {
+        // Physical layout comes before colour calibration: a calibration cannot
+        // be meaningful until the plugin knows which LEDs belong to each edge.
+        byId("ledLayoutSection").closest(".verticalSection").after(byId("calibrationSection"));
+    }
+
+    function addRangeScales() {
+        view.querySelectorAll('input[type="range"]').forEach(range => {
+            if (range.dataset.rangeScaleAttached) {
+                return;
+            }
+
+            range.dataset.rangeScaleAttached = "true";
+            const scale = document.createElement("div");
+            scale.className = "fieldDescription";
+            scale.style.cssText = "display:flex;justify-content:space-between;margin-top:-.25em;font-size:.82em";
+            range.insertAdjacentElement("afterend", scale);
+
+            const suffix = range.id.includes("Percent") ? "%" : range.id === "outputDelayMilliseconds" ? " ms" : "";
+            const update = () => {
+                scale.innerHTML = `<span>${range.min}${suffix}</span><strong>${range.value}${suffix}</strong><span>${range.max}${suffix}</span>`;
+            };
+            range.addEventListener("input", update);
+            update();
+        });
+    }
+
+    function updateCalibrationPatternUrl() {
+        const url = new URL(window.ApiClient.getUrl("RealtimeAmbilight/Calibration/Pattern", {
+            side: byId("calibrationSide").value,
+            colour: byId("calibrationColour").value
+        }), window.location.origin).href;
+        byId("calibrationPatternUrl").value = url;
+        byId("openCalibrationPattern").href = url;
+    }
+
+    function calibrationRequest() {
+        const tuning = {};
+        colourTuningFields.forEach(field => { tuning[fieldKey(field)] = Number(byId(field).value); });
+        return {
+            Side: byId("calibrationSide").value,
+            Colour: byId("calibrationColour").value,
+            WallColourHex: byId("wallColourHex").value,
+            Tuning: tuning
+        };
+    }
+
+    function startCalibrationPreview(quietly = false) {
+        const status = byId("calibrationPreviewStatus");
+        if (!quietly) {
+            status.textContent = "Starting the selected LED side…";
+        }
+        return window.ApiClient.ajax({
+            type: "POST",
+            url: window.ApiClient.getUrl("RealtimeAmbilight/Calibration/Preview"),
+            data: JSON.stringify(calibrationRequest()),
+            contentType: "application/json",
+            dataType: "json"
+        }).then(response => {
+            calibrationPreviewIsActive = true;
+            status.textContent = response.Message || response.message || "Preview is live. Adjust the sliders until the two colours meet.";
+        }).catch(error => {
+            calibrationPreviewIsActive = false;
+            status.textContent = error?.responseJSON?.Message || "The preview could not start. Stop Jellyfin playback and try again.";
+        });
+    }
+
+    function refreshLiveCalibrationPreview() {
+        setColourLabels();
+        if (!calibrationPreviewIsActive) {
+            return;
+        }
+        clearTimeout(calibrationPreviewTimer);
+        calibrationPreviewTimer = setTimeout(() => startCalibrationPreview(true), 100);
+    }
+
+    function stopCalibrationPreview() {
+        clearTimeout(calibrationPreviewTimer);
+        return window.ApiClient.ajax({
+            type: "DELETE",
+            url: window.ApiClient.getUrl("RealtimeAmbilight/Calibration/Preview")
+        }).then(() => {
+            calibrationPreviewIsActive = false;
+            byId("calibrationPreviewStatus").textContent = "Preview stopped; WLED will take back control in its normal timeout.";
+        }).catch(() => {
+            byId("calibrationPreviewStatus").textContent = "The stop request did not complete; the preview will release on WLED's normal timeout.";
+        });
     }
 
     function setDepthLabel() {
         const percent = Number(byId("samplingDepthPercent").value);
         byId("samplingDepthValue").textContent = percent === 10 ? "10% (recommended)" : `${percent}%`;
+        updateLayoutDiagram();
+    }
+
+    function updateLayoutDiagram() {
+        const depth = Math.max(1, Math.min(30, Number(byId("samplingDepthPercent").value) || 10));
+        byId("ledLayoutDiagram").style.setProperty("--sampling-inset", `${depth}%`);
+        byId("samplingDiagramLabel").textContent = `Sampled edge: ${depth}%`;
+        ["top", "right", "bottom", "left"].forEach(side => {
+            const title = side[0].toUpperCase() + side.slice(1);
+            byId(`${side}LedDiagramLabel`).textContent = `${title} · ${Number(byId(`${side}LedCount`).value) || 0}`;
+        });
     }
 
     function setAnalysisLabel() {
@@ -82,6 +214,7 @@ export default function (view) {
             : total === reported
                 ? " — matches the selected controller."
                 : ` — but the selected controller reports ${reported} LEDs, so these numbers are wrong.`;
+        updateLayoutDiagram();
     }
 
     function analysisHeight() {
@@ -129,7 +262,7 @@ export default function (view) {
             });
         });
         return [...merged.values()].sort((left, right) =>
-            (right.connected - left.connected) || (new Date(right.lastUsed || 0) - new Date(left.lastUsed || 0)));
+            new Date(right.lastUsed || 0) - new Date(left.lastUsed || 0));
     }
 
     function deviceLabel(device) {
@@ -157,11 +290,14 @@ export default function (view) {
             select.add(saved);
         }
 
-        select.value = selectedDeviceId || "";
+        // Do not make a new installation react to every playback by default.
+        // The latest actual device is the least surprising starting point and
+        // remains visible as the first concrete option after "All devices".
+        select.value = selectedDeviceId || devices[0]?.id || "";
         const connected = devices.filter(device => device.connected).length;
         byId("targetDeviceStatus").textContent = devices.length === 0
             ? "Jellyfin does not know any playback devices yet. Play something on the TV once, then reload this page."
-            : `${devices.length} known devices, ${connected} connected right now. Devices in use appear first.`;
+            : `${devices.length} known devices, ${connected} connected right now. Most recently used appears first.`;
     }
 
     function loadDevices(selectedDeviceId) {
@@ -201,21 +337,52 @@ export default function (view) {
         }
     }
 
-    // Ask the controller about the settings that silently override our output.
-    function checkControllerSettings() {
+    function currentWledConnection() {
         const host = (byId("wledCandidatesContainer").style.display !== "none"
             ? byId("wledCandidates").value
             : byId("wledHost").value.trim()) || loadedConfig?.WledHost || "";
         if (!host) {
-            return Promise.resolve();
+            return null;
         }
 
         const [hostName, hostPort] = host.split(":");
-        const port = Number(hostPort) || Number(byId("wledHttpPort").value) || 80;
+        return { hostName, port: Number(hostPort) || Number(byId("wledHttpPort").value) || 80 };
+    }
+
+    // Ask the controller about the settings that silently override our output.
+    function checkControllerSettings() {
+        const connection = currentWledConnection();
+        if (!connection) {
+            return Promise.resolve();
+        }
+
         return window.ApiClient
-            .getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Settings", { host: hostName, port }))
+            .getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Settings", connection))
             .then(settings => show("maxBrightnessWarning", Boolean(settings && settings.ForcesMaxBrightness)))
             .catch(() => show("maxBrightnessWarning", false));
+    }
+
+    function checkControllerStatus() {
+        const connection = currentWledConnection();
+        const status = byId("wledLiveStatus");
+        if (!connection) {
+            status.textContent = "Controller status: choose or enter a WLED address.";
+            return Promise.resolve();
+        }
+
+        status.textContent = "Controller status: checking…";
+        return window.ApiClient
+            .getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Status", connection))
+            .then(result => {
+                const online = result?.IsOnline ?? result?.isOnline;
+                const realtime = result?.IsRealtimeActive ?? result?.isRealtimeActive;
+                status.textContent = online
+                    ? realtime
+                        ? "● Online — realtime Ambilight is active."
+                        : "● Online — WLED is ready."
+                    : "● Not reachable — check address, port and network.";
+            })
+            .catch(() => { status.textContent = "● Not reachable — check address, port and network."; });
     }
 
     function findWled() {
@@ -249,16 +416,21 @@ export default function (view) {
                     byId(field).value = value;
                 });
                 byId("wledHost").value = config.WledHost || "";
+                byId("wallColourHex").value = /^#[0-9a-f]{6}$/i.test(config.WallColourHex || "")
+                    ? config.WallColourHex
+                    : "#ffffff";
                 selectAnalysisWidth(Math.max(16, Number(config.AnalysisWidth) || defaults.AnalysisWidth));
+                view.querySelectorAll('input[type="range"]').forEach(range => range.dispatchEvent(new Event("input")));
                 setDelayLabel();
                 setAnalysisLabel();
                 setDepthLabel();
                 setColourLabels();
+                updateCalibrationPatternUrl();
                 setLedTotal();
                 return loadDevices(config.TargetDeviceId || "");
             })
             .then(findWled)
-            .then(checkControllerSettings)
+            .then(() => Promise.all([checkControllerSettings(), checkControllerStatus()]))
             .finally(() => Dashboard.hideLoadingMsg());
     }
 
@@ -275,7 +447,7 @@ export default function (view) {
         const [hostName, hostPort] = host.split(":");
         const config = {
             ...loadedConfig,
-            ConfigSchemaVersion: 2,
+            ConfigSchemaVersion: 3,
             Enabled: byId("enabled").checked,
             HoldWhilePaused: byId("holdWhilePaused").checked,
             IgnoreBlackBorders: byId("ignoreBlackBorders").checked,
@@ -285,7 +457,8 @@ export default function (view) {
             TargetDeviceName: targetDeviceName(),
             WledHost: hostName,
             AnalysisWidth: Number(byId("analysisWidth").value),
-            AnalysisHeight: analysisHeight()
+            AnalysisHeight: analysisHeight(),
+            WallColourHex: byId("wallColourHex").value
         };
         numericFields.forEach(field => { config[fieldKey(field)] = Number(byId(field).value); });
         if (hostPort) {
@@ -297,16 +470,52 @@ export default function (view) {
             .finally(() => Dashboard.hideLoadingMsg());
     }
 
+    arrangeSettingsSections();
+    createSideTuningCards();
+    addRangeScales();
     view.addEventListener("viewshow", load);
     byId("realtimeAmbilightConfigurationForm").addEventListener("submit", save);
     byId("outputDelayMilliseconds").addEventListener("input", setDelayLabel);
     byId("samplingDepthPercent").addEventListener("input", setDepthLabel);
-    byId("brightnessPercent").addEventListener("input", setColourLabels);
-    byId("saturationPercent").addEventListener("input", setColourLabels);
-    ["red", "green", "blue"].forEach(channel => byId(`${channel}GainPercent`).addEventListener("input", setColourLabels));
+    colourTuningFields.forEach(field => byId(field).addEventListener("input", refreshLiveCalibrationPreview));
+    byId("wallColourHex").addEventListener("input", refreshLiveCalibrationPreview);
     byId("analysisWidth").addEventListener("change", setAnalysisLabel);
     ledCountFields.forEach(field => byId(field).addEventListener("input", setLedTotal));
-    byId("wledCandidates").addEventListener("change", setLedTotal);
+    byId("wledCandidates").addEventListener("change", () => {
+        setLedTotal();
+        checkControllerSettings();
+        checkControllerStatus();
+    });
     byId("findWled").addEventListener("click", findWled);
     byId("refreshDevices").addEventListener("click", () => loadDevices(byId("targetDeviceId").value));
+    byId("refreshWledStatus").addEventListener("click", () => {
+        checkControllerSettings();
+        checkControllerStatus();
+    });
+    byId("wledHost").addEventListener("change", checkControllerStatus);
+    byId("wledHttpPort").addEventListener("change", checkControllerStatus);
+    byId("calibrationSide").addEventListener("change", () => {
+        updateCalibrationPatternUrl();
+        if (calibrationPreviewIsActive) {
+            startCalibrationPreview(true);
+        }
+    });
+    byId("calibrationColour").addEventListener("change", () => {
+        updateCalibrationPatternUrl();
+        if (calibrationPreviewIsActive) {
+            startCalibrationPreview(true);
+        }
+    });
+    byId("copyCalibrationUrl").addEventListener("click", () => {
+        const url = byId("calibrationPatternUrl").value;
+        if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(url)
+                .then(() => { byId("calibrationPreviewStatus").textContent = "Link copied. Open it full-screen in the TV browser."; })
+                .catch(() => { byId("calibrationPatternUrl").select(); });
+        } else {
+            byId("calibrationPatternUrl").select();
+        }
+    });
+    byId("startCalibrationPreview").addEventListener("click", () => startCalibrationPreview());
+    byId("stopCalibrationPreview").addEventListener("click", stopCalibrationPreview);
 }

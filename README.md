@@ -84,6 +84,23 @@ Structural settings — WLED endpoint, protocol, LED counts and output FPS — a
 read when the output service starts, so **restart Jellyfin** after changing them.
 Delay, enable, keepalive and fade take effect immediately.
 
+### Room calibration
+
+The settings page has a short **Calibrate this room** flow for the two things
+that differ between installations: LED bins and the wall behind the television.
+First choose the wall's paint colour; the plugin applies a bounded inverse
+reflectance correction, so it adds a little of the primary that the wall absorbs
+most. It cannot make a very dark wall reflect light it does not have.
+
+For the precise pass, open the generated test-pattern link full-screen in the
+TV's browser and keep the Jellyfin dashboard on a phone or laptop. Pick one
+side and one reference colour (soft white, red, green or blue), then start the
+live preview. The plugin lights only that physical side through the regular
+realtime protocol while the TV shows the same colour at its edge. Adjust that
+side's brightness and RGB trims until the wall glow meets the on-screen edge;
+repeat for the four sides and save. The preview never writes WLED configuration,
+and real playback automatically takes priority over a forgotten preview.
+
 ### Transports
 
 | Protocol | Port | Limit |
