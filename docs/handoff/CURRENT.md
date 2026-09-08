@@ -2,12 +2,16 @@
 
 ## Last known commit and worktree
 
-`main` is at `87abe1a` and pushed to `origin/main` (as of 2026-09-08); the
-worktree carries further **uncommitted** work described below (tabbed
-settings page, black level floor, temporal dithering, wall colour presets,
-guarded WLED control). The earlier note that `.git` was read-only no longer
-holds -- it is writable, and commits from `16b02fa` onwards carry the whole
-implementation, the CI workflow, the packaging script and this handover.
+`feat/colour-calibration-curve` is at `3e12e47`, **not yet merged to `main`**
+(`main` is 5+ commits behind). All work through this commit is committed and
+deployed to the live host; nothing is left uncommitted as of this entry. See
+"What shipped 2026-09-08 (continued session)" below for what this branch
+actually contains beyond its name -- it has grown well past just the colour
+calibration curve (RGBW extraction/ceiling fixes, VAAPI SDR decode, Hue
+hardware-bug fixes, brightness range, the plugin repository manifest). The
+earlier note that `.git` was read-only no longer holds -- it is writable, and
+commits from `16b02fa` onwards carry the whole implementation, the CI
+workflow, the packaging script and this handover.
 
 This dev environment *is* the live host (`10.0.0.31`), not a separate box --
 no SSH/remote hop is needed, only `sudo`. A prior session left the repo
@@ -30,6 +34,82 @@ implementation unit, build/test result, architecture decision, environment
 change, blocker, or change to the next-action order. Before ending a session,
 record the exact validation commands/results and all uncommitted work so another
 engineer can continue without relying on chat history.
+
+## What shipped 2026-09-08 (continued session)
+
+Everything below is committed on `feat/colour-calibration-curve` (currently
+`3e12e47`) and deployed to the live host; 187/187 tests pass. Sections
+further down this file predate this entry and are historical record --
+several are now superseded (flagged where directly contradicted) rather than
+rewritten, per this file's own append discipline.
+
+- **Hue Entertainment, several real hardware bugs found and fixed** across
+  multiple hands-on rounds: entertainment-service ids resolved to the wrong
+  light resource ids (every end-of-session command 404ing), linear-light
+  values sent where the bridge's own ecosystem expects sRGB (dimmer than
+  direct-app control), a `_lifecycleTask` race that permanently stalled
+  reconnection after any stop (root cause: a fully-synchronously-completing
+  async method's `finally` runs before the caller's own field assignment
+  finishes), `HueEndBehaviour` reading back blank after a page refresh
+  (enum serialized as a string name, not the `<select>`'s numeric value),
+  and -- found via direct WLED keepalive investigation, then corrected to be
+  WLED-only, see below -- an initial Hue warm-white floor before any real
+  colour had been shown. See [ADR-011](../architecture/adr/ADR-011-hue-entertainment-integration.md).
+- **Hue Entertainment never turned a light on.** Streaming changes a light's
+  colour but never its power state; a light off when playback started
+  stayed dark for the whole session. `ConnectAndStreamAsync` now turns on
+  any light the pre-session snapshot found off, before opening the DTLS
+  channel; the existing end-of-session restore already turns it back off
+  from that same snapshot.
+- **WLED showing its own default preset for ~2 s at every playback start.**
+  Root cause: the keepalive send was gated on `pendingFrames.Count == 0`,
+  which the analysis decoder's own lead time makes false almost immediately
+  after playback starts -- silencing all realtime traffic long enough for
+  WLED's own realtime timeout to lapse. Removed the gate. The operator
+  explicitly confirmed this was the sole cause of the warm-white-flash
+  report, not any Hue-side behaviour, correcting an earlier mis-attribution.
+- **SDR analysis decode gained VAAPI hardware acceleration**, matching the
+  HDR graph's existing path. Root-caused a live "Hue starting late /
+  standing still" report to this, not to new colour-processing code:
+  measured 184% CPU / 0.3× realtime (software) vs 68% CPU / 15× realtime
+  (VAAPI) on the reference host. See [ADR-013](../architecture/adr/ADR-013-sdr-analysis-hardware-decode.md).
+- **`EdgeSampler` transfer-function math replaced with 256-entry lookup
+  tables** instead of live `Math.Pow` calls, verified behaviour-identical by
+  the full existing test suite.
+- **RGBW: white-channel extraction now has an operator-adjustable ceiling.**
+  Measured via flicker photometry (not reliable side-by-side comparison,
+  which a large colour-temperature difference between the white die and
+  mixed-RGB white made unreliable) that one white LED cannot reach the
+  combined peak of red, green and blue lit together, at any drive value.
+  Above the new **White LED strength** ceiling (default 50%), the excess
+  grey stays on red/green/blue instead of being sent to a die that cannot
+  reproduce it. See [ADR-014](../architecture/adr/ADR-014-rgbw-white-channel-ceiling.md).
+- **Global and per-side Brightness widened from a 1-100% pure attenuator to
+  1-200%.** Nothing in the pipeline could previously push a pixel brighter
+  than its own tonemapped source value, so dim scenes always read as dim on
+  the strip regardless of the LEDs' own physical brightness -- confirmed as
+  the root cause of a live "WLED burns too weak" report.
+- **Colour-tuning anchor sliders narrowed** to the operator's own hands-on
+  finding: hue-shift ±21° (was ±30°, "the extreme was never the correct
+  colour"), brightness/intensity 50-100% (was 50-150%, "a boost above the
+  photo's own value was never meaningful").
+- **The plugin repository manifest never included `imageUrl`**, and this
+  project's own repository was never registered in the reference host's
+  `PluginRepositories` list at all (it only listed Jellyfin Stable,
+  introskipper, Moonfin-plugin, and two unrelated third-party "Ambilight"
+  plugins) -- together the full explanation for a broken plugin icon and
+  "error getting plugin details from the repository" on the installed-plugin
+  page. `build/package.sh` now emits `imageUrl`; the release's manifest and
+  icon assets were re-uploaded. Registering the repository URL in Jellyfin's
+  own Dashboard is the operator's own remaining step (a live-server settings
+  change, not a code deploy).
+
+Two items from this list are correcting or superseding something written
+earlier in this file: the Hue integration is now genuinely hardware-validated
+(ADR-011's status line updated accordingly), and the SDR decode performance
+gap explains several timing complaints recorded lower down as open/under
+investigation -- those should now be read as resolved for hosts with a
+working VAAPI device, not as still-outstanding.
 
 ## Build and test status
 
@@ -1493,73 +1573,54 @@ A warning appears above the brightness slider when the controller reports
 
 ## Next actions (ordered)
 
-0. **The Hue Entertainment integration lives on branch `feat/hue-entertainment`,
-   built off `main`@`496dba8`, and is neither committed nor merged yet.**
-   Review it (the coordinator's report on this round has the summary and the
-   suggested commit message), then either commit-and-merge or ask for
-   changes before it moves further. Once merged and actually deployed to
-   the live host, work through the "Hardware test checklist (Hue
-   Entertainment)" section above in order -- none of it has been exercised
-   against real hardware yet, only unit-tested and checked read-only
-   against the bridge over the network. `docs/architecture/adr/ADR-011-hue-entertainment-integration.md`
-   has the full design rationale and every known limitation.
-1. **Actually click through the settings page and the wizard in a browser.**
-   This has been the top item for five rounds running and is still not done.
-   Every round so far shipped at least one bug (`hostName`/`host`, `tv=1` vs
-   `tv=true`) that only surfaced once something was actually exercised live --
-   the pattern is real, not bad luck. Specifically unverified this round: the
-   whole `Start` → wizard → `Finish` flow end to end (never exercised at all,
-   no admin credential in this environment to call it), whether the
-   per-step "quick" controls (colour temperature / balance / single gain)
-   actually feel right in the hand, whether `addStepButtons`'s flex-wrap fix
-   actually fixed the reported mobile layout bug on a real phone, the new
-   muted wall colour presets against the operator's actual wall, **and now
-   also the new "send a real white signal (RGBW)" checkbox and its
-   auto-detect suggestion banner**.
-2. **Re-verify the white-flicker fix and the colour-temperature direction
-   against the real strip.** `SendWhiteChannel` is already on and tested
-   once; that test is what surfaced the three bugs fixed in the entry above.
-   Specifically confirm: the White step's slider now reads warmer/cooler the
-   right way round, the white LEDs no longer visibly blink (colour residual
-   dithering is unchanged, so colours should still be fine), and whether the
-   accepted trade-off -- white no longer temporally dithered, so a slow fade
-   through a white-heavy tone could show 8-bit stepping near black again --
-   is actually noticeable in practice. Also re-check `rgbwm` is still `0`
-   (Manual) on WLED -- a firmware update has silently flipped it to
-   auto-white once before, and RGBW32 output depends on WLED not
-   deriving/subtracting white on its own.
-2b. If the operator wants "try another photo" to do something on more than
-   just the White step, that needs a few more real photos per step from
-   them (same process as the original 19 -- imgbb links or similar); nothing
-   was fabricated or substituted this round to avoid muddying the
-   single-dominant-hue signal the tuning steps depend on.
-3. **Finish the colour calibration for real, using the wizard.** Brightness,
-   colour intensity and white balance are all still at 100% on the live
-   installation. Click Start, walk white through magenta, look through the
-   five confirmation photos, click Done, and save.
-4. Consider consolidating the **7 tuning steps into fewer** by choosing (or
-   re-cropping) photos whose edges deliberately span two target colours at
-   once (a sunset with orange sky and purple horizon, say). The sampling
-   pipeline already supports this -- a photo's actual sampled edges drive the
-   LEDs, not its name -- and the confirmation photos already prove the idea
-   works; nobody has re-curated the *tuning* set around it yet.
-5. Decide whether a warm **tint** is wanted. A gain cannot add red to a pure
-   blue sky; only a tint can, and it deviates from the picture. Not implemented
-   pending that decision.
-6. Run a full TV checklist while tailing the log: start, pause, resume, seek and
-   stop, on SD, HD and HDR. Confirm all four pipeline markers appear, that the
-   configured fade is visible on stop, that resuming does not show WLED's own
-   effect in between, and `maxpwr=40000` each time.
-7. Verify the device binding filters: play on a device other than the bound TV
-   and confirm the LEDs stay dark, then play on the TV and confirm they do not.
-   The `ignored playback on device` log line reports both sides of any mismatch.
-8. Find out why the decoder loses its lead under real playback when it holds it
-   perfectly standalone. Instrument the gap between stamped frame position and
-   clock over a whole film rather than reasoning from restarts.
-9. Calibrate `OutputDelayMilliseconds` from 0 ms upwards, only when the LEDs are
-   demonstrably ahead of the picture.
-10. Add source-profile detection and separately validate HDR10, HLG and Dolby
-    Vision before claiming HDR support. The HDR graph now runs, but only HDR10
-    has been seen working.
-11. Publish a release: tag it, attach the packaged zip and host the manifest so
-    `sourceUrl` resolves. Build and manifest generation already exist.
+*Superseded 2026-09-08: the list below (Hue not yet merged, old photo-based
+wizard, decoder-lead cause unknown) predated most of this file's own "What
+shipped 2026-09-08" entry above and no longer describes reality. Replaced
+with the actual current plan, agreed with the operator, for work reachable
+without the TV (currently in use elsewhere):*
+
+1. **Documentation** (this pass) -- README, ADR index (added ADR-011 through
+   014, fixed the stale index table), and this handoff file. Done as of this
+   entry.
+2. **Rebuild the settings page toward the "Ambient Control" redesign.**
+   A preview mockup was published as a standalone Artifact earlier this
+   session (dashboard-with-status-cards layout, WLED/Hue as separate cards,
+   drill-down detail views, inline SVG colour-wheel for the calibration
+   curve). The operator additionally asked for a specific interaction
+   pattern not yet in that preview: each tab shows a **view-only summary**
+   of what is actually configured once it is configured, with a
+   **reconfigure** action that re-enters the step-by-step flow *pre-filled*
+   from current values rather than blank, so a specific step can be jumped
+   to directly. Update the preview artifact with that pattern first (agreed
+   with the operator -- preview before real implementation), then build it
+   into `config.html`/`config.js` for real.
+3. **Close the Hue test-coverage gap.** `HueEntertainmentService` (outer
+   plugin project) has zero unit tests -- it never has, being heavily
+   network/hardware-dependent -- including the "turn on a light that was
+   off" fix from this session. Requires putting `HueBridgeClient`/
+   `HueLightControl` behind interfaces to be mockable; not yet started.
+4. **Continue the efficiency sweep.** Only `EdgeSampler` (per-pixel
+   transfer-function math → 256-entry lookup tables) has been done.
+   `LinearLightInterpolator`, `BlackBorderDetector`, `HueCorrectionCurve`
+   and the new `WledTemporalSmoother` have not been reviewed for the same
+   kind of hot-path win.
+5. **Real-content validation, once the TV is available again** (blocked on
+   the operator, not on code): the RGBW white-channel ceiling default (50%)
+   was derived from flicker-photometry testing with synthetic swatches, not
+   varied playback content -- re-check and adjust `WhiteChannelStrengthPercent`
+   while watching an actual bright/white scene. Same for the widened
+   Brightness range (1-200%, currently set to 140% live) and the Hue
+   turn-on-if-off fix, neither of which has been exercised through a real
+   Jellyfin playback session since deployment.
+6. Register this project's own repository in the reference host's Jellyfin
+   (Dashboard → Plugins → Repositories →
+   `https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.1.1/manifest.json`)
+   -- the one remaining step for the plugin-catalog fix, and a live-server
+   settings change the operator needs to do themselves, not a code deploy.
+7. Merge `feat/colour-calibration-curve` to `main` once the operator is
+   satisfied with a stable checkpoint -- it currently carries far more than
+   its name (RGBW/VAAPI/Hue fixes, the manifest fix), all committed and
+   individually deployed already, but never merged.
+8. Add source-profile detection and separately validate HDR10, HLG and Dolby
+   Vision before claiming general HDR support. The HDR graph runs and one
+   HDR10 setup has been observed working; HLG/DV remain unvalidated.

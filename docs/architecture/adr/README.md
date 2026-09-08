@@ -16,8 +16,12 @@ has reviewed it; only **Accepted** ADRs may be treated as settled.
 | [008](ADR-008-companion-worker-vs-in-process.md) | Companion worker vs in-process | In-process, spawning `IMediaEncoder.EncoderPath`; no daemon, no bundled binary | **Accepted** 2026-09-05 + Am. 1 accepted |
 | [009](ADR-009-zero-touch-installation.md) | Zero-touch installation architecture | Plugin repository only; nothing downloaded; capability gaps explained, not fixed | **Accepted** 2026-09-05 + Am. 1 accepted; Am. 2 pins latest stable 10.11.11 |
 | [010](ADR-010-sampling-zone-model.md) | The sampling zone model | What a logical sample *is*: zone rectangles, 5% depth off the **cropped** picture, overlapping corners, linear-light box mean | **Proposed** 2026-09-06 |
+| [011](ADR-011-hue-entertainment-integration.md) | Philips Hue Entertainment integration | Second, fully independent realtime output alongside WLED; DTLS Entertainment API, one paired bridge/area | **Accepted** 2026-09-08, validated against real hardware across several rounds |
+| [012](ADR-012-wled-temporal-smoothing.md) | WLED temporal smoothing | Optional per-LED exponential ease toward a newly sampled colour, off by default | Implemented 2026-09-08, not yet re-tested against the physical strip |
+| [013](ADR-013-sdr-analysis-hardware-decode.md) | SDR analysis hardware decode | VAAPI decode for the SDR analysis graph, matching the HDR graph's existing path; measured 0.3× → 15× realtime | Implemented and deployed 2026-09-08 |
+| [014](ADR-014-rgbw-white-channel-ceiling.md) | RGBW white-channel ceiling | Cap how much of a bright pixel's grey goes to a single white LED; measured via flicker photometry that the gap never closes | Implemented and deployed 2026-09-08, not yet re-checked against real playback content |
 
-**All nine ADRs are Accepted, with eleven amendments also accepted (operator review 2026-09-06).**
+**The first ten ADRs are Accepted (save ADR-010, still Proposed), with eleven amendments also accepted (operator review 2026-09-06); ADR-011 onward record later-session decisions.**
 The amendments come from two adversarial research passes (30 agents, ~3.6M
 tokens) plus measurement on the reference hardware. No base decision was
 overturned, but three findings were serious:

@@ -1,6 +1,6 @@
 # ADR-011 — Philips Hue Entertainment integration
 
-- **Status:** **Proposed** — implemented this session, not yet validated against the operator's physical bridge/lights
+- **Status:** **Accepted** — implemented and validated against the operator's physical bridge/lights across several hands-on rounds (2026-09-08), each surfacing and fixing a real bug: wrong light-id resolution (entertainment-service id vs light resource id), linear-light values sent where the bridge expects sRGB, a `_lifecycleTask` race permanently stalling reconnection, `HueEndBehaviour` not reading back after a page refresh, and streaming never turning on a light that was off before playback started (Entertainment changes colour, never power state). See `docs/handoff/CURRENT.md` for the full history.
 - **Date:** 2026-09-08
 - **Relates to:** the operator's own numbered Hue integration spec (13 sections, given in full in the session transcript), ADR-004 (WLED realtime protocol strategy — this integration follows the same evidence-over-assumption discipline), ADR-008 (companion worker vs in-process — the same "no bundled binary, no separate daemon" reasoning extends here)
 

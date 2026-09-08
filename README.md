@@ -132,7 +132,10 @@ Each field carries its own explanation and names its default.
 | Analysis width | 160 px | Height follows from 16:9, so 160 × 90. |
 | Sampling depth | 10% | Samples inward from each active-picture edge. |
 | Ignore black borders | on | Detects letterbox/pillarbox bars before sampling. |
-| Brightness / saturation / RGB gains | 100% | Global colour controls, with additional per-side trims. |
+| Brightness | 100% (1-200%) | Global colour control, plus per-side trims. Above 100% pushes already-dim scenes brighter than the source picture — physical LEDs next to a bright HDR screen otherwise always read as dim, since nothing else in the pipeline can push a pixel brighter than it already is. |
+| Saturation / RGB gains | 100% | Global colour controls, with additional per-side trims. |
+| WLED smoothing | 0 ms (off) | Eases each physical LED toward a newly sampled colour instead of snapping to it. Off by default; raise it only if colour visibly "steps" at low brightness. |
+| Send a real white signal (RGBW) | off | Uses the strip's own white LED for grey/white content instead of mixing it from red, green and blue. See [RGBW strips](#rgbw-strips-send-a-real-white-signal) below. |
 | Wall colour | white | White leaves wall compensation neutral. |
 | Automatic LED gamma detection | on | Reads WLED settings at startup; falls back to the manual correction setting. |
 
@@ -167,11 +170,19 @@ plugin applies a bounded inverse reflectance correction, so it adds back a
 little of the primary the wall absorbs most. It cannot make a very dark wall
 reflect light it does not have.
 
-The precise pass is a twelve-step wizard: seven tuning steps in order --
-white, red, green, blue, yellow, cyan, magenta, covering every RGB primary
-and secondary -- followed by five confirmation steps with varied,
-colour-rich real-world scenes, so the operator can see the whole result
-rather than trusting seven isolated steps to compose correctly.
+The precise pass walks six primary/secondary colours -- red, yellow, green,
+cyan, blue, magenta -- each against a plain, solid colour swatch rather than
+a photo, with three sliders per colour: a **hue** nudge (how far this colour
+actually sits from where the strip should show it, e.g. "a touch pinker"),
+its own **brightness**, and its own **intensity**. Those six calibrated
+points build one smooth correction curve around the whole colour wheel --
+shown back to the operator as an actual chart once the wizard finishes, not
+just numbers -- so a colour between two calibrated points is corrected
+smoothly too, not just the six points themselves. White keeps its own,
+separate colour-temperature control (warmer/cooler). A short finetuning
+pass follows, walking a handful of real two-colour photos so the same
+calibrated values can be checked against actual content, not just a flat
+swatch, before the wizard is done.
 
 Click **Start calibration** on the **Ambilight** tab first -- the TV link is
 only reachable while a calibration is actually running. On an internet-facing
@@ -205,31 +216,27 @@ at once**, not one side at a time; a separate, explicitly optional
 "fine-tune each side" section still exists below it for the rare strip that
 genuinely needs it.
 
-Each tuning step shows only the one control that actually matters for it,
-following ordinary display-calibration convention rather than three raw RGB
-sliders every time: White gets a **colour temperature** (warmer/cooler)
-control, Red/Green/Blue get that primary's own intensity, and Yellow/Cyan/
-Magenta each get a two-primary **balance** control (Magenta's is literally
-"more red" on one end, "more blue" on the other). All of them move the same
-underlying red/green/blue gain values the "All colour controls (advanced)"
-section shows raw, for anyone who wants exact independent values instead.
 Every slider updates the LEDs live as you drag it -- no Save, no round trip
 -- and each one has small **&minus;/+** buttons beside it, in a proper row
 even on a phone, so a step can be repeated by tapping the same spot while
-watching the TV instead of the phone. White alone offers three photos to
-flip between with **Try another photo**; every other step has exactly one.
-The preview never writes WLED configuration, and real playback always takes
-priority over it.
+watching the TV instead of the phone. The preview never writes WLED
+configuration, and real playback always takes priority over it.
 
-Two related settings live in **Advanced**, deliberately outside the wizard,
+Three related settings live in **Advanced**, deliberately outside the wizard,
 because they shape ordinary playback rather than the calibration photos
 themselves: **Sampling resolution** (unchanged, and not derived from the
 wizard's photos -- a lower analysis size stays the right choice for a
-resource-constrained host regardless of how the calibration looks) and the
-new **Minimum colour hold**, which holds a physical LED at its last colour
+resource-constrained host regardless of how the calibration looks),
+**Minimum colour hold**, which holds a physical LED at its last colour
 until a newly sampled colour has persisted in the picture for at least that
-long. Off by default; raise it only if fast cuts or flashes make the strip
-feel twitchy, since it trades a little responsiveness for steadiness.
+long (off by default; raise it only if fast cuts or flashes make the strip
+feel twitchy, since it trades a little responsiveness for steadiness), and
+**Smoothing**, which eases each physical LED toward a newly sampled colour
+over a configurable time instead of jumping straight to it -- lower is more
+reactive, higher lets colour flow more smoothly at the cost of a real cut or
+fast pan taking a little longer to catch up. Off by default (0 ms); see
+[ADR-012](docs/architecture/adr/ADR-012-wled-temporal-smoothing.md) for what
+was actually measured before building it.
 
 Output is temporally dithered: WLED drives its LEDs straight from the byte
 value, and linear light gives the darkest tones the fewest of the 256
@@ -239,6 +246,29 @@ each channel's rounding error into the next frame instead of discarding it, so
 the strip alternates between two adjacent byte values in the right proportion
 -- far above flicker fusion at any output rate this plugin uses -- instead of
 holding one brightness for several frames and then jumping to the next.
+
+### RGBW strips (send a real white signal)
+
+Some strips have a fourth, dedicated white LED alongside red, green and blue.
+Turning on **Send a real white signal (RGBW)** sends grey/white content to
+that channel instead of mixing it from red, green and blue — less current
+draw and a more neutral white, on a strip that actually has the fourth die.
+Off by default, since not every strip does; restart Jellyfin after changing
+it, like the other WLED connection settings.
+
+A single white die cannot reach the combined peak brightness of red, green
+and blue lit together, confirmed live via flicker photometry (alternating
+the same physical LEDs between a mixed-RGB white and the white channel alone
+at ~12.5 Hz, which cancels the two's considerable difference in colour
+temperature and isolates a genuine brightness gap): the gap held completely
+flat between white values of 100 and 230 out of 255, so no drive value closes
+it. **White LED strength** (default 50%) caps how much of a bright/near-white
+pixel's shared grey is allowed onto the white die before the rest stays on
+red, green and blue instead — those three, lit together, can reach brightness
+the one white die cannot. Dim greys are unaffected either way, since the
+die's own peak was never the limiting factor for them. Lower this further if
+white content still looks dim on your strip; every RGBW die is different, and
+50% is a reasoned starting point, not a universal constant.
 
 ### Controlling WLED from the plugin
 
@@ -259,7 +289,11 @@ default, and harmless when off -- nothing about WLED changes. Version 1
 supports one paired bridge and one existing entertainment area (created and
 edited only in the Hue app, never by this plugin); the square Bridge and
 Bridge Pro are supported, the original round Bridge v1 is not, since it has
-no Entertainment API at all. See
+no Entertainment API at all. Entertainment streaming changes a light's
+colour but never its power state, so a light that is off when playback
+starts is turned on first — otherwise it would stay dark for the whole
+session regardless of what is streamed to it; a light the session found off
+is turned back off again once playback ends. See
 [`docs/architecture/adr/ADR-011-hue-entertainment-integration.md`](docs/architecture/adr/ADR-011-hue-entertainment-integration.md)
 for the full design, transport choice, and known limitations.
 
@@ -293,16 +327,27 @@ supply, so it is enforced rather than merely intended:
   HDR10 setup have been observed working; HLG and Dolby Vision need separate
   visual validation. Source-profile detection and hardware-path selection are
   incomplete, so this is not a general HDR compatibility claim.
-- **Timing:** analysis can lose its lead during playback. Resynchronisation
-  limits the impact, but the underlying cause remains under investigation.
-  Start with 0 ms delay and increase only if the LEDs visibly lead the picture.
+- **Timing:** the SDR analysis decode now uses VAAPI hardware acceleration
+  when the configured device path exists on disk (falling back to software
+  otherwise), matching the HDR path's own long-standing VAAPI graph. Measured
+  on the reference host against a 4K HEVC source: software SDR decode ran at
+  184% CPU and 0.3× realtime; VAAPI ran at 68% CPU and 15× realtime. This was
+  the actual cause of the analysis decoder repeatedly losing its lead and
+  restarting during a real test — not a regression in colour processing,
+  which costs negligible CPU by comparison. A host with no VAAPI device node,
+  the wrong driver, or missing permissions can still fall behind; start with
+  0 ms delay and increase only if the LEDs visibly lead the picture.
 - **No light:** check the enable switch, bound device, controller address and
   server-to-controller UDP access. Inspect Jellyfin logs for `playback start
   received`, `resolved source`, `processed its first decoded frame` and
   `sent its first WLED frame` to locate the failing stage.
-- **Too bright or washed out:** check colour controls and the settings page's
-  WLED brightness warning. Gamma detection happens at startup; restart Jellyfin
-  after changing WLED's gamma configuration. The plugin does not change it.
+- **Too bright or washed out:** check the Brightness control (1-200%, see
+  Configuration above) and the settings page's WLED brightness warning. On an
+  RGBW strip, also check **White LED strength** — content on the white channel
+  has a lower physical ceiling than red, green and blue combined, so a value
+  too high there can look dim rather than too bright. Gamma detection happens
+  at startup; restart Jellyfin after changing WLED's gamma configuration. The
+  plugin does not change it.
 - **Old settings page or startup errors:** rebuild the plugin explicitly with
   `--no-incremental`, deploy both DLLs together and restart Jellyfin.
 - **Controller outages:** richer recovery/retry handling and automated hardware
