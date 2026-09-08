@@ -33,6 +33,110 @@ engineer can continue without relying on chat history.
 
 ## Build and test status
 
+**PASS (2026-09-08, second operator hands-on-test round: session-gated TV surface, per-step controls, mobile fix, muted wall colours).**
+
+```bash
+DOTNET_CLI_HOME=/tmp/jfar2-dotnet-cli NUGET_PACKAGES=/tmp/jfar2-nuget-packages \
+dotnet build src/Jellyfin.Plugin.RealtimeAmbilight/Jellyfin.Plugin.RealtimeAmbilight.csproj \
+    --configuration Release --no-incremental -p:UseSharedCompilation=false
+DOTNET_ROLL_FORWARD=Major dotnet test \
+tests/Jellyfin.Plugin.RealtimeAmbilight.Tests/Jellyfin.Plugin.RealtimeAmbilight.Tests.csproj \
+    --configuration Release -p:UseSharedCompilation=false
+```
+
+Zero warnings/errors; **86/86**. Deployed and live-verified via curl for the
+anonymous surface (same no-admin-credential constraint every round):
+`/amb`, `WizardState?tv=true` and `Photo/White/0` all now correctly answer
+**404 before any `Start` call** -- the security fix below, confirmed working.
+**Not verified this round: the authenticated `Start`/`Finish`/`MoveWizard`/
+`Retune` flow itself, or any of the settings-page JS** -- no admin credential
+available in this environment, and this remains the standing gap (now four
+rounds running).
+
+This round is the operator's second hands-on test, and every change below is
+a direct response to specific feedback:
+
+- **The TV-facing surface is no longer permanently reachable.**
+  `CalibrationWizardState` gained `IsArmed`/`Arm()`/`Disarm()`. New
+  admin-only `POST Calibration/Start` arms it (and resets to White); new
+  `POST Calibration/Finish` disarms it and releases WLED (same effect as the
+  old `DELETE Preview`, which the settings page's "Stop" button now calls
+  under a different name). `Pattern` (`/amb` included), `GetWizardState`,
+  `GetPhoto` and `PostPhotoFrameAsync` -- the entire anonymous surface -- all
+  check `IsArmed` first and return a plain 404 otherwise. Motivation stated
+  directly: an unauthenticated page permanently reachable on a Jellyfin that
+  is internet-facing is its own exposure, however little it can actually do.
+  The settings page now shows a "Start calibration" button before anything
+  else appears, and relabels its own stop button "✓ Done — finish
+  calibration" once `IsLastStep` is true (new field on
+  `CalibrationWizardStateResponse`, alongside new `ConfirmationCount`). The TV
+  page distinguishes "never connected" from "was connected, now 404'd" (an
+  `everConnected` flag) so *finishing* the wizard shows a clear "Calibration
+  finished, you can close this page" screen instead of the same generic
+  nothing a never-started link would show.
+- **Confirmation steps cut from 10 to 5** (`CalibrationWizard.ConfirmationOrder`:
+  Blue-Green, Final test, Orange-Red, Purple-Teal, Yellow-Pink). The
+  unused five photo files (Cyan-Magenta, Purple, Blue-Red, Blue-Yellow,
+  Pink-Grey) were deleted from `Configuration/CalibrationPhotos`, not merely
+  unreferenced -- 14 embedded photos now, down from 19.
+- **Per-step relevant controls, following ordinary display-calibration
+  convention instead of the same three raw RGB sliders at every step.** New
+  `wizardStepControlSpecs` in `config.js` maps each tuning step's colour name
+  to exactly the control that matters: White gets a **colour-temperature**
+  (warmer/cooler) control; Red/Green/Blue get that primary's own gain;
+  Yellow/Cyan/Magenta each get a **two-primary balance** control -- literally
+  "more red" at Magenta and "more/less green" at Yellow, which is exactly
+  what was asked for. Mechanically all of these are the same underlying
+  `RedGainPercent`/`GreenGainPercent`/`BlueGainPercent` fields the settings
+  page already had; a "balance" control is a synthetic push-pull
+  (`a = 100+delta, b = 100-delta`) over two of them, so **no backend change
+  was needed for this at all** -- White's colour-temperature control and
+  Magenta's balance control are mechanically the same red/blue axis with a
+  different label. The full raw sliders (brightness, saturation, black level
+  floor, raw R/G/B, wall colour) moved into a new collapsed "All colour
+  controls (advanced)" section; only overall LED brightness stayed always
+  visible, since it is the one control that is relevant at literally every
+  step.
+- **Mobile layout bug fixed.** `addStepButtons()`'s `+`/`-` buttons were
+  inserted as plain siblings before/after the range `<input>`; `emby-input`
+  upgrades the element in place but it is still block-level by default, so
+  the buttons stacked above/below the slider instead of beside it on a phone
+  -- exactly as reported. Fixed by wrapping the range and both buttons in an
+  explicit flex row (`range.replaceWith(wrapper)`, then re-appending all
+  three into it), which forces the layout regardless of how `emby-input`
+  renders internally. This is unverified in an actual mobile browser, same
+  standing caveat as everything else in this section.
+- **Wall colour presets replaced.** The previous list (navy blue, hunter
+  green, saturated terracotta) leaned toward bold accent-wall colours; the
+  operator's complaint was that real, contemporary interiors (their example:
+  Unsplash "modern interior" search results) lean soft and muted instead --
+  warm off-whites, greiges, dusty sage/blue, soft clay -- not samples spread
+  evenly across the colour wheel. Replaced with 12 desaturated, lighter
+  tones. Sourced from general interior-design domain knowledge, not an
+  actual Unsplash fetch (this environment cannot visually browse a photo
+  search the way it can view a locally downloaded image) -- worth a sanity
+  check against real reference photos if the operator has strong opinions on
+  the specific hexes.
+
+**Investigated but deliberately not built this round, on the operator's own
+choice to finish the above first:** sending a real white (W) channel to the
+SK6812 RGBW strip instead of mixing white from R+G+B, which is what a proper
+colour-temperature control on White ultimately wants. Full findings written
+directly to the operator in-conversation; the short version, all of it
+already substantiated in `docs/architecture/adr/ADR-004-wled-realtime-protocol-strategy.md`
+(read that ADR first, it is extensive and already answers most of "why"):
+switch DDP from `RGB24` to `RGBW32` (2 packets -> 3 for 831 LEDs, still well
+inside the existing latency budget), extract `w = min(r,g,b)` per LED as a
+final step just before encoding (leaving the existing sampling/interpolation/
+adjustment/dithering pipeline in `LinearRgb` untouched), and keep WLED's own
+`rgbwm` at `0` (Manual) throughout -- a firmware update already flipped this
+to auto-white once before, silently subtracting white from RGB outside the
+plugin's own colour pipeline, and that must not be allowed to happen silently
+again. Explicitly **not yet measured**: current draw with the W channel
+actually driven (only R+G+B-mixed white was ever measured, at 19.65 A/831
+LEDs against the 40 A cap) -- required before this ships, per this project's
+standing safety practice around `maxpwr`.
+
 **PASS (2026-09-08, operator-curated photo set, 17-step wizard, edge weighting, dwell filter).**
 
 ```bash
@@ -916,44 +1020,51 @@ A warning appears above the brightness slider when the controller reports
 ## Next actions (ordered)
 
 1. **Actually click through the settings page and the wizard in a browser.**
-   This has been the top item for three rounds running and is still not done.
+   This has been the top item for four rounds running and is still not done.
    Every round so far shipped at least one bug (`hostName`/`host`, `tv=1` vs
    `tv=true`) that only surfaced once something was actually exercised live --
-   the pattern is real, not bad luck. Specifically unverified: the `+`/`-`
-   step buttons next to `emby-input` ranges render sanely, the TV's
-   canvas-sampling actually fires on all 17 steps and each photo shows
-   genuinely full-screen, the wizard's confirmation-phase label text
-   ("Confirmation 3 of 10 — ...") reads sensibly, the new minimum-colour-hold
-   slider's live retune, the wall colour preset dropdown round-trips through
-   save/load, and (only if there's a live reason to, since it writes to the
-   real controller) the "Turn it off in WLED" button.
-2. **Finish the colour calibration for real, using the wizard.** Brightness,
+   the pattern is real, not bad luck. Specifically unverified this round: the
+   whole `Start` → wizard → `Finish` flow end to end (never exercised at all,
+   no admin credential in this environment to call it), whether the
+   per-step "quick" controls (colour temperature / balance / single gain)
+   actually feel right in the hand, whether `addStepButtons`'s flex-wrap fix
+   actually fixed the reported mobile layout bug on a real phone, and the
+   new muted wall colour presets against the operator's actual wall.
+2. Consider implementing **RGBW32 output with a real white channel** --
+   investigated this round (see the entry above and ADR-004), not built.
+   The operator wants it specifically to make the White step's new
+   colour-temperature control mean something beyond an R/B gain trick.
+   Requires a fresh current-draw measurement with W actually driven before
+   it ships, and verifying `rgbwm` has not drifted back to an auto mode on
+   every session start (it already has once, silently, via a firmware
+   update).
+3. **Finish the colour calibration for real, using the wizard.** Brightness,
    colour intensity and white balance are all still at 100% on the live
-   installation. Open `/amb` on the TV once, walk white through magenta, look
-   through the ten confirmation photos, and save.
-3. Consider consolidating the **7 tuning steps into fewer** by choosing (or
+   installation. Click Start, walk white through magenta, look through the
+   five confirmation photos, click Done, and save.
+4. Consider consolidating the **7 tuning steps into fewer** by choosing (or
    re-cropping) photos whose edges deliberately span two target colours at
    once (a sunset with orange sky and purple horizon, say). The sampling
    pipeline already supports this -- a photo's actual sampled edges drive the
-   LEDs, not its name -- and the ten confirmation photos already prove the
-   idea works; nobody has re-curated the *tuning* set around it yet.
-4. Decide whether a warm **tint** is wanted. A gain cannot add red to a pure
+   LEDs, not its name -- and the confirmation photos already prove the idea
+   works; nobody has re-curated the *tuning* set around it yet.
+5. Decide whether a warm **tint** is wanted. A gain cannot add red to a pure
    blue sky; only a tint can, and it deviates from the picture. Not implemented
    pending that decision.
-5. Run a full TV checklist while tailing the log: start, pause, resume, seek and
+6. Run a full TV checklist while tailing the log: start, pause, resume, seek and
    stop, on SD, HD and HDR. Confirm all four pipeline markers appear, that the
    configured fade is visible on stop, that resuming does not show WLED's own
    effect in between, and `maxpwr=40000` each time.
-6. Verify the device binding filters: play on a device other than the bound TV
+7. Verify the device binding filters: play on a device other than the bound TV
    and confirm the LEDs stay dark, then play on the TV and confirm they do not.
    The `ignored playback on device` log line reports both sides of any mismatch.
-7. Find out why the decoder loses its lead under real playback when it holds it
+8. Find out why the decoder loses its lead under real playback when it holds it
    perfectly standalone. Instrument the gap between stamped frame position and
    clock over a whole film rather than reasoning from restarts.
-8. Calibrate `OutputDelayMilliseconds` from 0 ms upwards, only when the LEDs are
+9. Calibrate `OutputDelayMilliseconds` from 0 ms upwards, only when the LEDs are
    demonstrably ahead of the picture.
-9. Add source-profile detection and separately validate HDR10, HLG and Dolby
-   Vision before claiming HDR support. The HDR graph now runs, but only HDR10
-   has been seen working.
-10. Publish a release: tag it, attach the packaged zip and host the manifest so
+10. Add source-profile detection and separately validate HDR10, HLG and Dolby
+    Vision before claiming HDR support. The HDR graph now runs, but only HDR10
+    has been seen working.
+11. Publish a release: tag it, attach the packaged zip and host the manifest so
     `sourceUrl` resolves. Build and manifest generation already exist.

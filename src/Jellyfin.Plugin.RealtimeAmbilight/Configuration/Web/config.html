@@ -136,60 +136,78 @@
                     <p class="fieldDescription">Start with the picture as recorded, then adjust only what this room needs. One continuous strip usually runs the whole way round the TV, so the wizard below tunes all four sides together, not one at a time.</p>
 
                     <div class="inputContainer">
-                        <input is="emby-input" id="calibrationPatternUrl" type="text" readonly="readonly" label="Open this once on the TV" />
+                        <input is="emby-input" id="calibrationPatternUrl" type="text" readonly="readonly" label="TV link" />
                         <button is="emby-button" type="button" id="copyCalibrationUrl" class="raised">Copy link</button>
                         <a is="emby-linkbutton" id="openCalibrationPattern" target="_blank" rel="noopener" style="margin-left:.7em">Open here</a>
                     </div>
-                    <div class="fieldDescription">A short address, on purpose: it has to be typed with a remote control's arrow keys. Type it exactly as shown, <strong>including <code>http://</code></strong> -- left to guess, some TV browsers try <code>https://</code> first, which fails on a plain local address like this one.</div>
+                    <div class="fieldDescription">Type it exactly as shown, <strong>including <code>http://</code></strong> -- left to guess, some TV browsers try <code>https://</code> first, which fails on a plain local address like this one. <strong>Only reachable while a calibration below is started</strong> -- otherwise it answers as if it did not exist, so leaving Jellyfin reachable from the internet does not leave this page open too.</div>
 
                     <div style="border:1px solid rgba(127,127,127,.35);border-radius:.6em;padding:1em 1.2em;margin-top:1em">
-                        <div class="fieldDescription">Step <strong id="wizardStepLabel">1 of 7 — White tuning</strong></div>
-                        <div style="display:flex;gap:.7em;flex-wrap:wrap;align-items:center;margin-top:.6em">
-                            <button is="emby-button" type="button" id="wizardPrev" class="raised">&#9664; Back</button>
-                            <button is="emby-button" type="button" id="wizardNext" class="raised">Next &#9654;</button>
-                            <button is="emby-button" type="button" id="wizardAnotherPhoto" class="raised">Try another photo</button>
-                            <button is="emby-button" type="button" id="stopCalibrationPreview" class="raised">Stop &amp; release LEDs</button>
+                        <div id="wizardNotStarted">
+                            <button is="emby-button" type="button" id="startCalibrationWizard" class="raised">Start calibration</button>
+                            <div class="fieldDescription" style="margin-top:.5em">Opens the TV link above and begins the seven-step wizard.</div>
                         </div>
-                        <div id="calibrationPreviewStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em">Open the link on the TV to begin.</div>
+                        <div id="wizardActive" hidden>
+                            <div class="fieldDescription">Step <strong id="wizardStepLabel">1 of 7 — White tuning</strong></div>
+                            <div id="wizardStepControls" style="margin-top:.6em"></div>
+                            <div style="display:flex;gap:.7em;flex-wrap:wrap;align-items:center;margin-top:.6em">
+                                <button is="emby-button" type="button" id="wizardPrev" class="raised">&#9664; Back</button>
+                                <button is="emby-button" type="button" id="wizardNext" class="raised">Next &#9654;</button>
+                                <button is="emby-button" type="button" id="wizardAnotherPhoto" class="raised">Try another photo</button>
+                                <button is="emby-button" type="button" id="finishCalibrationWizard" class="raised">Stop &amp; release LEDs</button>
+                            </div>
+                            <div id="calibrationPreviewStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em">Waiting for the TV to open the link above…</div>
+                        </div>
                     </div>
 
-                    <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start;margin-top:1.2em">
-                        <div style="flex:1 1 16em;min-width:14em"><div class="inputContainer">
-                            <input is="emby-input" id="brightnessPercent" type="range" min="1" max="100" step="1" label="LED brightness" />
-                            <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. <strong>Default: 100%.</strong></div>
-                        </div></div>
-                        <div style="flex:1 1 16em;min-width:14em"><div class="inputContainer">
-                            <input is="emby-input" id="saturationPercent" type="range" min="50" max="200" step="5" label="Colour intensity" />
-                            <div class="fieldDescription">Now: <strong id="saturationValue"></strong>. <strong>Default: 100%.</strong></div>
-                        </div></div>
-                        <div style="flex:1 1 16em;min-width:14em"><div class="inputContainer">
-                            <input is="emby-input" id="blackLevelFloorPercent" type="range" min="0" max="20" step="1" label="Black level floor" />
-                            <div class="fieldDescription">Now: <strong id="blackLevelFloorValue"></strong>. Picture edges darker than this go fully off instead of glowing dim. <strong>Default: 0% (off).</strong></div>
-                        </div></div>
+                    <div class="inputContainer" style="margin-top:1.2em">
+                        <input is="emby-input" id="brightnessPercent" type="range" min="1" max="100" step="1" label="LED brightness" />
+                        <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. <strong>Default: 100%.</strong></div>
                     </div>
 
-                    <div class="fieldDescription" style="margin-top:.5em"><strong>Global white balance.</strong> Start at 100%; adjust only when every side has the same colour cast.</div>
-                    <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
-                        <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="redGainPercent" type="range" min="50" max="150" step="1" label="Red" /><div class="fieldDescription">Now: <strong id="redGainValue"></strong></div></div></div>
-                        <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="greenGainPercent" type="range" min="50" max="150" step="1" label="Green" /><div class="fieldDescription">Now: <strong id="greenGainValue"></strong></div></div></div>
-                        <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="blueGainPercent" type="range" min="50" max="150" step="1" label="Blue" /><div class="fieldDescription">Now: <strong id="blueGainValue"></strong></div></div></div>
+                    <div style="margin-top:1em">
+                    <details id="advancedColourControls">
+                        <summary style="cursor:pointer;list-style:revert">
+                            <span class="sectionTitle" style="display:inline">All colour controls (advanced)</span>
+                            <div class="fieldDescription" style="margin-top:.3em">Colour intensity, black level floor, raw white balance and the wall colour -- the wizard above already adjusts the ones that matter per step.</div>
+                        </summary>
+                        <div style="padding:.8em 0 0 1.25em">
+                        <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
+                            <div style="flex:1 1 16em;min-width:14em"><div class="inputContainer">
+                                <input is="emby-input" id="saturationPercent" type="range" min="50" max="200" step="5" label="Colour intensity" />
+                                <div class="fieldDescription">Now: <strong id="saturationValue"></strong>. <strong>Default: 100%.</strong></div>
+                            </div></div>
+                            <div style="flex:1 1 16em;min-width:14em"><div class="inputContainer">
+                                <input is="emby-input" id="blackLevelFloorPercent" type="range" min="0" max="20" step="1" label="Black level floor" />
+                                <div class="fieldDescription">Now: <strong id="blackLevelFloorValue"></strong>. Picture edges darker than this go fully off instead of glowing dim. <strong>Default: 0% (off).</strong></div>
+                            </div></div>
+                        </div>
+
+                        <div class="fieldDescription" style="margin-top:.5em"><strong>Raw white balance.</strong> What the wizard's per-step controls actually move; start at 100% and use those instead unless you need an exact independent value.</div>
+                        <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
+                            <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="redGainPercent" type="range" min="50" max="150" step="1" label="Red" /><div class="fieldDescription">Now: <strong id="redGainValue"></strong></div></div></div>
+                            <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="greenGainPercent" type="range" min="50" max="150" step="1" label="Green" /><div class="fieldDescription">Now: <strong id="greenGainValue"></strong></div></div></div>
+                            <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="blueGainPercent" type="range" min="50" max="150" step="1" label="Blue" /><div class="fieldDescription">Now: <strong id="blueGainValue"></strong></div></div></div>
+                        </div>
+
+                        <div class="fieldDescription" style="margin-top:1em"><strong>Wall behind the TV.</strong> A coloured wall absorbs one primary colour more than the others; this adds a little of it back, within what the LEDs can do.</div>
+                        <div class="selectContainer" style="max-width:24em">
+                            <select is="emby-select" id="wallColourPreset" label="Wall colour"></select>
+                            <div class="fieldDescription">Pick the closest match, or "Custom…" to match the exact paint colour.</div>
+                        </div>
+                        <div id="wallColourCustomContainer" class="inputContainer" style="display:none">
+                            <input id="wallColourHex" type="color" value="#ffffff" aria-label="Custom wall colour" style="width:4.5em;height:2.6em;padding:.2em;vertical-align:middle" />
+                            <label for="wallColourHex" style="margin-left:.6em">Exact wall colour</label>
+                        </div>
+                        <div class="inputContainer">
+                            <input is="emby-input" id="wallColourCorrectionPercent" type="range" min="0" max="100" step="5" label="Wall correction strength" />
+                            <div class="fieldDescription">Now: <strong id="wallColourCorrectionValue"></strong>. <strong>Default: 100%.</strong></div>
+                        </div>
+                        </div>
+                    </details>
                     </div>
 
-                    <div class="fieldDescription" style="margin-top:1em"><strong>Wall behind the TV.</strong> A coloured wall absorbs one primary colour more than the others; this adds a little of it back, within what the LEDs can do.</div>
-                    <div class="selectContainer" style="max-width:24em">
-                        <select is="emby-select" id="wallColourPreset" label="Wall colour"></select>
-                        <div class="fieldDescription">Pick the closest match, or "Custom…" to match the exact paint colour.</div>
-                    </div>
-                    <div id="wallColourCustomContainer" class="inputContainer" style="display:none">
-                        <input id="wallColourHex" type="color" value="#ffffff" aria-label="Custom wall colour" style="width:4.5em;height:2.6em;padding:.2em;vertical-align:middle" />
-                        <label for="wallColourHex" style="margin-left:.6em">Exact wall colour</label>
-                    </div>
-                    <div class="inputContainer">
-                        <input is="emby-input" id="wallColourCorrectionPercent" type="range" min="0" max="100" step="5" label="Wall correction strength" />
-                        <div class="fieldDescription">Now: <strong id="wallColourCorrectionValue"></strong>. <strong>Default: 100%.</strong></div>
-                    </div>
-
-                    <div style="margin-top:1.3em">
+                    <div style="margin-top:.6em">
                     <details id="perSideFineTuning">
                         <summary style="cursor:pointer;list-style:revert">
                             <span class="sectionTitle" style="display:inline">Fine-tune each side separately (advanced, rarely needed)</span>

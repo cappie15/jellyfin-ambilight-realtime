@@ -159,25 +159,33 @@ top: a picture edge darker than the floor drives that LED fully off instead of
 a dim, often colour-cast glow, rather than every dark scene keeping a faint
 wash of light around the whole room.
 
-Pick the wall's paint colour from a list of common presets (or choose
-"Custom…" for the exact colour with a picker); the plugin applies a bounded
-inverse reflectance correction, so it adds back a little of the primary the
-wall absorbs most. It cannot make a very dark wall reflect light it does not
-have.
+Pick the wall's paint colour from a list of soft, contemporary interior
+tones -- warm off-whites, greiges, dusty sage and blue, muted clay -- the kind
+of colour actually behind a TV today, not swatches sampled evenly across the
+full colour wheel; choose "Custom…" for the exact colour with a picker. The
+plugin applies a bounded inverse reflectance correction, so it adds back a
+little of the primary the wall absorbs most. It cannot make a very dark wall
+reflect light it does not have.
 
-The precise pass is a seventeen-step wizard: seven tuning steps in order --
+The precise pass is a twelve-step wizard: seven tuning steps in order --
 white, red, green, blue, yellow, cyan, magenta, covering every RGB primary
-and secondary -- followed by ten confirmation steps with varied, colour-rich
-real-world scenes, so the operator can see the whole result rather than
-trusting seven isolated steps to compose correctly. Open the short link shown
-on the **Ambilight** tab **once**, full-screen, in the TV's own browser -- it
-is deliberately as short as an address can be, because a remote control
-types it one arrow key at a time, and it is always plain `http://`: typed
-bare, some TV browsers guess `https://` first, which fails with no
-certificate on a local address. Opening that link is the whole "start": the
-TV page polls the plugin every 1.5 s, so the moment it is open the settings
-page's own wizard state jumps back to step one automatically, and the TV
-shows a small "Continue on your phone" hint the whole time.
+and secondary -- followed by five confirmation steps with varied,
+colour-rich real-world scenes, so the operator can see the whole result
+rather than trusting seven isolated steps to compose correctly.
+
+Click **Start calibration** on the **Ambilight** tab first -- the TV link is
+only reachable while a calibration is actually running. On an internet-facing
+Jellyfin an always-on, unauthenticated page is its own exposure however
+little it can do, so the whole TV-facing surface answers as if it did not
+exist until Start is pressed, and again the moment the wizard finishes or
+**Stop & release LEDs** is clicked. Open the short link **once**, full-screen,
+in the TV's own browser -- it is deliberately as short as an address can be,
+because a remote control types it one arrow key at a time, and it is always
+plain `http://`: typed bare, some TV browsers guess `https://` first, which
+fails with no certificate on a local address. The TV page polls the plugin
+every 1.5 s and shows a small "Continue on your phone" hint throughout; on the
+last step, the settings page's button becomes **"Done — finish calibration"**,
+and the TV shows a clear finished screen once pressed.
 
 Every step, White included, shows one of the operator's own curated photos --
 cropped to 16:9 and resized to 1080p, embedded in the plugin itself so
@@ -195,9 +203,19 @@ One continuous LED strip usually runs the whole way round a TV, so the
 wizard tunes brightness, saturation and white balance for **all four sides
 at once**, not one side at a time; a separate, explicitly optional
 "fine-tune each side" section still exists below it for the rare strip that
-genuinely needs it. Every slider updates the LEDs live as you drag it -- no
-Save, no round trip -- and each one has small **&minus;/+** buttons next to
-it so a step can be repeated by tapping the same spot on a phone while
+genuinely needs it.
+
+Each tuning step shows only the one control that actually matters for it,
+following ordinary display-calibration convention rather than three raw RGB
+sliders every time: White gets a **colour temperature** (warmer/cooler)
+control, Red/Green/Blue get that primary's own intensity, and Yellow/Cyan/
+Magenta each get a two-primary **balance** control (Magenta's is literally
+"more red" on one end, "more blue" on the other). All of them move the same
+underlying red/green/blue gain values the "All colour controls (advanced)"
+section shows raw, for anyone who wants exact independent values instead.
+Every slider updates the LEDs live as you drag it -- no Save, no round trip
+-- and each one has small **&minus;/+** buttons beside it, in a proper row
+even on a phone, so a step can be repeated by tapping the same spot while
 watching the TV instead of the phone. White alone offers three photos to
 flip between with **Try another photo**; every other step has exactly one.
 The preview never writes WLED configuration, and real playback always takes

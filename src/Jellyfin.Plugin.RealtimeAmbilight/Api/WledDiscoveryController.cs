@@ -111,13 +111,46 @@ public sealed class CalibrationController : ControllerBase
     }
 
     /// <summary>
+    /// Starts a calibration session: arms the anonymous TV-facing surface
+    /// (<see cref="Pattern"/>, <see cref="GetWizardState"/>,
+    /// <see cref="GetPhoto"/>, <see cref="PostPhotoFrameAsync"/>, all 404
+    /// while unarmed) and resets the wizard to White. Deliberately explicit
+    /// rather than "the link works whenever someone opens it": on an
+    /// internet-facing Jellyfin, an unauthenticated page reachable at all
+    /// times is its own exposure, however little it can do.
+    /// </summary>
+    [HttpPost("Start")]
+    [ProducesResponseType(typeof(CalibrationWizardStateResponse), StatusCodes.Status200OK)]
+    public ActionResult<CalibrationWizardStateResponse> Start()
+    {
+        _outputService.Wizard.Arm();
+        return Ok(BuildWizardStateResponse());
+    }
+
+    /// <summary>
+    /// Ends a calibration session: closes the TV-facing surface again (every
+    /// anonymous action below starts answering 404 immediately) and releases
+    /// WLED, exactly like <see cref="StopPreviewAsync"/>. Also what the
+    /// wizard's own "Done" button calls on the last step.
+    /// </summary>
+    [HttpPost("Finish")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> FinishAsync(CancellationToken cancellationToken)
+    {
+        _outputService.Wizard.Disarm();
+        await _outputService.StopCalibrationPreviewAsync(cancellationToken).ConfigureAwait(false);
+        return NoContent();
+    }
+
+    /// <summary>
     /// A TV browser opens this once, without a Jellyfin login, and leaves it
     /// open for the whole wizard: it polls <see cref="GetWizardState"/> every
     /// 1.5 s and updates itself in place, so "Next" on the settings page never
-    /// requires touching the TV again -- and opening the link at all is enough
-    /// to (re)start the wizard at step one, see <see cref="GetWizardState"/>.
-    /// Also reachable at the short <c>/amb</c> alias: this address is typed on
-    /// a remote control one letter at a time, so its length matters.
+    /// requires touching the TV again. Answers 404 unless a calibration
+    /// session is armed via <see cref="Start"/> -- there is deliberately
+    /// nothing to open here otherwise. Also reachable at the short
+    /// <c>/amb</c> alias: this address is typed on a remote control one
+    /// letter at a time, so its length matters.
     /// </summary>
     [AllowAnonymous]
     [HttpGet("Pattern")]
@@ -125,6 +158,11 @@ public sealed class CalibrationController : ControllerBase
     [Produces("text/html")]
     public ActionResult Pattern()
     {
+        if (!_outputService.Wizard.IsArmed)
+        {
+            return NotFound();
+        }
+
         const string html = """
             <!doctype html>
             <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -134,17 +172,23 @@ public sealed class CalibrationController : ControllerBase
               img { position:fixed;inset:0;width:100%;height:100%;object-fit:cover;display:block }
               .label { position:fixed;left:50%;top:5vh;transform:translateX(-50%);z-index:4;color:#fff;font:600 clamp(14px,2vw,27px) system-ui,sans-serif;text-align:center;letter-spacing:.04em;text-shadow:0 2px 10px #000 }
               .hint { position:fixed;right:1.2em;bottom:1.2em;z-index:5;padding:.5em 1em;border-radius:1.4em;background:rgba(0,0,0,.55);color:#fff;font:600 clamp(11px,1.2vw,15px) system-ui,sans-serif;text-shadow:0 1px 4px #000 }
+              .done { position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:.6em;background:#0b0f1a;color:#fff;font:600 clamp(16px,3vw,32px) system-ui,sans-serif;text-align:center;padding:2em }
+              .done small { font-size:.5em;font-weight:500;opacity:.7 }
               [hidden] { display:none !important }
             </style></head><body>
             <img id="photo" alt="" hidden />
             <div class="label" id="label">Loading&hellip;</div>
-            <div class="hint">Continue on your phone &rarr;</div>
+            <div class="hint" id="hint">Continue on your phone &rarr;</div>
+            <div class="done" id="done" hidden>Calibration finished<small>You can close this page now.</small></div>
             <canvas id="canvas" width="320" height="180" hidden></canvas>
             <script>
               const photo = document.getElementById("photo");
               const label = document.getElementById("label");
+              const hint = document.getElementById("hint");
+              const done = document.getElementById("done");
               const canvas = document.getElementById("canvas");
               let lastKey = "";
+              let everConnected = false;
               function pick(state, name) {
                 return state[name] ?? state[name[0].toLowerCase() + name.slice(1)];
               }
@@ -172,13 +216,27 @@ public sealed class CalibrationController : ControllerBase
                   photo.src = photoUrl;
                 }
                 const stepIndex = pick(state, "StepIndex");
+                const stepCount = pick(state, "StepCount");
+                const tuningCount = stepCount - pick(state, "ConfirmationCount");
                 const isConfirmation = pick(state, "IsConfirmationStep");
-                const phase = isConfirmation ? `Confirmation ${stepIndex - 6} of 10` : `Step ${stepIndex + 1} of 7`;
+                const phase = isConfirmation
+                  ? `Confirmation ${stepIndex - tuningCount + 1} of ${stepCount - tuningCount}`
+                  : `Step ${stepIndex + 1} of ${tuningCount}`;
                 label.textContent = `${phase} — ${pick(state, "ColourName")}`;
               }
               async function tick() {
                 try {
                   const response = await fetch("/RealtimeAmbilight/Calibration/WizardState?tv=true", { cache: "no-store" });
+                  if (response.status === 404) {
+                    if (everConnected) {
+                      label.hidden = true;
+                      hint.hidden = true;
+                      photo.hidden = true;
+                      done.hidden = false;
+                    }
+                    return;
+                  }
+                  everConnected = true;
                   const state = await response.json();
                   const key = [pick(state, "StepIndex"), pick(state, "PhotoIndex")].join(":");
                   if (key === lastKey) { return; }
@@ -200,12 +258,18 @@ public sealed class CalibrationController : ControllerBase
     /// Serves one of the operator's own calibration photos, embedded in the
     /// plugin so there is no external fetch, no attribution and no load time
     /// beyond what is already on disk. Same-origin also matters mechanically:
-    /// the TV's canvas can only read pixels from a same-origin image.
+    /// the TV's canvas can only read pixels from a same-origin image. 404
+    /// while no session is armed, like the rest of this anonymous surface.
     /// </summary>
     [AllowAnonymous]
     [HttpGet("Photo/{colour}/{index:int}")]
     public IActionResult GetPhoto(string colour, int index)
     {
+        if (!_outputService.Wizard.IsArmed)
+        {
+            return NotFound();
+        }
+
         var fileName = CalibrationWizard.PhotoAt(colour, index);
         if (fileName is null)
         {
@@ -232,17 +296,21 @@ public sealed class CalibrationController : ControllerBase
 
     /// <summary>
     /// Read by the TV pattern page every 1.5 s, and by the settings page once
-    /// on load. Only the TV's own poll (<paramref name="tv"/>) can restart the
-    /// wizard: a poll gap over 20 s means the link was just opened fresh, so
-    /// <see cref="CalibrationWizardState.NoteTvPoll"/> resets to step one --
-    /// opening the link is then the whole "start". The TV's own next photo
-    /// upload re-drives the LEDs; nothing needs starting from here.
+    /// on load. 404 while unarmed, like the rest of this anonymous surface.
+    /// Only the TV's own poll (<paramref name="tv"/>) can restart the wizard:
+    /// a poll gap over 20 s means the link was just (re)opened, so
+    /// <see cref="CalibrationWizardState.NoteTvPoll"/> resets to step one.
     /// </summary>
     [AllowAnonymous]
     [HttpGet("WizardState")]
     [ProducesResponseType(typeof(CalibrationWizardStateResponse), StatusCodes.Status200OK)]
     public ActionResult<CalibrationWizardStateResponse> GetWizardState([FromQuery] bool tv)
     {
+        if (!_outputService.Wizard.IsArmed)
+        {
+            return NotFound();
+        }
+
         if (tv)
         {
             _outputService.Wizard.NoteTvPoll();
@@ -267,8 +335,9 @@ public sealed class CalibrationController : ControllerBase
     /// <summary>
     /// Uploaded by the TV page after it draws the current photo to a canvas:
     /// full-range sRGB RGBA, downsized client-side. Anonymous like the rest of
-    /// this page's own endpoints, and bounded the same way every calibration
-    /// write is -- playback always wins, checked inside the service.
+    /// this page's own endpoints, 404 while unarmed, and bounded the same way
+    /// every calibration write is -- playback always wins, checked inside the
+    /// service.
     /// </summary>
     [AllowAnonymous]
     [HttpPost("PhotoFrame")]
@@ -276,6 +345,11 @@ public sealed class CalibrationController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> PostPhotoFrameAsync([FromQuery] int width, [FromQuery] int height, CancellationToken cancellationToken)
     {
+        if (!_outputService.Wizard.IsArmed)
+        {
+            return NotFound();
+        }
+
         if (width < 16 || height < 16 || (long)width * height > 2_000_000)
         {
             return BadRequest("Frame dimensions are out of range.");
@@ -326,7 +400,9 @@ public sealed class CalibrationController : ControllerBase
         return new CalibrationWizardStateResponse(
             wizard.StepIndex,
             CalibrationWizard.ColourOrder.Count,
+            CalibrationWizard.ConfirmationOrder.Count,
             CalibrationWizard.IsConfirmationStep(wizard.StepIndex),
+            wizard.IsLastStep,
             colourName,
             wizard.PhotoIndex,
             photoCount,
@@ -378,7 +454,9 @@ public sealed record CalibrationPreviewResponse(bool Active, string Message);
 public sealed record CalibrationWizardStateResponse(
     int StepIndex,
     int StepCount,
+    int ConfirmationCount,
     bool IsConfirmationStep,
+    bool IsLastStep,
     string ColourName,
     int PhotoIndex,
     int PhotoCount,

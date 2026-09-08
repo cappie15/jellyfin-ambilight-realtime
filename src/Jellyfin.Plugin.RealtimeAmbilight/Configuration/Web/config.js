@@ -24,19 +24,23 @@ export default function (view) {
         BottomBrightnessPercent: 100, BottomRedGainPercent: 100, BottomGreenGainPercent: 100, BottomBlueGainPercent: 100,
         LeftBrightnessPercent: 100, LeftRedGainPercent: 100, LeftGreenGainPercent: 100, LeftBlueGainPercent: 100
     };
+    // Soft, muted, contemporary interior tones -- the kind of wall colour
+    // actually behind a TV today (warm off-whites, greiges, dusty sage and
+    // blue, soft clay) -- not swatches sampled evenly across the full colour
+    // wheel. Saturated primaries are deliberately absent.
     const wallColourPresets = [
         { label: "White — no correction", hex: "#ffffff" },
-        { label: "Off-white", hex: "#efe9df" },
-        { label: "Light grey", hex: "#b7b6b2" },
-        { label: "Warm grey (greige)", hex: "#a89f8f" },
-        { label: "Anthracite grey", hex: "#4b4c4c" },
-        { label: "Charcoal / almost black", hex: "#2b2b2b" },
-        { label: "Sand / beige", hex: "#d8c9a8" },
-        { label: "Taupe", hex: "#8a7866" },
-        { label: "Sage green", hex: "#8a9a83" },
-        { label: "Hunter / forest green", hex: "#33422f" },
-        { label: "Navy blue", hex: "#1f2c44" },
-        { label: "Terracotta", hex: "#b1583a" }
+        { label: "Warm white / cream", hex: "#f2ede1" },
+        { label: "Soft greige", hex: "#cabfaf" },
+        { label: "Light grey", hex: "#c7c4bd" },
+        { label: "Warm taupe", hex: "#a89984" },
+        { label: "Soft sage green", hex: "#a7ae98" },
+        { label: "Muted olive", hex: "#7c7a5e" },
+        { label: "Dusty blue", hex: "#8ea0ac" },
+        { label: "Soft clay / terracotta", hex: "#c68f74" },
+        { label: "Warm sand / beige", hex: "#ddc8a3" },
+        { label: "Muted dusty rose", hex: "#d3bcb3" },
+        { label: "Graphite / charcoal", hex: "#3c3b38" }
     ];
     const ledCountFields = ["topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount"];
     let loadedConfig = null;
@@ -146,35 +150,49 @@ export default function (view) {
     // -- is much easier than dragging a thin slider precisely while looking
     // away. Scoped to the calibration section only: the sliders elsewhere on
     // this page are set once, not nudged while watching a live result.
-    function addStepButtons() {
-        byId("calibrationSection").querySelectorAll('input[type="range"]').forEach(range => {
-            if (range.dataset.stepButtonsAttached) {
-                return;
-            }
+    //
+    // The buttons must sit in a flex row WITH the range, not merely before/
+    // after it in source order: emby-input upgrades <input> in place but the
+    // element itself is still block-level by default, so plain sibling
+    // buttons stack above/below it -- exactly the mobile layout bug this was
+    // written to fix. Wrapping forces a row regardless of how emby-input
+    // renders internally.
+    function addStepButtons(range) {
+        if (range.dataset.stepButtonsAttached) {
+            return;
+        }
 
-            range.dataset.stepButtonsAttached = "true";
-            const nudge = direction => {
-                const step = Number(range.step) || 1;
-                const min = Number(range.min);
-                const max = Number(range.max);
-                range.value = String(Math.min(max, Math.max(min, Number(range.value) + (direction * step))));
-                range.dispatchEvent(new Event("input", { bubbles: true }));
-            };
+        range.dataset.stepButtonsAttached = "true";
+        const nudge = direction => {
+            const step = Number(range.step) || 1;
+            const min = Number(range.min);
+            const max = Number(range.max);
+            range.value = String(Math.min(max, Math.max(min, Number(range.value) + (direction * step))));
+            range.dispatchEvent(new Event("input", { bubbles: true }));
+        };
 
-            const button = (label, direction) => {
-                const el = document.createElement("button");
-                el.type = "button";
-                el.className = "raised";
-                el.textContent = label;
-                el.setAttribute("aria-label", `${label === "−" ? "Decrease" : "Increase"} ${range.getAttribute("label") || "value"}`);
-                el.style.cssText = "min-width:2.6em;padding:.3em .6em";
-                el.addEventListener("click", () => nudge(direction));
-                return el;
-            };
+        const button = (label, direction) => {
+            const el = document.createElement("button");
+            el.type = "button";
+            el.className = "raised";
+            el.textContent = label;
+            el.setAttribute("aria-label", `${label === "−" ? "Decrease" : "Increase"} ${range.getAttribute("label") || "value"}`);
+            el.style.cssText = "flex:0 0 auto;min-width:2.6em;padding:.3em .6em";
+            el.addEventListener("click", () => nudge(direction));
+            return el;
+        };
 
-            range.insertAdjacentElement("beforebegin", button("−", -1));
-            range.insertAdjacentElement("afterend", button("+", 1));
-        });
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:.5em;max-width:100%";
+        range.replaceWith(row);
+        range.style.cssText = "flex:1 1 auto;min-width:0";
+        row.appendChild(button("−", -1));
+        row.appendChild(range);
+        row.appendChild(button("+", 1));
+    }
+
+    function addStepButtonsToSection() {
+        byId("calibrationSection").querySelectorAll('input[type="range"]').forEach(addStepButtons);
     }
 
     // The shortest possible address, always plain http: a remote control types
@@ -189,18 +207,76 @@ export default function (view) {
     }
 
     // Mirrors CalibrationWizard.ColourOrder server-side: 7 tuning steps (white,
-    // then every RGB primary and secondary) followed by 10 confirmation steps.
+    // then every RGB primary and secondary) followed by confirmation steps.
     // Only used as a fallback bound before the server's own StepCount is known.
-    const wizardStepCountFallback = 17;
+    const wizardStepCountFallback = 12;
     const wizardTuningStepCount = 7;
     let wizardStepIndex = 0;
     let wizardPhotoIndex = 0;
     let wizardPhotoCount = 0;
+    let wizardStarted = false;
 
     function currentTuningPayload() {
         const tuning = {};
         colourTuningFields.forEach(field => { tuning[fieldKey(field)] = Number(byId(field).value); });
         return { WallColourHex: byId("wallColourHex").value, Tuning: tuning };
+    }
+
+    // Per-step "what matters right now" controls, following ordinary display
+    // calibration convention: a colour-temperature (warm/cool) control for
+    // white balance rather than raw gains, one gain for a primary's own
+    // strength, and a two-primary balance for a secondary -- "more red" at
+    // Magenta and "more/less green" at Yellow are exactly this axis. Every
+    // one of these ultimately just moves the same RedGainPercent /
+    // GreenGainPercent / BlueGainPercent fields the advanced panel shows.
+    const wizardStepControlSpecs = {
+        White: { kind: "balance", a: "redGainPercent", b: "blueGainPercent", label: "Colour temperature", lowLabel: "Warmer", highLabel: "Cooler" },
+        Red: { kind: "single", field: "redGainPercent", label: "Red intensity" },
+        Green: { kind: "single", field: "greenGainPercent", label: "Green intensity" },
+        Blue: { kind: "single", field: "blueGainPercent", label: "Blue intensity" },
+        Yellow: { kind: "balance", a: "redGainPercent", b: "greenGainPercent", label: "Yellow balance", lowLabel: "More green", highLabel: "More red" },
+        Cyan: { kind: "balance", a: "greenGainPercent", b: "blueGainPercent", label: "Cyan balance", lowLabel: "More blue", highLabel: "More green" },
+        Magenta: { kind: "balance", a: "redGainPercent", b: "blueGainPercent", label: "Magenta balance", lowLabel: "More blue", highLabel: "More red" }
+    };
+
+    function renderStepControls(colourName) {
+        const container = byId("wizardStepControls");
+        const spec = wizardStepControlSpecs[colourName];
+        if (!spec) {
+            container.innerHTML = "";
+            return;
+        }
+
+        if (spec.kind === "single") {
+            container.innerHTML = `<div class="inputContainer"><input is="emby-input" id="wizardQuickField" type="range" min="50" max="150" step="1" label="${spec.label}" /><div class="fieldDescription">Now: <strong id="wizardQuickValue"></strong></div></div>`;
+            const quick = byId("wizardQuickField");
+            quick.value = byId(spec.field).value;
+            const updateLabel = () => { byId("wizardQuickValue").textContent = `${quick.value}%`; };
+            updateLabel();
+            quick.addEventListener("input", () => {
+                byId(spec.field).value = quick.value;
+                updateLabel();
+                retune();
+            });
+        } else {
+            container.innerHTML = `<div class="inputContainer"><input is="emby-input" id="wizardQuickField" type="range" min="-50" max="50" step="1" label="${spec.label}" /><div class="fieldDescription">${spec.lowLabel} &harr; <strong id="wizardQuickValue"></strong> &harr; ${spec.highLabel}</div></div>`;
+            const quick = byId("wizardQuickField");
+            quick.value = Math.round((Number(byId(spec.a).value) - Number(byId(spec.b).value)) / 2);
+            const updateLabel = () => {
+                const value = Number(quick.value);
+                byId("wizardQuickValue").textContent = value === 0 ? "centred" : (value > 0 ? `${spec.highLabel} (${value})` : `${spec.lowLabel} (${-value})`);
+            };
+            updateLabel();
+            quick.addEventListener("input", () => {
+                const delta = Number(quick.value);
+                byId(spec.a).value = Math.min(150, Math.max(50, 100 + delta));
+                byId(spec.b).value = Math.min(150, Math.max(50, 100 - delta));
+                updateLabel();
+                retune();
+            });
+        }
+
+        addStepButtons(byId("wizardQuickField"));
     }
 
     function describeStatus(state) {
@@ -219,6 +295,7 @@ export default function (view) {
         const stepCount = state.StepCount ?? state.stepCount ?? wizardStepCountFallback;
         const colourName = state.ColourName ?? state.colourName ?? "";
         const isConfirmation = state.IsConfirmationStep ?? state.isConfirmationStep ?? (stepIndex >= wizardTuningStepCount);
+        const isLastStep = state.IsLastStep ?? state.isLastStep ?? (stepIndex === stepCount - 1);
         const photoCount = state.PhotoCount ?? state.photoCount ?? 0;
         wizardStepIndex = stepIndex;
         wizardPhotoIndex = state.PhotoIndex ?? state.photoIndex ?? 0;
@@ -226,10 +303,18 @@ export default function (view) {
         byId("wizardStepLabel").textContent = isConfirmation
             ? `Confirmation ${stepIndex - wizardTuningStepCount + 1} of ${stepCount - wizardTuningStepCount} — ${colourName}`
             : `${stepIndex + 1} of ${wizardTuningStepCount} — ${colourName} tuning`;
+        renderStepControls(colourName);
         byId("wizardPrev").disabled = stepIndex === 0;
-        byId("wizardNext").disabled = stepIndex === stepCount - 1;
+        byId("wizardNext").disabled = isLastStep;
         byId("wizardAnotherPhoto").disabled = photoCount <= 1;
+        byId("finishCalibrationWizard").textContent = isLastStep ? "✓ Done — finish calibration" : "Stop & release LEDs";
         byId("calibrationPreviewStatus").textContent = describeStatus(state);
+    }
+
+    function showWizardStarted(started) {
+        wizardStarted = started;
+        byId("wizardNotStarted").hidden = started;
+        byId("wizardActive").hidden = !started;
     }
 
     // Moves the wizard on the server, which the already-open TV page picks up
@@ -251,11 +336,22 @@ export default function (view) {
         }).then(renderWizardState);
     }
 
+    // The TV-facing surface (and this state) only exists while a calibration
+    // is started -- see CalibrationWizardState.IsArmed -- so a 404 here just
+    // means nothing is running right now, not an error to report.
     function loadWizardState() {
         return window.ApiClient
             .getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Calibration/WizardState"))
-            .then(renderWizardState)
-            .catch(() => {});
+            .then(state => { showWizardStarted(true); renderWizardState(state); })
+            .catch(() => { showWizardStarted(false); });
+    }
+
+    function startWizard() {
+        return window.ApiClient.ajax({
+            type: "POST",
+            url: window.ApiClient.getUrl("RealtimeAmbilight/Calibration/Start"),
+            dataType: "json"
+        }).then(state => { showWizardStarted(true); renderWizardState(state); });
     }
 
     // A slider's own "input" event fires on every drag tick; this coalesces a
@@ -265,6 +361,9 @@ export default function (view) {
     let retuneTimer = null;
     function retune() {
         setColourLabels();
+        if (!wizardStarted) {
+            return;
+        }
         clearTimeout(retuneTimer);
         retuneTimer = setTimeout(() => {
             window.ApiClient.ajax({
@@ -281,13 +380,13 @@ export default function (view) {
         }, 120);
     }
 
-    function stopCalibrationPreview() {
+    function finishWizard() {
         clearTimeout(retuneTimer);
         return window.ApiClient.ajax({
-            type: "DELETE",
-            url: window.ApiClient.getUrl("RealtimeAmbilight/Calibration/Preview")
+            type: "POST",
+            url: window.ApiClient.getUrl("RealtimeAmbilight/Calibration/Finish")
         }).then(() => {
-            byId("calibrationPreviewStatus").textContent = "Preview stopped; WLED will take back control in its normal timeout.";
+            showWizardStarted(false);
         }).catch(() => {
             byId("calibrationPreviewStatus").textContent = "The stop request did not complete; the preview will release on WLED's normal timeout.";
         });
@@ -666,7 +765,7 @@ export default function (view) {
     populateWallColourPresets();
     createSideTuningCards();
     addRangeScales();
-    addStepButtons();
+    addStepButtonsToSection();
     restoreLastTab();
     view.querySelectorAll(".raTab").forEach(button => button.addEventListener("click", () => switchTab(button.dataset.tab)));
     view.addEventListener("viewshow", load);
@@ -691,6 +790,7 @@ export default function (view) {
     });
     byId("wledHost").addEventListener("change", checkControllerStatus);
     byId("wledHttpPort").addEventListener("change", checkControllerStatus);
+    byId("startCalibrationWizard").addEventListener("click", startWizard);
     byId("wizardPrev").addEventListener("click", () => moveWizard(wizardStepIndex - 1, 0));
     byId("wizardNext").addEventListener("click", () => moveWizard(wizardStepIndex + 1, 0));
     byId("wizardAnotherPhoto").addEventListener("click", () => moveWizard(wizardStepIndex, wizardPhotoIndex + 1));
@@ -704,7 +804,7 @@ export default function (view) {
             byId("calibrationPatternUrl").select();
         }
     });
-    byId("stopCalibrationPreview").addEventListener("click", stopCalibrationPreview);
+    byId("finishCalibrationWizard").addEventListener("click", finishWizard);
     byId("wallColourPreset").addEventListener("change", () => {
         const value = byId("wallColourPreset").value;
         if (value === "custom") {

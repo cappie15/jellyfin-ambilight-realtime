@@ -21,11 +21,14 @@ public static class CalibrationWizard
     public static readonly IReadOnlyList<string> TuningOrder =
         ["White", "Red", "Green", "Blue", "Yellow", "Cyan", "Magenta"];
 
+    /// <summary>
+    /// A deliberately short pass, not all ten originally curated: enough to
+    /// see the whole result in varied, colour-rich real scenes without the
+    /// operator having to click through more confirmation steps than there
+    /// were tuning steps in the first place.
+    /// </summary>
     public static readonly IReadOnlyList<string> ConfirmationOrder =
-    [
-        "Blue-Green", "Cyan-Magenta", "Final test", "Orange-Red", "Purple",
-        "Purple-Teal", "Blue-Red", "Blue-Yellow", "Pink-Grey", "Yellow-Pink",
-    ];
+        ["Blue-Green", "Final test", "Orange-Red", "Purple-Teal", "Yellow-Pink"];
 
     public static readonly IReadOnlyList<string> ColourOrder = [.. TuningOrder, .. ConfirmationOrder];
 
@@ -41,14 +44,9 @@ public static class CalibrationWizard
             ["Cyan"] = ["s2_cyan.jpg"],
             ["Magenta"] = ["s2_magenta.jpg"],
             ["Blue-Green"] = ["s3_blue_green.jpg"],
-            ["Cyan-Magenta"] = ["s3_cyan_magenta.jpg"],
             ["Final test"] = ["s3_finaltest.jpg"],
             ["Orange-Red"] = ["s3_orange_red.jpg"],
-            ["Purple"] = ["s3_purple.jpg"],
             ["Purple-Teal"] = ["s3_purple_teal.jpg"],
-            ["Blue-Red"] = ["s4_blue_red.jpg"],
-            ["Blue-Yellow"] = ["s4_blue_yellow.jpg"],
-            ["Pink-Grey"] = ["s4_pink_grey.jpg"],
             ["Yellow-Pink"] = ["s4_yellow_pink.jpg"],
         };
 
@@ -71,6 +69,14 @@ public static class CalibrationWizard
 /// only: a restart returns to the first step, which is harmless since nothing
 /// here is a saved setting.
 /// </summary>
+/// <remarks>
+/// Unarmed by default. The entire anonymous TV-facing surface --
+/// <c>Pattern</c>, <c>WizardState</c> (GET), <c>Photo</c>, <c>PhotoFrame</c> --
+/// checks <see cref="IsArmed"/> and answers 404 while it is false, so an
+/// internet-facing Jellyfin does not carry a permanently reachable, unauthenticated
+/// page. Only the admin-only <c>Start</c> action can arm it, and only
+/// <c>Finish</c> (or the admin page itself, on request) disarms it again.
+/// </remarks>
 public sealed class CalibrationWizardState
 {
     /// <summary>
@@ -84,14 +90,30 @@ public sealed class CalibrationWizardState
     private int _photoIndex;
     private DateTimeOffset _lastTvPollAt = DateTimeOffset.MinValue;
 
+    public bool IsArmed { get; private set; }
+
     public int StepIndex => _stepIndex;
 
     public int PhotoIndex => _photoIndex;
 
     public string ColourName => CalibrationWizard.ColourOrder[_stepIndex];
 
+    public bool IsLastStep => _stepIndex == CalibrationWizard.ColourOrder.Count - 1;
+
     /// <summary>True while the TV page's own poll has landed within the last few seconds.</summary>
     public bool TvConnected => DateTimeOffset.UtcNow - _lastTvPollAt < TimeSpan.FromSeconds(5);
+
+    /// <summary>Opens the TV-facing surface and restarts at White.</summary>
+    public void Arm()
+    {
+        IsArmed = true;
+        _stepIndex = 0;
+        _photoIndex = 0;
+        _lastTvPollAt = DateTimeOffset.MinValue;
+    }
+
+    /// <summary>Closes the TV-facing surface again; the position is left as-is, harmlessly, until the next Arm.</summary>
+    public void Disarm() => IsArmed = false;
 
     public void MoveTo(int stepIndex, int photoIndex)
     {
