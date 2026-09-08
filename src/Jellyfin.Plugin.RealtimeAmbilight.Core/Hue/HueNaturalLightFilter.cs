@@ -83,8 +83,14 @@ public sealed class HueNaturalLightFilter
 
     /// <summary>
     /// Approximate warm-white (2700 K design target, per this project's
-    /// documented end-of-session default) linear-light ratios, used as the
-    /// very first frame's colour before any real target has ever been seen.
+    /// documented end-of-session default) linear-light ratios, seeded as a
+    /// channel's starting hue direction before any real target has been
+    /// seen. Since the 1% floor is withheld until a real colour has actually
+    /// been shown (see the "HasSeenRealColour" gate below), this direction
+    /// is only ever multiplied by a brightness of zero before that point --
+    /// it exists so the eventual first real frame eases in from a sane
+    /// starting hue rather than an arbitrary one, not so it is ever itself
+    /// visibly rendered.
     /// </summary>
     private static readonly LinearRgb WarmWhiteFallback = new(1f, 0.7f, 0.45f);
 
@@ -137,6 +143,7 @@ public sealed class HueNaturalLightFilter
         if (targetBrightness > 1e-6f)
         {
             state.LastValidHueColour = targetColour;
+            state.HasSeenRealColour = true;
         }
 
         var colourMix = hasPreviousState ? Mix(elapsedMilliseconds, _colourTimeConstantMilliseconds) : 1d;
@@ -158,7 +165,20 @@ public sealed class HueNaturalLightFilter
         state.Initialized = true;
 
         var dimmed = state.SmoothedBrightness * Math.Clamp(overallBrightnessFraction, 0d, 1d);
-        var floored = MinimumBrightnessFraction + (dimmed * (1d - MinimumBrightnessFraction));
+        // The 1% floor (and the warm-white fallback it would be tinted by,
+        // via state.LastValidHueColour/state.SmoothedColour above) exists so
+        // a black cut *mid-session* -- after real colour has actually been
+        // seen -- reads as a dim, calm glow rather than flickering to an
+        // undefined hue. Applying that same floor before any real colour has
+        // ever been seen for this channel is a different situation: it means
+        // a session has just (re)connected and genuinely has nothing to show
+        // yet, and lighting up warm-white at that exact moment reads as a
+        // visible flash rather than a floor -- reported live as "gaat nog
+        // even naar geel" right after a film starts. Held at true off until
+        // the first real (non-black) frame actually arrives instead.
+        var floored = state.HasSeenRealColour
+            ? MinimumBrightnessFraction + (dimmed * (1d - MinimumBrightnessFraction))
+            : dimmed;
 
         return new LinearRgb(
             Math.Clamp(state.SmoothedColour.Red * (float)floored, 0f, 1f),
@@ -186,5 +206,13 @@ public sealed class HueNaturalLightFilter
         public LinearRgb LastValidHueColour = WarmWhiteFallback;
         public double SmoothedBrightness;
         public bool Initialized;
+
+        /// <summary>
+        /// True once at least one genuinely non-black frame has been seen for
+        /// this channel. Gates the 1% floor/warm-white fallback: they exist
+        /// for a black cut *after* real colour has been shown, not for the
+        /// moment a session first connects and has nothing to show yet.
+        /// </summary>
+        public bool HasSeenRealColour;
     }
 }

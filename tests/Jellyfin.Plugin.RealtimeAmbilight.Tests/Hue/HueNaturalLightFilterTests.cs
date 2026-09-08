@@ -19,11 +19,14 @@ public class HueNaturalLightFilterTests
     }
 
     [Fact]
-    public void FullyBlackNeverGoesBelowTheOnePercentFloor()
+    public void FullyBlackNeverGoesBelowTheOnePercentFloorOnceRealColourHasBeenSeen()
     {
         var filter = new HueNaturalLightFilter();
+        // Establish real colour first: the floor exists for a black cut
+        // mid-session, not for a channel that has never shown anything yet.
+        filter.Apply(0, new LinearRgb(1f, 1f, 1f), elapsedMilliseconds: 0);
 
-        var result = filter.Apply(0, new LinearRgb(0f, 0f, 0f), elapsedMilliseconds: 0);
+        var result = filter.Apply(0, new LinearRgb(0f, 0f, 0f), elapsedMilliseconds: 33);
 
         var brightness = MaxComponent(result);
         Assert.True(brightness >= (float)HueNaturalLightFilter.MinimumBrightnessFraction - 1e-4f);
@@ -49,17 +52,24 @@ public class HueNaturalLightFilterTests
     }
 
     [Fact]
-    public void ANeverBeforeSeenBlackFrameUsesWarmWhiteAsTheStartupFallbackHue()
+    public void ANeverBeforeSeenBlackFrameHoldsTrueBlackRatherThanTheWarmWhiteFallback()
     {
+        // Regression test for a real, live-reported bug: a session's very
+        // first frames are often black (a title card, a logo, letterboxing
+        // before content starts), and lighting up warm-white right then --
+        // before any real colour has ever actually been shown -- reads as a
+        // visible flash immediately after playback starts ("gaat nog even
+        // naar geel"), not as a considerate floor. Held at true off instead
+        // until the first real (non-black) frame actually arrives.
         var filter = new HueNaturalLightFilter();
 
         var result = filter.Apply(0, new LinearRgb(0f, 0f, 0f), elapsedMilliseconds: 0);
 
-        // Warm white: red is the strongest component, blue the weakest.
-        Assert.True(result.Red >= result.Green);
-        Assert.True(result.Green >= result.Blue);
-        Assert.True(result.Blue > 0f);
+        Assert.Equal(0f, result.Red);
+        Assert.Equal(0f, result.Green);
+        Assert.Equal(0f, result.Blue);
     }
+
 
     [Fact]
     public void ABriefSinglePeakIsSuppressedMoreThanASustainedChange()
