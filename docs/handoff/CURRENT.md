@@ -33,6 +33,124 @@ engineer can continue without relying on chat history.
 
 ## Build and test status
 
+**PASS (2026-09-08, operator feedback round on the wizard: whole-perimeter tuning, real photo edge-sampling, short URL).**
+
+```bash
+DOTNET_CLI_HOME=/tmp/jfar2-dotnet-cli NUGET_PACKAGES=/tmp/jfar2-nuget-packages \
+dotnet build src/Jellyfin.Plugin.RealtimeAmbilight/Jellyfin.Plugin.RealtimeAmbilight.csproj \
+    --configuration Release --no-incremental -p:UseSharedCompilation=false
+DOTNET_ROLL_FORWARD=Major dotnet test \
+tests/Jellyfin.Plugin.RealtimeAmbilight.Tests/Jellyfin.Plugin.RealtimeAmbilight.Tests.csproj \
+    --configuration Release -p:UseSharedCompilation=false
+```
+
+Zero warnings/errors; **81/81**. Deployed and, unlike previous rounds,
+**exercised live against the physical strip via curl** (no admin credential
+available in this environment to drive the authenticated endpoints from the
+settings page itself, so the anonymous TV-facing surface was verified
+directly): `GET /amb` → 200, `GET WizardState?tv=true` → `TvConnected: true`,
+`GET Calibration/Photo/Blue/0` → a real 3.8 MB 5098x3399 JPEG served
+same-origin, `POST PhotoFrame` with a synthetic 320x180 grey buffer → 204 and
+WLED's own `/json/info` reported `"live": true` immediately after, `maxpwr`
+unchanged at 40000 throughout, and a Jellyfin restart (standing in for the
+admin's own missing Stop click) released it back to `"live": false` cleanly.
+**Not exercised: the settings page's own JS clicked through in a real
+browser** -- still the standing gap, see the next-actions item below.
+
+This round is a direct rewrite driven by the operator's first hands-on test
+of the wizard. Every item below is a response to specific feedback, not a
+speculative addition:
+
+- **The TV link is now `/amb`** -- a second route on the same `Pattern()`
+  action (`[HttpGet("Pattern")] [HttpGet("/amb")]`), not a redirect. The
+  previous `RealtimeAmbilight/Calibration/Pattern` path was painful to type
+  with a remote control's arrow keys. The settings page now also states
+  `http://` explicitly and builds the link from `window.location.host`
+  itself rather than trusting `window.location.origin`, so it can never
+  inherit `https://` from however the admin happens to be browsing Jellyfin.
+- **Whole-perimeter tuning, not per-side.** `CalibrationSide` gained an `All`
+  member; `BuildCalibrationFrame` paints every physical LED when given it.
+  The wizard's own Side selector is gone from the UI and the server-side
+  request DTO both -- `MoveWizardAsync` hardcodes `CalibrationSide.All`. The
+  per-side trim cards still exist, explicitly relabelled "advanced, rarely
+  needed", collapsed by default.
+- **Real photo edge-sampling replaces solid colour blocks**, the biggest
+  change. `EdgeSampler.SampleSrgb` (new, alongside the existing
+  `SampleBgra`) decodes full-range sRGB rather than BT.709 limited range --
+  a browser canvas is not a decoded video frame, and feeding it through the
+  video decode path would have subtracted a black level that is not there.
+  The TV page draws its fullscreen photo to a 320x180 canvas, reads
+  `getImageData`, and `POST`s the raw RGBA bytes to the new anonymous
+  `Calibration/PhotoFrame`; `JellyfinWledOutputService.ShowCalibrationPhotoAsync`
+  samples, interpolates (`LinearLightInterpolator`, unchanged) and adjusts it
+  exactly as real playback would, then sends it. The photo is now genuinely
+  **full-screen**, not inset -- there is no separate synthetic edge glow to
+  protect from overlap any more, the photo's real edges are the reference.
+- **Same-origin photo proxy, and why it is load-bearing, not cosmetic:**
+  `GET Calibration/Photo/{colour}/{index}` fetches and caches each Wallhaven
+  image server-side and re-serves it from the plugin's own origin. Confirmed
+  this session that `th.wallhaven.cc` sends no `Access-Control-Allow-Origin`
+  header at all, so a canvas fed directly from Wallhaven's CDN would be
+  cross-origin-tainted and `getImageData` would throw on every sample --
+  the whole edge-sampling mechanism depends on this proxy existing.
+- **Live retune, no Save required.** `RetuneCalibrationAsync` re-runs only
+  the colour-adjustment step against whatever is cached (a photo's sampled
+  edges, or White's flat colour) -- it never re-fetches or re-samples. Every
+  colour-tuning slider's `input` event now calls a 120 ms-debounced
+  `POST Calibration/Retune` instead of the old restart-a-named-preview flow.
+  A small **&minus;/+** button pair was added beside every range slider
+  inside the calibration section (`addStepButtons()`) for blind, repeated
+  taps while watching the TV instead of the phone.
+- **Auto-start, no manual "Start preview" button any more.** Arriving at
+  White (via the wizard's own Next/Back) auto-starts its flat preview
+  server-side; arriving at a photo colour does nothing itself -- the TV's
+  own upload, once it finishes loading that step's photo, is what starts
+  those, asynchronously and independently. `JellyfinWledOutputService`
+  tracks this with one flag (`_calibrationActive`) instead of overloading
+  `_calibrationPreview`'s non-nullness, since a photo-driven preview has no
+  `CalibrationPreview` record to speak of; a `_calibrationAdjustment` field
+  carries the last-known tuning across both paths so a photo upload from the
+  TV (which knows nothing about sliders) still applies whatever the operator
+  last set.
+- **Opening the TV link is now itself "start the wizard".**
+  `CalibrationWizardState.NoteTvPoll()` resets to step 0 (White) whenever the
+  gap since the previous *TV* poll exceeds 20 s -- distinguished from the
+  settings page's own occasional `GetWizardState` reads via a `tv=true` query
+  flag the TV page alone sends, since without that an admin merely loading
+  the settings page before any TV had ever connected would reset the wizard
+  on every page load. `TvConnected` (poll within the last 5 s) is now also in
+  the state DTO so the settings page can say "waiting for the TV" instead of
+  a misleadingly generic status line.
+- **Nature photos upgraded to a real minimum resolution.** Re-searched
+  Wallhaven with `atleast=3840x2160` added to the same colour-swatch query
+  approach as before; 12 of the 15 non-white photos are now genuinely 4K+
+  (the previous, lower-resolution picks are gone). Yellow could not be
+  upgraded: every 4K-filtered search for the yellow swatch, with or without
+  `q=sunflower`/`q=nature`, returned near-black astrophotography with a small
+  yellow star or moon rather than an actual yellow scene -- visually checked,
+  rejected, and documented as a known gap in `CalibrationWizard.Photos`'s own
+  doc comment rather than silently shipping a bad match. One newly-found blue
+  4K candidate (`8o836k`) was dropped for the same "deleted uploader, nobody
+  to credit" reason as before.
+- **Two more bugs caught by testing live instead of trusting the code, same
+  pattern as the `hostName`/`host` fix earlier today:** `[FromQuery] bool tv`
+  does not accept `tv=1` -- ASP.NET's default bool binder only parses
+  `true`/`false` -- so the TV page's own polling silently never marked itself
+  connected until this was caught by `curl`ing the live endpoint and reading
+  the 400 back; fixed by sending `tv=true`. And `CA1806` (build-breaking, not
+  runtime) caught a `TryParse` result going unchecked in
+  `BuildWizardStateResponse`.
+
+**Live TV browser testing is not optional here and has still not
+happened.** Everything above was verified at the HTTP layer. The specific
+things that can only be seen by actually loading the settings page and the
+TV page in real browsers: whether `emby-input`'s custom-element rendering
+tolerates a raw `<button>` inserted immediately before/after its `<input>`
+(`addStepButtons()`'s approach, unverified in a real DOM), whether the
+canvas-sampling path actually fires reliably on a real TV browser's `<img
+onload>` timing, and whether the 1.5 s polling cadence feels responsive
+enough switching steps in practice.
+
 **PASS (2026-09-08, colour-tuning wizard).**
 
 ```bash
@@ -702,35 +820,53 @@ A warning appears above the brightness slider when the controller reports
 
 ## Next actions (ordered)
 
-1. **Actually click through the redesigned settings page in a browser.**
-   Everything in the 2026-09-08 entry above was verified at the HTTP/backend
-   layer and by static ID cross-checks, not by loading the page and using it
-   -- which is exactly how the `hostName`/`host` mismatch shipped undetected
-   last time. Check all four tabs render, the wall colour preset dropdown
-   populates and round-trips through save/load, the black level floor slider
-   updates its live preview, and (only if there's a reason to, since it
-   writes to the real controller) the "Turn it off in WLED" button.
-2. **Finish the colour calibration.** Brightness, colour intensity and white
-   balance are all at 100% and the operator finds that too bright on this
-   installation. Use the per-side preview flow to pick real values and save
-   them.
-3. Decide whether a warm **tint** is wanted. A gain cannot add red to a pure
+1. **Actually click through the settings page and the wizard in a browser.**
+   This has been the top item for two rounds running and is still not done.
+   The two rounds so far each shipped at least one bug (`hostName`/`host`,
+   `tv=1` vs `tv=true`) that only surfaced once something was actually
+   exercised live -- the pattern is real, not bad luck. Specifically unverified:
+   the `+`/`-` step buttons next to `emby-input` ranges render sanely, the
+   TV's canvas-sampling actually fires and its photo shows genuinely
+   full-screen, the wall colour preset dropdown round-trips through
+   save/load, the black level floor slider's live retune, and (only if
+   there's a live reason to, since it writes to the real controller) the
+   "Turn it off in WLED" button.
+2. **Finish the colour calibration for real, using the wizard.** Brightness,
+   colour intensity and white balance are all still at 100% on the live
+   installation. Open `/amb` on the TV once, walk white through orange, and
+   save.
+3. Consider a second Wallhaven pass for **Yellow** specifically -- the
+   colour-swatch search never found a true yellow *scene* at 4K, only
+   near-black astrophotography with a small yellow accent (documented in
+   `CalibrationWizard.Photos`'s doc comment). The existing three yellow
+   photos are real sunflower fields and look right, just not 4K.
+4. Consider consolidating the **7 steps into fewer** by choosing photos whose
+   edges deliberately span two target colours at once (a sunset with orange
+   sky and purple horizon, say) -- the sampling pipeline already supports
+   this since 2026-09-08 (a photo's actual sampled edges drive the LEDs, not
+   a name), this session just did not have time to re-curate around it.
+5. A colourful **confirmation slideshow** after the seven tuning steps was
+   requested but deliberately deferred this session: cycle through several
+   more varied (tertiary-colour) photos, non-interactively, so the operator
+   can visually sanity-check the whole result rather than trusting seven
+   individual steps compose correctly.
+6. Decide whether a warm **tint** is wanted. A gain cannot add red to a pure
    blue sky; only a tint can, and it deviates from the picture. Not implemented
    pending that decision.
-4. Run a full TV checklist while tailing the log: start, pause, resume, seek and
+7. Run a full TV checklist while tailing the log: start, pause, resume, seek and
    stop, on SD, HD and HDR. Confirm all four pipeline markers appear, that the
    configured fade is visible on stop, that resuming does not show WLED's own
    effect in between, and `maxpwr=40000` each time.
-5. Verify the device binding filters: play on a device other than the bound TV
+8. Verify the device binding filters: play on a device other than the bound TV
    and confirm the LEDs stay dark, then play on the TV and confirm they do not.
    The `ignored playback on device` log line reports both sides of any mismatch.
-6. Find out why the decoder loses its lead under real playback when it holds it
+9. Find out why the decoder loses its lead under real playback when it holds it
    perfectly standalone. Instrument the gap between stamped frame position and
    clock over a whole film rather than reasoning from restarts.
-7. Calibrate `OutputDelayMilliseconds` from 0 ms upwards, only when the LEDs are
-   demonstrably ahead of the picture.
-8. Add source-profile detection and separately validate HDR10, HLG and Dolby
-   Vision before claiming HDR support. The HDR graph now runs, but only HDR10
-   has been seen working.
-9. Publish a release: tag it, attach the packaged zip and host the manifest so
-   `sourceUrl` resolves. Build and manifest generation already exist.
+10. Calibrate `OutputDelayMilliseconds` from 0 ms upwards, only when the LEDs are
+    demonstrably ahead of the picture.
+11. Add source-profile detection and separately validate HDR10, HLG and Dolby
+    Vision before claiming HDR support. The HDR graph now runs, but only HDR10
+    has been seen working.
+12. Publish a release: tag it, attach the packaged zip and host the manifest so
+    `sourceUrl` resolves. Build and manifest generation already exist.

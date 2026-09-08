@@ -165,27 +165,38 @@ inverse reflectance correction, so it adds back a little of the primary the
 wall absorbs most. It cannot make a very dark wall reflect light it does not
 have.
 
-For the precise pass, open **Fine-tune each side**: a seven-step wizard, in
-order, white &rarr; blue &rarr; red &rarr; green &rarr; yellow &rarr; purple
-&rarr; orange. Copy the single test-pattern link and open it full-screen in
-the TV's own browser **once** -- it polls the plugin every 1.5 s and updates
-itself as you click **Next**/**Back** on the settings page, so the TV is never
-touched again for the rest of the wizard. Choose a side, start the live
-preview, and the plugin lights only that physical side through the regular
-realtime protocol while the TV shows the matching colour at its edge. Adjust
-that side's brightness and RGB trims until the wall glow meets the on-screen
-edge, click Next, and repeat; save when done. The preview never writes WLED
-configuration, and real playback automatically takes priority over a
-forgotten preview.
+The precise pass is a seven-step wizard, in order: white, blue, red, green,
+yellow, purple, orange. Open the short link shown on the **Ambilight** tab
+**once**, full-screen, in the TV's own browser -- it is deliberately as short
+as an address can be, because a remote control types it one arrow key at a
+time, and it is always plain `http://`: typed bare, some TV browsers guess
+`https://` first, which fails with no certificate on a local address. Opening
+that link is the whole "start": the TV page polls the plugin every 1.5 s, so
+the moment it is open the settings page's own wizard state jumps back to step
+one automatically, and the TV shows a small "Continue on your phone" hint the
+whole time.
 
-Every step but white also shows a curated nature photograph centred on the
-TV -- never touching the sampled edge band, so it cannot interfere with the
-match itself -- credited to its Wallhaven photographer by name with a link
-back to their profile and the source page. **Try another photo** cycles
-through two or three picks per colour if the first doesn't read clearly on
-your wall. White has no photo: a flat plane is what the eye needs to judge a
-clean white by, which a photograph can never quite give under camera-specific
-white balance.
+Six of the seven steps show a curated, full-resolution (4K where a good match
+existed) Wallhaven nature photograph, **full-screen** -- not a flat colour
+swatch. Its own edges are sampled by exactly the same code path real Jellyfin
+playback uses (the browser draws the photo to a canvas, downsizes it, and the
+plugin runs it through the ordinary edge-sampling and colour pipeline), so a
+single well-chosen photo can carry useful colour at more than one edge at
+once -- a forest-and-sky photo tunes green at the bottom and blue at the top
+together. One continuous LED strip usually runs the whole way round a TV, so
+the wizard tunes brightness, saturation and white balance for **all four
+sides at once**, not one side at a time; a separate, explicitly optional
+"fine-tune each side" section still exists below it for the rare strip that
+genuinely needs it. Every slider updates the LEDs live as you drag it -- no
+Save, no round trip -- and each one has small **&minus;/+** buttons next to
+it so a step can be repeated by tapping the same spot on a phone while
+watching the TV instead of the phone. **Try another photo** cycles through
+two or three picks per colour if the first doesn't read clearly on your wall,
+and each is credited by name to its Wallhaven photographer with links to
+their profile and the source page. White alone stays a plain plane, which is
+what the eye needs to judge a clean white by -- a photograph never quite
+gives that under camera-specific white balance. The preview never writes WLED
+configuration, and real playback always takes priority over it.
 
 Output is temporally dithered: WLED drives its LEDs straight from the byte
 value, and linear light gives the darkest tones the fewest of the 256

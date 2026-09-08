@@ -41,8 +41,6 @@ export default function (view) {
     let loadedConfig = null;
     let discoveredControllers = [];
     let knownDevices = [];
-    let calibrationPreviewIsActive = false;
-    let calibrationPreviewTimer = null;
     const byId = id => view.querySelector(`#${id}`);
     const fieldKey = field => field[0].toUpperCase() + field.slice(1);
     const show = (id, visible) => { byId(id).style.display = visible ? "block" : "none"; };
@@ -143,10 +141,48 @@ export default function (view) {
         });
     }
 
-    // One fixed link now: the TV page polls its own state instead of being
-    // re-opened with new query parameters for every step.
+    // A blind tap on the same spot repeatedly -- eyes on the TV, not the phone
+    // -- is much easier than dragging a thin slider precisely while looking
+    // away. Scoped to the calibration section only: the sliders elsewhere on
+    // this page are set once, not nudged while watching a live result.
+    function addStepButtons() {
+        byId("calibrationSection").querySelectorAll('input[type="range"]').forEach(range => {
+            if (range.dataset.stepButtonsAttached) {
+                return;
+            }
+
+            range.dataset.stepButtonsAttached = "true";
+            const nudge = direction => {
+                const step = Number(range.step) || 1;
+                const min = Number(range.min);
+                const max = Number(range.max);
+                range.value = String(Math.min(max, Math.max(min, Number(range.value) + (direction * step))));
+                range.dispatchEvent(new Event("input", { bubbles: true }));
+            };
+
+            const button = (label, direction) => {
+                const el = document.createElement("button");
+                el.type = "button";
+                el.className = "raised";
+                el.textContent = label;
+                el.setAttribute("aria-label", `${label === "−" ? "Decrease" : "Increase"} ${range.getAttribute("label") || "value"}`);
+                el.style.cssText = "min-width:2.6em;padding:.3em .6em";
+                el.addEventListener("click", () => nudge(direction));
+                return el;
+            };
+
+            range.insertAdjacentElement("beforebegin", button("−", -1));
+            range.insertAdjacentElement("afterend", button("+", 1));
+        });
+    }
+
+    // The shortest possible address, always plain http: a remote control types
+    // this one arrow key at a time, and this plugin has no TLS certificate on
+    // a bare local address for a TV browser's "try https first" guess to find.
+    // Fixed and one-time now, too -- the TV page polls its own state instead
+    // of being re-opened with new query parameters for every step.
     function updateCalibrationPatternUrl() {
-        const url = new URL(window.ApiClient.getUrl("RealtimeAmbilight/Calibration/Pattern"), window.location.origin).href;
+        const url = `http://${window.location.host}/amb`;
         byId("calibrationPatternUrl").value = url;
         byId("openCalibrationPattern").href = url;
     }
@@ -162,12 +198,19 @@ export default function (view) {
         return { WallColourHex: byId("wallColourHex").value, Tuning: tuning };
     }
 
-    function calibrationRequest() {
-        return {
-            Side: byId("calibrationSide").value,
-            Colour: wizardColours[wizardStepIndex],
-            ...currentTuningPayload()
-        };
+    function describeStatus(state) {
+        const active = state.PreviewActive ?? state.previewActive;
+        const tvConnected = state.TvConnected ?? state.tvConnected;
+        if (!tvConnected) {
+            return "Waiting for the TV to open the link above…";
+        }
+        const colourName = state.ColourName ?? state.colourName ?? wizardColours[wizardStepIndex];
+        if (colourName === "White") {
+            return active ? "Live — adjust the sliders below." : "TV connected. Adjust a slider below to light the strip.";
+        }
+        return active
+            ? "Live — adjust the sliders below."
+            : "TV connected; waiting for it to load this step's photo…";
     }
 
     function renderWizardState(state) {
@@ -182,11 +225,12 @@ export default function (view) {
         byId("wizardPrev").disabled = stepIndex === 0;
         byId("wizardNext").disabled = stepIndex === stepCount - 1;
         byId("wizardAnotherPhoto").disabled = photoCount <= 1;
+        byId("calibrationPreviewStatus").textContent = describeStatus(state);
     }
 
-    // Moves the wizard on the server, which the open TV page picks up on its
-    // next poll, and -- only if a preview is already running -- carries the
-    // sliders' current values along so the LEDs are restarted in sync.
+    // Moves the wizard on the server, which the already-open TV page picks up
+    // on its next poll and, for a photo step, uploads its own sampled edges
+    // from -- this call never needs to know a photo's actual colours itself.
     function moveWizard(stepIndex, photoIndex) {
         wizardStepIndex = Math.max(0, Math.min(wizardColours.length - 1, stepIndex));
         wizardPhotoIndex = Math.max(0, photoIndex);
@@ -196,7 +240,6 @@ export default function (view) {
             data: JSON.stringify({
                 StepIndex: wizardStepIndex,
                 PhotoIndex: wizardPhotoIndex,
-                Side: byId("calibrationSide").value,
                 ...currentTuningPayload()
             }),
             contentType: "application/json",
@@ -207,49 +250,39 @@ export default function (view) {
     function loadWizardState() {
         return window.ApiClient
             .getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Calibration/WizardState"))
-            .then(state => {
-                byId("calibrationSide").value = state.Side ?? state.side ?? "Top";
-                renderWizardState(state);
-            })
+            .then(renderWizardState)
             .catch(() => {});
     }
 
-    function startCalibrationPreview(quietly = false) {
-        const status = byId("calibrationPreviewStatus");
-        if (!quietly) {
-            status.textContent = "Starting the selected LED side…";
-        }
-        return window.ApiClient.ajax({
-            type: "POST",
-            url: window.ApiClient.getUrl("RealtimeAmbilight/Calibration/Preview"),
-            data: JSON.stringify(calibrationRequest()),
-            contentType: "application/json",
-            dataType: "json"
-        }).then(response => {
-            calibrationPreviewIsActive = true;
-            status.textContent = response.Message || response.message || "Preview is live. Adjust the sliders until the two colours meet.";
-        }).catch(error => {
-            calibrationPreviewIsActive = false;
-            status.textContent = error?.responseJSON?.Message || "The preview could not start. Stop Jellyfin playback and try again.";
-        });
-    }
-
-    function refreshLiveCalibrationPreview() {
+    // A slider's own "input" event fires on every drag tick; this coalesces a
+    // burst of them into one request so the LEDs still feel live without
+    // flooding the server. Retune only ever recolours whatever is already
+    // showing -- it uploads nothing and never fetches a photo.
+    let retuneTimer = null;
+    function retune() {
         setColourLabels();
-        if (!calibrationPreviewIsActive) {
-            return;
-        }
-        clearTimeout(calibrationPreviewTimer);
-        calibrationPreviewTimer = setTimeout(() => startCalibrationPreview(true), 100);
+        clearTimeout(retuneTimer);
+        retuneTimer = setTimeout(() => {
+            window.ApiClient.ajax({
+                type: "POST",
+                url: window.ApiClient.getUrl("RealtimeAmbilight/Calibration/Retune"),
+                data: JSON.stringify(currentTuningPayload()),
+                contentType: "application/json",
+                dataType: "json"
+            }).then(response => {
+                if (response?.Message ?? response?.message) {
+                    byId("calibrationPreviewStatus").textContent = response.Message ?? response.message;
+                }
+            }).catch(() => {});
+        }, 120);
     }
 
     function stopCalibrationPreview() {
-        clearTimeout(calibrationPreviewTimer);
+        clearTimeout(retuneTimer);
         return window.ApiClient.ajax({
             type: "DELETE",
             url: window.ApiClient.getUrl("RealtimeAmbilight/Calibration/Preview")
         }).then(() => {
-            calibrationPreviewIsActive = false;
             byId("calibrationPreviewStatus").textContent = "Preview stopped; WLED will take back control in its normal timeout.";
         }).catch(() => {
             byId("calibrationPreviewStatus").textContent = "The stop request did not complete; the preview will release on WLED's normal timeout.";
@@ -623,14 +656,15 @@ export default function (view) {
     populateWallColourPresets();
     createSideTuningCards();
     addRangeScales();
+    addStepButtons();
     restoreLastTab();
     view.querySelectorAll(".raTab").forEach(button => button.addEventListener("click", () => switchTab(button.dataset.tab)));
     view.addEventListener("viewshow", load);
     byId("realtimeAmbilightConfigurationForm").addEventListener("submit", save);
     byId("outputDelayMilliseconds").addEventListener("input", setDelayLabel);
     byId("samplingDepthPercent").addEventListener("input", setDepthLabel);
-    colourTuningFields.forEach(field => byId(field).addEventListener("input", refreshLiveCalibrationPreview));
-    byId("wallColourHex").addEventListener("input", refreshLiveCalibrationPreview);
+    colourTuningFields.forEach(field => byId(field).addEventListener("input", retune));
+    byId("wallColourHex").addEventListener("input", retune);
     byId("analysisWidth").addEventListener("change", setAnalysisLabel);
     ledCountFields.forEach(field => byId(field).addEventListener("input", setLedTotal));
     byId("wledCandidates").addEventListener("change", () => {
@@ -646,29 +680,9 @@ export default function (view) {
     });
     byId("wledHost").addEventListener("change", checkControllerStatus);
     byId("wledHttpPort").addEventListener("change", checkControllerStatus);
-    byId("calibrationSide").addEventListener("change", () => {
-        moveWizard(wizardStepIndex, wizardPhotoIndex);
-        if (calibrationPreviewIsActive) {
-            startCalibrationPreview(true);
-        }
-    });
-    byId("wizardPrev").addEventListener("click", () => {
-        moveWizard(wizardStepIndex - 1, 0).then(() => {
-            if (calibrationPreviewIsActive) {
-                startCalibrationPreview(true);
-            }
-        });
-    });
-    byId("wizardNext").addEventListener("click", () => {
-        moveWizard(wizardStepIndex + 1, 0).then(() => {
-            if (calibrationPreviewIsActive) {
-                startCalibrationPreview(true);
-            }
-        });
-    });
-    byId("wizardAnotherPhoto").addEventListener("click", () => {
-        moveWizard(wizardStepIndex, wizardPhotoIndex + 1);
-    });
+    byId("wizardPrev").addEventListener("click", () => moveWizard(wizardStepIndex - 1, 0));
+    byId("wizardNext").addEventListener("click", () => moveWizard(wizardStepIndex + 1, 0));
+    byId("wizardAnotherPhoto").addEventListener("click", () => moveWizard(wizardStepIndex, wizardPhotoIndex + 1));
     byId("copyCalibrationUrl").addEventListener("click", () => {
         const url = byId("calibrationPatternUrl").value;
         if (navigator.clipboard?.writeText) {
@@ -679,7 +693,6 @@ export default function (view) {
             byId("calibrationPatternUrl").select();
         }
     });
-    byId("startCalibrationPreview").addEventListener("click", () => startCalibrationPreview());
     byId("stopCalibrationPreview").addEventListener("click", stopCalibrationPreview);
     byId("wallColourPreset").addEventListener("change", () => {
         const value = byId("wallColourPreset").value;
@@ -689,7 +702,7 @@ export default function (view) {
             show("wallColourCustomContainer", false);
             byId("wallColourHex").value = value;
         }
-        refreshLiveCalibrationPreview();
+        retune();
     });
     byId("allowWledControl").addEventListener("change", () => {
         byId("allowWledControlSummary").textContent = byId("allowWledControl").checked

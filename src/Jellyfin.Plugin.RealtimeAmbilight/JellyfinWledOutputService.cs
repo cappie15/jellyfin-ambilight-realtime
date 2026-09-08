@@ -62,16 +62,23 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private Task? _pump;
     private Rgb24Encoding _encoding;
     private readonly int _ledCount;
+    private readonly DitheredRgb24Encoder _calibrationEncoder = new();
+    private readonly object _calibrationPhotoLock = new();
     private CalibrationPreview? _calibrationPreview;
+    private bool _calibrationActive;
+    private byte[]? _calibrationPhotoPixels;
+    private int _calibrationPhotoWidth;
+    private int _calibrationPhotoHeight;
+    private PerimeterColourAdjustment _calibrationAdjustment = PerimeterColourAdjustment.None;
 
     /// <summary>
     /// The colour-tuning wizard's current step, shared between the settings
     /// page and the anonymous TV pattern page. Reading and moving it never
-    /// itself touches WLED; only <see cref="ShowCalibrationPreviewAsync"/> does.
+    /// itself touches WLED; only the calibration preview methods below do.
     /// </summary>
     public CalibrationWizardState Wizard { get; } = new();
 
-    public bool IsCalibrationPreviewActive => Volatile.Read(ref _calibrationPreview) is not null;
+    public bool IsCalibrationPreviewActive => Volatile.Read(ref _calibrationActive);
 
     public JellyfinWledOutputService(
         PlaybackEventCoordinator coordinator,
@@ -133,8 +140,95 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             return false;
         }
 
+        lock (_calibrationPhotoLock)
+        {
+            _calibrationPhotoPixels = null;
+            _calibrationAdjustment = preview.Adjustment;
+        }
+
         Volatile.Write(ref _calibrationPreview, preview);
+        Volatile.Write(ref _calibrationActive, true);
         await _output.SendFrameAsync(BuildCalibrationFrame(preview), cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
+    /// Uploads one calibration photo's already-downsized pixels -- full-range
+    /// sRGB RGBA, exactly what a browser <c>canvas</c> hands back -- and drives
+    /// the LEDs from its actual sampled edges through the same sampling,
+    /// interpolation and colour pipeline real playback uses. Unlike
+    /// <see cref="ShowCalibrationPreviewAsync"/> this is not one flat colour:
+    /// each side gets whatever the photo's own edge actually contains.
+    /// </summary>
+    /// <remarks>
+    /// Takes no tuning: the anonymous TV page uploads pixels only, and this
+    /// applies whatever the settings page most recently sent via
+    /// <see cref="RetuneCalibrationAsync"/> (or the identity if nothing has
+    /// yet this session). That keeps the TV page ignorant of slider state
+    /// entirely -- it only ever has to know which photo is showing.
+    /// </remarks>
+    public async Task<bool> ShowCalibrationPhotoAsync(byte[] rgbaPixels, int width, int height, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(rgbaPixels);
+        if (_coordinator.ActiveSessionId is not null)
+        {
+            return false;
+        }
+
+        PerimeterColourAdjustment adjustment;
+        lock (_calibrationPhotoLock)
+        {
+            _calibrationPhotoPixels = rgbaPixels;
+            _calibrationPhotoWidth = width;
+            _calibrationPhotoHeight = height;
+            adjustment = _calibrationAdjustment;
+        }
+
+        Volatile.Write(ref _calibrationPreview, null);
+        Volatile.Write(ref _calibrationActive, true);
+        await SendCalibrationPhotoFrameAsync(rgbaPixels, width, height, adjustment, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
+    /// Re-applies fresh tuning to whatever the calibration preview currently
+    /// shows -- the cached photo's sampled edges, or the flat synthetic colour
+    /// -- without re-fetching or re-sampling anything. A slider therefore feels
+    /// live: only the cheap colour-adjustment step reruns, not image capture.
+    /// </summary>
+    public async Task<bool> RetuneCalibrationAsync(PerimeterColourAdjustment adjustment, CancellationToken cancellationToken)
+    {
+        if (_coordinator.ActiveSessionId is not null)
+        {
+            return false;
+        }
+
+        byte[]? photoPixels;
+        int photoWidth;
+        int photoHeight;
+        lock (_calibrationPhotoLock)
+        {
+            _calibrationAdjustment = adjustment;
+            photoPixels = _calibrationPhotoPixels;
+            photoWidth = _calibrationPhotoWidth;
+            photoHeight = _calibrationPhotoHeight;
+        }
+
+        if (photoPixels is not null)
+        {
+            await SendCalibrationPhotoFrameAsync(photoPixels, photoWidth, photoHeight, adjustment, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        var preview = Volatile.Read(ref _calibrationPreview);
+        if (preview is null)
+        {
+            return false;
+        }
+
+        var retuned = preview with { Adjustment = adjustment };
+        Volatile.Write(ref _calibrationPreview, retuned);
+        await _output.SendFrameAsync(BuildCalibrationFrame(retuned), cancellationToken).ConfigureAwait(false);
         return true;
     }
 
@@ -142,7 +236,41 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     public async Task StopCalibrationPreviewAsync(CancellationToken cancellationToken)
     {
         Volatile.Write(ref _calibrationPreview, null);
+        Volatile.Write(ref _calibrationActive, false);
+        lock (_calibrationPhotoLock)
+        {
+            _calibrationPhotoPixels = null;
+        }
+
         await _output.ReleaseAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task SendCalibrationPhotoFrameAsync(
+        byte[] rgbaPixels,
+        int width,
+        int height,
+        PerimeterColourAdjustment adjustment,
+        CancellationToken cancellationToken)
+    {
+        var logical = LogicalSamplingLayout.FromPhysicalLayout(_physicalLayout);
+        var depth = Math.Clamp(
+            Plugin.Instance?.Configuration.SamplingDepthPercent ?? EdgeSampler.DefaultDepthPercent,
+            EdgeSampler.MinimumDepthPercent,
+            EdgeSampler.MaximumDepthPercent);
+        var samples = EdgeSampler.SampleSrgb(rgbaPixels, width, height, default, logical, depth);
+        var physicalFrame = LinearLightInterpolator.InterpolatePerimeter(
+            _physicalLayout,
+            logical,
+            samples.Top,
+            samples.Right,
+            samples.Bottom,
+            samples.Left);
+        for (var index = 0; index < physicalFrame.Length; index++)
+        {
+            physicalFrame[index] = adjustment.Apply(physicalFrame[index], index, _physicalLayout);
+        }
+
+        await _output.SendFrameAsync(_calibrationEncoder.Encode(physicalFrame, _encoding), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -204,12 +332,14 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
 
                 wasOutputEnabled = true;
                 var currentSession = _coordinator.ActiveSessionId;
-                var calibration = Volatile.Read(ref _calibrationPreview);
-                if (calibration is not null && currentSession is null)
+                var calibrationActive = Volatile.Read(ref _calibrationActive);
+                if (calibrationActive && currentSession is null)
                 {
-                    // The initial frame is sent by ShowCalibrationPreviewAsync;
-                    // one keepalive per second maintains WLED's temporary
-                    // ownership without sending 30 identical frames per second.
+                    // The initial frame is sent by ShowCalibrationPreviewAsync or
+                    // ShowCalibrationPhotoAsync; one keepalive per second maintains
+                    // WLED's temporary ownership without resending 30 identical
+                    // frames per second -- KeepAliveAsync repeats whatever was
+                    // last sent, synthetic colour or sampled photo alike.
                     if (DateTimeOffset.UtcNow - lastSend >= PauseKeepAliveInterval)
                     {
                         await _output.KeepAliveAsync(_shutdown.Token).ConfigureAwait(false);
@@ -219,11 +349,17 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                     continue;
                 }
 
-                if (calibration is not null)
+                if (calibrationActive)
                 {
                     // Never let a forgotten preview steal a real film. Playback
                     // wins and the next normal frame takes control immediately.
                     Volatile.Write(ref _calibrationPreview, null);
+                    Volatile.Write(ref _calibrationActive, false);
+                    lock (_calibrationPhotoLock)
+                    {
+                        _calibrationPhotoPixels = null;
+                    }
+
                     _logger.LogInformation("Realtime Ambilight calibration preview ended because playback started.");
                 }
 
@@ -434,20 +570,13 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private byte[] BuildCalibrationFrame(CalibrationPreview preview)
     {
         var frame = new LinearRgb[_ledCount];
-        var start = preview.Side switch
+        var (start, count) = preview.Side switch
         {
-            CalibrationSide.Top => 0,
-            CalibrationSide.Right => _physicalLayout.TopLedCount,
-            CalibrationSide.Bottom => _physicalLayout.TopLedCount + _physicalLayout.RightLedCount,
-            CalibrationSide.Left => _physicalLayout.TopLedCount + _physicalLayout.RightLedCount + _physicalLayout.BottomLedCount,
-            _ => throw new ArgumentOutOfRangeException(nameof(preview)),
-        };
-        var count = preview.Side switch
-        {
-            CalibrationSide.Top => _physicalLayout.TopLedCount,
-            CalibrationSide.Right => _physicalLayout.RightLedCount,
-            CalibrationSide.Bottom => _physicalLayout.BottomLedCount,
-            CalibrationSide.Left => _physicalLayout.LeftLedCount,
+            CalibrationSide.Top => (0, _physicalLayout.TopLedCount),
+            CalibrationSide.Right => (_physicalLayout.TopLedCount, _physicalLayout.RightLedCount),
+            CalibrationSide.Bottom => (_physicalLayout.TopLedCount + _physicalLayout.RightLedCount, _physicalLayout.BottomLedCount),
+            CalibrationSide.Left => (_physicalLayout.TopLedCount + _physicalLayout.RightLedCount + _physicalLayout.BottomLedCount, _physicalLayout.LeftLedCount),
+            CalibrationSide.All => (0, _ledCount),
             _ => throw new ArgumentOutOfRangeException(nameof(preview)),
         };
 
@@ -456,7 +585,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             frame[index] = preview.Adjustment.Apply(preview.Colour, index, _physicalLayout);
         }
 
-        return Rgb24Encoder.Encode(frame, _encoding);
+        return _calibrationEncoder.Encode(frame, _encoding);
     }
 
     private static PerimeterColourTuning BuildColourTuning(PluginConfiguration? configuration)

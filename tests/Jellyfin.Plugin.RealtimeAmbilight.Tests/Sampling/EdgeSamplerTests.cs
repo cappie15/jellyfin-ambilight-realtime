@@ -83,6 +83,33 @@ public class EdgeSamplerTests
         });
     }
 
+    [Fact]
+    public void SampleSrgbUsesFullRangeUnlikeSampleBgra()
+    {
+        const int width = 20;
+        const int height = 20;
+        var frame = new byte[width * height * 4];
+        for (var pixel = 0; pixel < width * height; pixel++)
+        {
+            var offset = pixel * 4;
+            frame[offset] = 255;
+            frame[offset + 1] = 0;
+            frame[offset + 2] = 0;
+            frame[offset + 3] = 255;
+        }
+
+        var samples = EdgeSampler.SampleSrgb(frame, width, height, new CropInsets(), new LogicalSamplingLayout(2, 2, 2, 2));
+
+        // A limited-range decode of byte 255 would still land under 1.0; only the
+        // full-range sRGB decode this method uses reaches a clean maximum here.
+        Assert.All(samples.Top, sample =>
+        {
+            Assert.InRange(sample.Red, 0.999f, 1.001f);
+            Assert.InRange(sample.Green, -0.001f, 0.001f);
+            Assert.InRange(sample.Blue, -0.001f, 0.001f);
+        });
+    }
+
     private static bool Overlaps(SamplingZone first, SamplingZone second)
         => first.Left < second.Right && second.Left < first.Right && first.Top < second.Bottom && second.Top < first.Bottom;
 }

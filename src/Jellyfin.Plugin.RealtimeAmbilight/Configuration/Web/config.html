@@ -133,9 +133,27 @@
             <div class="raTabPanel" data-tab-panel="ambilight" hidden>
                 <div class="verticalSection" id="calibrationSection">
                     <h3 class="sectionTitle">Color calibration</h3>
-                    <p class="fieldDescription">Start with the picture as recorded, then adjust only what this room needs: overall level, the wall behind the TV, and — if you want to go further — each side on its own.</p>
+                    <p class="fieldDescription">Start with the picture as recorded, then adjust only what this room needs. One continuous strip usually runs the whole way round the TV, so the wizard below tunes all four sides together, not one at a time.</p>
 
-                    <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
+                    <div class="inputContainer">
+                        <input is="emby-input" id="calibrationPatternUrl" type="text" readonly="readonly" label="Open this once on the TV" />
+                        <button is="emby-button" type="button" id="copyCalibrationUrl" class="raised">Copy link</button>
+                        <a is="emby-linkbutton" id="openCalibrationPattern" target="_blank" rel="noopener" style="margin-left:.7em">Open here</a>
+                    </div>
+                    <div class="fieldDescription">A short address, on purpose: it has to be typed with a remote control's arrow keys. Type it exactly as shown, <strong>including <code>http://</code></strong> -- left to guess, some TV browsers try <code>https://</code> first, which fails on a plain local address like this one.</div>
+
+                    <div style="border:1px solid rgba(127,127,127,.35);border-radius:.6em;padding:1em 1.2em;margin-top:1em">
+                        <div class="fieldDescription">Step <strong id="wizardStepLabel">1 of 7 — White tuning</strong></div>
+                        <div style="display:flex;gap:.7em;flex-wrap:wrap;align-items:center;margin-top:.6em">
+                            <button is="emby-button" type="button" id="wizardPrev" class="raised">&#9664; Back</button>
+                            <button is="emby-button" type="button" id="wizardNext" class="raised">Next &#9654;</button>
+                            <button is="emby-button" type="button" id="wizardAnotherPhoto" class="raised">Try another photo</button>
+                            <button is="emby-button" type="button" id="stopCalibrationPreview" class="raised">Stop &amp; release LEDs</button>
+                        </div>
+                        <div id="calibrationPreviewStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em">Open the link on the TV to begin.</div>
+                    </div>
+
+                    <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start;margin-top:1.2em">
                         <div style="flex:1 1 16em;min-width:14em"><div class="inputContainer">
                             <input is="emby-input" id="brightnessPercent" type="range" min="1" max="100" step="1" label="LED brightness" />
                             <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. <strong>Default: 100%.</strong></div>
@@ -172,32 +190,13 @@
                     </div>
 
                     <div style="margin-top:1.3em">
-                    <details id="perSideFineTuning" open>
+                    <details id="perSideFineTuning">
                         <summary style="cursor:pointer;list-style:revert">
-                            <span class="sectionTitle" style="display:inline">Fine-tune each side (optional)</span>
-                            <div class="fieldDescription" style="margin-top:.3em">A guided, seven-step wizard: white, then each colour in turn.</div>
+                            <span class="sectionTitle" style="display:inline">Fine-tune each side separately (advanced, rarely needed)</span>
+                            <div class="fieldDescription" style="margin-top:.3em">Only if one edge still looks off after the wizard above -- most strips do not need this.</div>
                         </summary>
                         <div style="padding:.8em 0 0 1.25em">
-                        <p class="fieldDescription">Open the link below <strong>once</strong>, full-screen, in the TV's own browser, and leave it open -- it updates itself as you click through the wizard on this page. Stop playback first: real video always takes priority over the preview.</p>
-                        <div class="inputContainer">
-                            <input is="emby-input" id="calibrationPatternUrl" type="text" readonly="readonly" label="Open this once on the TV" />
-                            <button is="emby-button" type="button" id="copyCalibrationUrl" class="raised">Copy link</button>
-                            <a is="emby-linkbutton" id="openCalibrationPattern" target="_blank" rel="noopener" style="margin-left:.7em">Open here</a>
-                        </div>
-
-                        <div style="border:1px solid rgba(127,127,127,.35);border-radius:.6em;padding:1em 1.2em;margin-top:1.1em">
-                            <div class="fieldDescription">Step <strong id="wizardStepLabel">1 of 7 -- White tuning</strong></div>
-                            <div style="display:flex;gap:.7em;flex-wrap:wrap;align-items:center;margin-top:.6em">
-                                <button is="emby-button" type="button" id="wizardPrev" class="raised">&#9664; Back</button>
-                                <button is="emby-button" type="button" id="wizardNext" class="raised">Next &#9654;</button>
-                                <button is="emby-button" type="button" id="wizardAnotherPhoto" class="raised">Try another photo</button>
-                                <div class="selectContainer" style="min-width:10em;margin:0"><select is="emby-select" id="calibrationSide" label="Side"><option value="Top">Top</option><option value="Right">Right</option><option value="Bottom">Bottom</option><option value="Left">Left</option></select></div>
-                            </div>
-                            <div style="display:flex;gap:.7em;flex-wrap:wrap;margin-top:.8em"><button is="emby-button" type="button" id="startCalibrationPreview" class="raised">Start preview</button><button is="emby-button" type="button" id="stopCalibrationPreview" class="raised">Stop</button></div>
-                            <div id="calibrationPreviewStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em">Choose a side, then start the preview.</div>
-                        </div>
-
-                        <div class="fieldDescription" style="margin-top:1.2em"><strong>Side trims.</strong> Start at 100%. Adjust brightness or RGB until the glow matches the TV edge; save when finished.</div>
+                        <p class="fieldDescription"><strong>Side trims.</strong> Start at 100%. Adjust brightness or RGB until the glow matches the TV edge; save when finished.</p>
                         <div id="sideTuningCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16em,1fr));gap:1em;margin-top:.7em"></div>
                         </div>
                     </details>

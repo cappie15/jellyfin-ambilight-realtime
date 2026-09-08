@@ -97,23 +97,30 @@ public sealed class WledDiscoveryController : ControllerBase
 [Authorize(Policy = "RequiresElevation")]
 public sealed class CalibrationController : ControllerBase
 {
-    private readonly JellyfinWledOutputService _outputService;
+    /// <summary>A calibration photo, once fetched, rarely changes; the fixed 19-photo set costs a bounded amount of memory to keep hot.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (byte[] Bytes, string ContentType)> PhotoCache = new();
 
-    public CalibrationController(JellyfinWledOutputService outputService)
+    private readonly JellyfinWledOutputService _outputService;
+    private readonly IHttpClientFactory _httpClientFactory;
+
+    public CalibrationController(JellyfinWledOutputService outputService, IHttpClientFactory httpClientFactory)
     {
         _outputService = outputService ?? throw new ArgumentNullException(nameof(outputService));
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
     }
 
     /// <summary>
-    /// A TV browser can open this once, without a Jellyfin login, and leave it
-    /// open for the whole wizard: it polls <see cref="GetWizardState"/> and
-    /// updates itself, so "Next" on the settings page never requires touching
-    /// the TV again. The centred photograph and its credit are decorative --
-    /// Ambilight only ever samples the solid edge glow, never the photo -- so
-    /// they are positioned to never reach the sampled band at the picture's edge.
+    /// A TV browser opens this once, without a Jellyfin login, and leaves it
+    /// open for the whole wizard: it polls <see cref="GetWizardState"/> every
+    /// 1.5 s and updates itself in place, so "Next" on the settings page never
+    /// requires touching the TV again -- and opening the link at all is enough
+    /// to (re)start the wizard at White, see <see cref="GetWizardState"/>.
+    /// Also reachable at the short <c>/amb</c> alias: this address is typed on
+    /// a remote control one letter at a time, so its length matters.
     /// </summary>
     [AllowAnonymous]
     [HttpGet("Pattern")]
+    [HttpGet("/amb")]
     [Produces("text/html")]
     public ActionResult Pattern()
     {
@@ -123,60 +130,67 @@ public sealed class CalibrationController : ControllerBase
             <title>Ambilight calibration</title>
             <style>
               * { box-sizing:border-box } html,body { width:100%;height:100%;margin:0;background:#060914;overflow:hidden }
-              .centre { position:fixed;inset:18vh 18vw;border-radius:2vmin;overflow:hidden;background:#111;box-shadow:0 2vmin 8vmin #000 }
-              .centre img { width:100%;height:100%;object-fit:cover;display:block }
-              .whiteBlock { position:absolute;inset:0;background:#f4f4f2 }
-              .edge { position:fixed;background:#000;z-index:2;transition:background .25s } .top,.bottom { left:0;width:100%;height:16vh } .left,.right { top:0;height:100%;width:16vw }
-              .top { top:0 } .right { right:0 } .bottom { bottom:0 } .left { left:0 }
-              .edge.active { z-index:3 }
-              .label { position:fixed;left:50%;top:6vh;transform:translateX(-50%);z-index:4;color:#fff;font:600 clamp(14px,2vw,27px) system-ui,sans-serif;text-align:center;letter-spacing:.04em;text-shadow:0 2px 8px #000 }
-              .label small { display:block;margin-top:.5em;font-size:.52em;font-weight:500;opacity:.72;letter-spacing:.12em;text-transform:uppercase }
-              .credit { position:absolute;left:0;right:0;bottom:0;padding:1.4em 1.6em;z-index:1;background:linear-gradient(transparent,rgba(0,0,0,.72));color:#fff;font:500 clamp(11px,1.3vw,16px) system-ui,sans-serif;text-align:right }
+              img, .whiteBlock { position:fixed;inset:0;width:100%;height:100%;object-fit:cover;display:block }
+              .whiteBlock { background:#f4f4f2 }
+              .label { position:fixed;left:50%;top:5vh;transform:translateX(-50%);z-index:4;color:#fff;font:600 clamp(14px,2vw,27px) system-ui,sans-serif;text-align:center;letter-spacing:.04em;text-shadow:0 2px 10px #000 }
+              .credit { position:fixed;left:0;right:0;bottom:0;padding:1.4em 1.6em;z-index:2;background:linear-gradient(transparent,rgba(0,0,0,.72));color:#fff;font:500 clamp(11px,1.3vw,16px) system-ui,sans-serif;text-align:right }
               .credit a { color:#fff }
+              .hint { position:fixed;right:1.2em;bottom:1.2em;z-index:5;padding:.5em 1em;border-radius:1.4em;background:rgba(0,0,0,.55);color:#fff;font:600 clamp(11px,1.2vw,15px) system-ui,sans-serif;text-shadow:0 1px 4px #000 }
               [hidden] { display:none !important }
             </style></head><body>
-            <div class="edge top" id="edgeTop"></div><div class="edge right" id="edgeRight"></div><div class="edge bottom" id="edgeBottom"></div><div class="edge left" id="edgeLeft"></div>
-            <div class="centre" id="centre">
-              <div class="whiteBlock" id="whiteBlock" hidden></div>
-              <img id="photo" alt="" hidden />
-              <div class="credit" id="credit" hidden></div>
-            </div>
-            <div class="label" id="label">Color calibration</div>
+            <div class="whiteBlock" id="whiteBlock" hidden></div>
+            <img id="photo" alt="" hidden />
+            <div class="credit" id="credit" hidden></div>
+            <div class="label" id="label">Loading&hellip;</div>
+            <div class="hint">Continue on your phone &rarr;</div>
+            <canvas id="canvas" width="320" height="180" hidden></canvas>
             <script>
-              const edges = { Top: document.getElementById("edgeTop"), Right: document.getElementById("edgeRight"), Bottom: document.getElementById("edgeBottom"), Left: document.getElementById("edgeLeft") };
               const whiteBlock = document.getElementById("whiteBlock");
               const photo = document.getElementById("photo");
               const credit = document.getElementById("credit");
               const label = document.getElementById("label");
+              const canvas = document.getElementById("canvas");
               let lastKey = "";
               function pick(state, name) {
                 return state[name] ?? state[name[0].toLowerCase() + name.slice(1)];
               }
+              function uploadSample() {
+                try {
+                  const ctx = canvas.getContext("2d");
+                  ctx.drawImage(photo, 0, 0, canvas.width, canvas.height);
+                  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+                  fetch(`/RealtimeAmbilight/Calibration/PhotoFrame?width=${canvas.width}&height=${canvas.height}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/octet-stream" },
+                    body: pixels
+                  }).catch(() => {});
+                } catch (error) {
+                  // A same-origin image should never taint the canvas; if it
+                  // somehow does, the photo still displays, it just cannot drive
+                  // the LEDs from its own edges.
+                }
+              }
               function render(state) {
-                const side = pick(state, "Side");
-                const htmlColour = pick(state, "HtmlColour");
+                const colourName = pick(state, "ColourName");
                 const photoUrl = pick(state, "PhotoUrl");
-                Object.entries(edges).forEach(([edgeSide, el]) => {
-                  const isActive = edgeSide === side;
-                  el.classList.toggle("active", isActive);
-                  el.style.background = isActive ? htmlColour : "#000";
-                  el.style.boxShadow = isActive ? `0 0 5vmin ${htmlColour}` : "none";
-                });
                 const isWhite = !photoUrl;
                 whiteBlock.hidden = !isWhite;
                 photo.hidden = isWhite;
                 credit.hidden = isWhite;
                 if (!isWhite) {
-                  photo.src = photoUrl;
+                  if (photo.src !== photoUrl) {
+                    photo.onload = uploadSample;
+                    photo.src = photoUrl;
+                  }
                   credit.innerHTML = `Photo by <a href="${pick(state, "CreditProfileUrl")}" target="_blank" rel="noopener">${pick(state, "CreditName")}</a> on <a href="${pick(state, "CreditSourceUrl")}" target="_blank" rel="noopener">Wallhaven</a>`;
                 }
-                label.innerHTML = `Color calibration &middot; step ${pick(state, "StepIndex") + 1} of ${pick(state, "StepCount")}<br><small>Match the ${side} glow &middot; ${pick(state, "ColourName")}</small>`;
+                label.textContent = `${colourName} tuning · step ${pick(state, "StepIndex") + 1} of ${pick(state, "StepCount")}`;
               }
               async function tick() {
                 try {
-                  const response = await fetch("WizardState", { cache: "no-store" });
+                  const response = await fetch("/RealtimeAmbilight/Calibration/WizardState?tv=true", { cache: "no-store" });
                   const state = await response.json();
-                  const key = [pick(state, "StepIndex"), pick(state, "PhotoIndex"), pick(state, "Side")].join(":");
+                  const key = [pick(state, "StepIndex"), pick(state, "PhotoIndex")].join(":");
                   if (key === lastKey) { return; }
                   lastKey = key;
                   render(state);
@@ -192,19 +206,80 @@ public sealed class CalibrationController : ControllerBase
         return Content(html, "text/html; charset=utf-8");
     }
 
-    /// <summary>Read by the TV pattern page; carries nothing beyond what that page already showed as query parameters before.</summary>
+    /// <summary>
+    /// Proxies one curated Wallhaven photo through the plugin's own origin.
+    /// Two independent reasons this has to be same-origin, not a raw link to
+    /// Wallhaven's CDN: the TV's canvas cannot read pixels from a cross-origin
+    /// image with no CORS header (Wallhaven sends none, confirmed this
+    /// session -- it would silently throw on every sample), and the operator
+    /// should not need internet access on the TV's own network path once the
+    /// photo is cached here.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("Photo/{colour}/{index:int}")]
+    public async Task<IActionResult> GetPhotoAsync(string colour, int index, CancellationToken cancellationToken)
+    {
+        var photo = CalibrationWizard.PhotoAt(colour, index);
+        if (photo is null)
+        {
+            return NotFound();
+        }
+
+        var cacheKey = photo.ImageUrl;
+        if (PhotoCache.TryGetValue(cacheKey, out var cached))
+        {
+            return File(cached.Bytes, cached.ContentType);
+        }
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            using var response = await client.GetAsync(new Uri(photo.ImageUrl), cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway);
+            }
+
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+            var contentType = response.Content.Headers.ContentType?.ToString() ?? "image/jpeg";
+            PhotoCache[cacheKey] = (bytes, contentType);
+            return File(bytes, contentType);
+        }
+        catch (HttpRequestException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway);
+        }
+    }
+
+    /// <summary>
+    /// Read by the TV pattern page every 1.5 s, and by the settings page once
+    /// on load. Only the TV's own poll (<paramref name="tv"/>) can restart the
+    /// wizard: a poll gap over 20 s means the link was just opened fresh, so
+    /// stepping through <see cref="CalibrationWizardState.NoteTvPoll"/> resets
+    /// to White automatically -- opening the link is then the whole "start".
+    /// </summary>
     [AllowAnonymous]
     [HttpGet("WizardState")]
     [ProducesResponseType(typeof(CalibrationWizardStateResponse), StatusCodes.Status200OK)]
-    public ActionResult<CalibrationWizardStateResponse> GetWizardState()
+    public async Task<ActionResult<CalibrationWizardStateResponse>> GetWizardState(
+        [FromQuery] bool tv,
+        CancellationToken cancellationToken)
     {
+        if (tv && _outputService.Wizard.NoteTvPoll() && _outputService.IsCalibrationPreviewActive)
+        {
+            // The wizard just reset to White under an already-live preview
+            // (an earlier session's Stop was skipped): match the LEDs to it.
+            await StartWhiteAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         return Ok(BuildWizardStateResponse());
     }
 
     /// <summary>
     /// Moves the wizard, so the already-open TV page picks it up on its next
-    /// poll, and -- only if a preview is already running -- restarts it with
-    /// the new step's colour so the LEDs stay in sync without an extra click.
+    /// poll. Arriving at White auto-starts its flat preview; arriving at a
+    /// photo colour does not -- the TV's own upload after it loads that photo
+    /// is what starts those, independently and asynchronously.
     /// </summary>
     [HttpPost("WizardState")]
     [ProducesResponseType(typeof(CalibrationWizardStateResponse), StatusCodes.Status200OK)]
@@ -212,18 +287,78 @@ public sealed class CalibrationController : ControllerBase
         [FromBody] CalibrationWizardMoveRequest request,
         CancellationToken cancellationToken)
     {
-        var side = Enum.TryParse<CalibrationSide>(request.Side, true, out var parsedSide) ? parsedSide : CalibrationSide.Top;
-        _outputService.Wizard.MoveTo(request.StepIndex, request.PhotoIndex, side);
+        _outputService.Wizard.MoveTo(request.StepIndex, request.PhotoIndex, CalibrationSide.All);
 
-        if (_outputService.IsCalibrationPreviewActive
-            && CalibrationReferenceColour.TryParse(_outputService.Wizard.ColourName, out _, out _, out var colour))
+        if (_outputService.Wizard.ColourName == "White")
         {
-            await _outputService
-                .ShowCalibrationPreviewAsync(new CalibrationPreview(side, colour, request.ToTuning().ToAdjustment()), cancellationToken)
-                .ConfigureAwait(false);
+            await StartWhiteAsync(cancellationToken, request).ConfigureAwait(false);
         }
 
         return Ok(BuildWizardStateResponse());
+    }
+
+    /// <summary>
+    /// Uploaded by the TV page after it draws the current photo to a canvas:
+    /// full-range sRGB RGBA, downsized client-side. Anonymous like the rest of
+    /// this page's own endpoints, and bounded the same way every calibration
+    /// write is -- playback always wins, checked inside the service.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("PhotoFrame")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> PostPhotoFrameAsync([FromQuery] int width, [FromQuery] int height, CancellationToken cancellationToken)
+    {
+        if (width < 16 || height < 16 || (long)width * height > 2_000_000)
+        {
+            return BadRequest("Frame dimensions are out of range.");
+        }
+
+        var expectedLength = checked(width * height * 4);
+        if (Request.ContentLength is { } declaredLength && declaredLength != expectedLength)
+        {
+            return BadRequest($"Expected {expectedLength} RGBA bytes for {width}x{height}.");
+        }
+
+        using var buffer = new MemoryStream(expectedLength);
+        await Request.Body.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+        if (buffer.Length != expectedLength)
+        {
+            return BadRequest($"Expected {expectedLength} RGBA bytes for {width}x{height} but received {buffer.Length}.");
+        }
+
+        await _outputService.ShowCalibrationPhotoAsync(buffer.ToArray(), width, height, cancellationToken).ConfigureAwait(false);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Re-applies fresh slider values to whatever the preview currently shows,
+    /// without re-fetching or re-sampling a photo: this is what makes a slider
+    /// feel live on the TV instead of requiring Save.
+    /// </summary>
+    [HttpPost("Retune")]
+    [ProducesResponseType(typeof(CalibrationPreviewResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<CalibrationPreviewResponse>> RetuneAsync(
+        [FromBody] CalibrationWizardMoveRequest request,
+        CancellationToken cancellationToken)
+    {
+        var retuned = await _outputService
+            .RetuneCalibrationAsync(request.ToTuning().ToAdjustment(), cancellationToken)
+            .ConfigureAwait(false);
+        return Ok(new CalibrationPreviewResponse(retuned, retuned ? "Live." : "Nothing is being previewed yet."));
+    }
+
+    private async Task StartWhiteAsync(CancellationToken cancellationToken, CalibrationWizardMoveRequest? request = null)
+    {
+        if (!CalibrationReferenceColour.TryParse("White", out _, out _, out var white))
+        {
+            return;
+        }
+
+        var adjustment = request?.ToTuning().ToAdjustment() ?? PerimeterColourAdjustment.None;
+        await _outputService
+            .ShowCalibrationPreviewAsync(new CalibrationPreview(CalibrationSide.All, white, adjustment), cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private CalibrationWizardStateResponse BuildWizardStateResponse()
@@ -237,6 +372,7 @@ public sealed class CalibrationController : ControllerBase
 
         var photo = CalibrationWizard.PhotoAt(colourName, wizard.PhotoIndex);
         var photoCount = CalibrationWizard.Photos.TryGetValue(colourName, out var photos) ? photos.Count : 0;
+        var proxiedPhotoUrl = photo is null ? null : $"/RealtimeAmbilight/Calibration/Photo/{colourName}/{wizard.PhotoIndex}";
 
         return new CalibrationWizardStateResponse(
             wizard.StepIndex,
@@ -246,35 +382,12 @@ public sealed class CalibrationController : ControllerBase
             wizard.Side.ToString(),
             wizard.PhotoIndex,
             photoCount,
-            photo?.ImageUrl,
+            proxiedPhotoUrl,
             photo?.UploaderName,
             photo?.UploaderProfileUrl,
             photo?.SourcePageUrl,
-            _outputService.IsCalibrationPreviewActive);
-    }
-
-    [HttpPost("Preview")]
-    [ProducesResponseType(typeof(CalibrationPreviewResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<CalibrationPreviewResponse>> PreviewAsync(
-        [FromBody] CalibrationPreviewRequest request,
-        CancellationToken cancellationToken)
-    {
-        if (!Enum.TryParse<CalibrationSide>(request.Side, true, out var side)
-            || !CalibrationReferenceColour.TryParse(request.Colour, out _, out _, out var colour))
-        {
-            return BadRequest("Choose a valid side and reference colour.");
-        }
-
-        var started = await _outputService
-            .ShowCalibrationPreviewAsync(new CalibrationPreview(side, colour, request.ToTuning().ToAdjustment()), cancellationToken)
-            .ConfigureAwait(false);
-        if (!started)
-        {
-            return Conflict(new CalibrationPreviewResponse(false, "Stop playback before starting calibration; playback always has priority."));
-        }
-
-        return Ok(new CalibrationPreviewResponse(true, "Preview is live. Adjust the selected side, then save when it matches."));
+            _outputService.IsCalibrationPreviewActive,
+            _outputService.Wizard.TvConnected);
     }
 
     [HttpDelete("Preview")]
@@ -286,48 +399,27 @@ public sealed class CalibrationController : ControllerBase
     }
 }
 
-public sealed class CalibrationPreviewRequest
-{
-    public string Side { get; set; } = "Top";
-
-    public string Colour { get; set; } = "White";
-
-    public string WallColourHex { get; set; } = "#ffffff";
-
-    public Dictionary<string, int> Tuning { get; set; } = [];
-
-    public PerimeterColourTuning ToTuning() => CalibrationTuningRequest.Build(Tuning, WallColourHex);
-}
-
-/// <summary>Moves the wizard and, if a preview is already running, carries the sliders' current values to restart it with.</summary>
+/// <summary>Moves the wizard, or retunes it, carrying the sliders' current values either way.</summary>
 public sealed class CalibrationWizardMoveRequest
 {
     public int StepIndex { get; set; }
 
     public int PhotoIndex { get; set; }
 
-    public string Side { get; set; } = "Top";
-
     public string WallColourHex { get; set; } = "#ffffff";
 
     public Dictionary<string, int> Tuning { get; set; } = [];
 
-    public PerimeterColourTuning ToTuning() => CalibrationTuningRequest.Build(Tuning, WallColourHex);
-}
-
-/// <summary>Shared by both request shapes above, so the same percent-field lookup is not written out twice.</summary>
-internal static class CalibrationTuningRequest
-{
-    public static PerimeterColourTuning Build(IReadOnlyDictionary<string, int> tuning, string wallColourHex)
+    public PerimeterColourTuning ToTuning()
     {
         int Value(string name, int fallback = 100)
-            => tuning.TryGetValue(name, out var value) ? value : fallback;
+            => Tuning.TryGetValue(name, out var value) ? value : fallback;
 
         return new PerimeterColourTuning(
             Value("BrightnessPercent"), Value("SaturationPercent"),
             Value("RedGainPercent"), Value("GreenGainPercent"), Value("BlueGainPercent"),
             Value("BlackLevelFloorPercent", 0),
-            wallColourHex, Value("WallColourCorrectionPercent"),
+            WallColourHex, Value("WallColourCorrectionPercent"),
             Value("TopBrightnessPercent"), Value("TopRedGainPercent"), Value("TopGreenGainPercent"), Value("TopBlueGainPercent"),
             Value("RightBrightnessPercent"), Value("RightRedGainPercent"), Value("RightGreenGainPercent"), Value("RightBlueGainPercent"),
             Value("BottomBrightnessPercent"), Value("BottomRedGainPercent"), Value("BottomGreenGainPercent"), Value("BottomBlueGainPercent"),
@@ -350,4 +442,5 @@ public sealed record CalibrationWizardStateResponse(
     string? CreditName,
     string? CreditProfileUrl,
     string? CreditSourceUrl,
-    bool PreviewActive);
+    bool PreviewActive,
+    bool TvConnected);

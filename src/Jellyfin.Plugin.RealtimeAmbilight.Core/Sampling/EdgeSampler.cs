@@ -40,6 +40,31 @@ public static class EdgeSampler
             SampleRun(bgraFrame, frameWidth, zones.Left));
     }
 
+    /// <summary>
+    /// Same geometry as <see cref="SampleBgra"/>, but for a full-range sRGB RGBA
+    /// buffer -- what a browser's <c>canvas</c> hands back, not what a decoded
+    /// video frame is. A calibration photo is never broadcast-encoded, so
+    /// decoding it as BT.709 limited range would subtract a black level and
+    /// stretch the range that is not actually there, and get every colour wrong.
+    /// </summary>
+    public static PerimeterSamples SampleSrgb(
+        ReadOnlySpan<byte> rgbaFrame,
+        int frameWidth,
+        int frameHeight,
+        CropInsets crop,
+        LogicalSamplingLayout layout,
+        int depthPercent = DefaultDepthPercent)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        ValidateFrame(rgbaFrame, frameWidth, frameHeight);
+        var zones = CreateZones(frameWidth, frameHeight, crop, layout, depthPercent);
+        return new PerimeterSamples(
+            SampleRunSrgb(rgbaFrame, frameWidth, zones.Top),
+            SampleRunSrgb(rgbaFrame, frameWidth, zones.Right),
+            SampleRunSrgb(rgbaFrame, frameWidth, zones.Bottom),
+            SampleRunSrgb(rgbaFrame, frameWidth, zones.Left));
+    }
+
     public static EdgeSamplingZones CreateZones(
         int frameWidth,
         int frameHeight,
@@ -172,6 +197,44 @@ public static class EdgeSampler
         return nonlinear < 0.081d
             ? nonlinear / 4.5d
             : Math.Pow((nonlinear + 0.099d) / 1.099d, 1d / 0.45d);
+    }
+
+    private static LinearRgb[] SampleRunSrgb(ReadOnlySpan<byte> rgbaFrame, int frameWidth, SamplingZone[] zones)
+    {
+        var samples = new LinearRgb[zones.Length];
+        for (var index = 0; index < zones.Length; index++)
+        {
+            var zone = zones[index];
+            double red = 0;
+            double green = 0;
+            double blue = 0;
+            for (var y = zone.Top; y < zone.Bottom; y++)
+            {
+                for (var x = zone.Left; x < zone.Right; x++)
+                {
+                    var offset = checked(((y * frameWidth) + x) * 4);
+                    red += SrgbToLinear(rgbaFrame[offset]);
+                    green += SrgbToLinear(rgbaFrame[offset + 1]);
+                    blue += SrgbToLinear(rgbaFrame[offset + 2]);
+                }
+            }
+
+            var pixelCount = zone.Width * zone.Height;
+            samples[index] = new LinearRgb(
+                (float)(red / pixelCount),
+                (float)(green / pixelCount),
+                (float)(blue / pixelCount));
+        }
+
+        return samples;
+    }
+
+    private static double SrgbToLinear(byte codeValue)
+    {
+        var encoded = codeValue / 255d;
+        return encoded <= 0.04045d
+            ? encoded / 12.92d
+            : Math.Pow((encoded + 0.055d) / 1.055d, 2.4d);
     }
 
     private static void ValidateFrame(ReadOnlySpan<byte> bgraFrame, int frameWidth, int frameHeight)
