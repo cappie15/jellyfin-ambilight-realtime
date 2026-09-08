@@ -1,6 +1,6 @@
 # Jellyfin Realtime Ambilight
 
-![Television with blue and coral Ambilight matching a mountain lake at sunset](docs/images/ambilight-hero.png)
+![Realtime Ambilight logo over a television with blue and coral lighting matching a mountain lake at sunset](plugin-package/ambilight-logo.png)
 
 *AI-generated concept illustration; actual output depends on your screen, LEDs and room.*
 
@@ -68,9 +68,27 @@ on a busy host.
 
 ## Installing
 
-Installation from this checkout is manual. The package script generates a ZIP
-and repository manifest; generating them does **not** publish a release or host
-a plugin repository.
+### Install through Jellyfin (recommended)
+
+Requires Jellyfin **10.11.9 or newer within the compatible 10.11 series**. This
+remains a pre-alpha release; newer Jellyfin versions have not been verified.
+
+1. Open **Dashboard → Plugins → Repositories** and add a repository.
+2. Enter **Realtime Ambilight** as the name and this repository URL:
+
+   ```text
+   https://raw.githubusercontent.com/cappie15/jellyfin-ambilight-realtime/main/manifest.json
+   ```
+
+3. Save, open the plugin catalog and find **Realtime Ambilight**.
+4. Install it and restart Jellyfin when convenient.
+5. Open the plugin settings, choose your television and WLED controller, and set
+   the actual LED layout before testing playback.
+
+The repository installs the packaged plugin and its artwork. Release downloads
+are available on [GitHub Releases](https://github.com/cappie15/jellyfin-ambilight-realtime/releases).
+
+### Install manually from source
 
 For a conventional Linux Jellyfin service, build and copy **both** assemblies.
 Adjust the path and service account for your installation; the install/restart
@@ -92,6 +110,10 @@ sudo install -o jellyfin -g jellyfin \
   src/Jellyfin.Plugin.RealtimeAmbilight/bin/Release/net9.0/Jellyfin.Plugin.RealtimeAmbilight.Core.dll \
   "/var/lib/jellyfin/plugins/Realtime Ambilight_0.1.1/"
 
+sudo install -o jellyfin -g jellyfin \
+  plugin-package/meta.json plugin-package/ambilight-logo.png \
+  "/var/lib/jellyfin/plugins/Realtime Ambilight_0.1.1/"
+
 sudo systemctl restart jellyfin
 ```
 
@@ -105,7 +127,7 @@ Copying only the plugin assembly and leaving a stale `*.Core.dll` behind causes 
 ```
 
 This recreates `artifacts/` and produces `realtime-ambilight_0.1.1.zip` containing
-both assemblies and `meta.json`, plus `manifest.json`. The manifest's default
+both assemblies, `meta.json` and `ambilight-logo.png`, plus `manifest.json`. The manifest's default
 download URL points to a versioned GitHub release; it only works after the ZIP
 has been published there. Pass your own release base URL as the script's first
 argument when hosting elsewhere.
@@ -113,6 +135,20 @@ argument when hosting elsewhere.
 The [CI workflow](.github/workflows/ci.yml) builds, tests and packages the project,
 then uploads the ZIP and manifest as the `realtime-ambilight-plugin` artifact.
 Packaging implementation: [build/package.sh](build/package.sh).
+
+For maintainers: the hosted root `manifest.json` describes published releases.
+After building a new version, upload the ZIP and `plugin-package/ambilight-logo.png`
+to its matching GitHub release, verify the downloads and checksum, then update
+the root manifest from `artifacts/manifest.json` (retaining older entries when
+needed for compatibility). CI artifacts alone do not publish the repository.
+
+The README and Jellyfin's installed-plugin card use the same artwork from
+`plugin-package/ambilight-logo.png`. The package includes it locally, and
+`meta.json` selects it through `imagePath`, so installed artwork works offline.
+For an existing installation, copy the image and add `"imagePath":
+"ambilight-logo.png"` to its existing `meta.json`, preserving the other fields.
+Jellyfin reads this metadata at startup; the card updates after the next server
+restart. The generated repository manifest also supplies `imageUrl` for the catalog.
 
 ## Configuration
 

@@ -1,0 +1,21 @@
+[
+  {
+    "guid": "7d6d91ed-0f36-46ea-9868-9623283b6b51",
+    "name": "Realtime Ambilight",
+    "description": "Server-side realtime Ambilight output to WLED",
+    "overview": "Realtime HDR-aware ambient lighting for Jellyfin playback",
+    "owner": "Realtime Ambilight contributors",
+    "category": "General",
+    "imageUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.1.1/ambilight-logo.png",
+    "versions": [
+      {
+        "version": "0.1.1",
+        "changelog": "",
+        "targetAbi": "10.11.9.0",
+        "sourceUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.1.1/realtime-ambilight_0.1.1.zip",
+        "checksum": "418294934c2db94833ea0eb413f0b148",
+        "timestamp": "2026-09-08T12:56:56.0000000Z"
+      }
+    ]
+  }
+]

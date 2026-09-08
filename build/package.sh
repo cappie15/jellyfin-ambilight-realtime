@@ -53,6 +53,7 @@ mkdir -p "$staging"
 cp "$output/Jellyfin.Plugin.RealtimeAmbilight.dll" "$staging/"
 cp "$output/Jellyfin.Plugin.RealtimeAmbilight.Core.dll" "$staging/"
 cp "$metadata" "$staging/meta.json"
+cp "plugin-package/ambilight-logo.png" "$staging/ambilight-logo.png"
 
 archive_name="realtime-ambilight_$version.zip"
 archive="$artifacts/$archive_name"
@@ -84,7 +85,7 @@ timestamp="$(date -u +%Y-%m-%dT%H:%M:%S.0000000Z)"
 echo "==> Writing manifest"
 CHECKSUM="$checksum" TIMESTAMP="$timestamp" VERSION="$version" \
 TARGET_ABI="$target_abi" GUID="$guid" NAME="$name" \
-SOURCE_URL="$base_url/$archive_name" METADATA="$metadata" \
+SOURCE_URL="$base_url/$archive_name" IMAGE_URL="$base_url/ambilight-logo.png" METADATA="$metadata" \
 python3 - "$artifacts/manifest.json" <<'PY'
 import json, os, sys
 
@@ -96,6 +97,7 @@ manifest = [{
     "overview": metadata["overview"],
     "owner": metadata["owner"],
     "category": metadata["category"],
+    "imageUrl": os.environ["IMAGE_URL"],
     "versions": [{
         "version": os.environ["VERSION"],
         "changelog": "",

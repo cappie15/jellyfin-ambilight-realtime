@@ -3,6 +3,7 @@
     <AssemblyName>Jellyfin.Plugin.RealtimeAmbilight</AssemblyName>
     <RootNamespace>Jellyfin.Plugin.RealtimeAmbilight</RootNamespace>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <Version>0.1.1</Version>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Jellyfin.Controller" Version="10.11.9">
