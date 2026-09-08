@@ -64,6 +64,15 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private readonly int _ledCount;
     private CalibrationPreview? _calibrationPreview;
 
+    /// <summary>
+    /// The colour-tuning wizard's current step, shared between the settings
+    /// page and the anonymous TV pattern page. Reading and moving it never
+    /// itself touches WLED; only <see cref="ShowCalibrationPreviewAsync"/> does.
+    /// </summary>
+    public CalibrationWizardState Wizard { get; } = new();
+
+    public bool IsCalibrationPreviewActive => Volatile.Read(ref _calibrationPreview) is not null;
+
     public JellyfinWledOutputService(
         PlaybackEventCoordinator coordinator,
         WledDiscoveryService discoveryService,

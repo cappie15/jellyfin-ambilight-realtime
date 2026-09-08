@@ -143,24 +143,75 @@ export default function (view) {
         });
     }
 
+    // One fixed link now: the TV page polls its own state instead of being
+    // re-opened with new query parameters for every step.
     function updateCalibrationPatternUrl() {
-        const url = new URL(window.ApiClient.getUrl("RealtimeAmbilight/Calibration/Pattern", {
-            side: byId("calibrationSide").value,
-            colour: byId("calibrationColour").value
-        }), window.location.origin).href;
+        const url = new URL(window.ApiClient.getUrl("RealtimeAmbilight/Calibration/Pattern"), window.location.origin).href;
         byId("calibrationPatternUrl").value = url;
         byId("openCalibrationPattern").href = url;
     }
 
-    function calibrationRequest() {
+    const wizardColours = ["White", "Blue", "Red", "Green", "Yellow", "Purple", "Orange"];
+    let wizardStepIndex = 0;
+    let wizardPhotoIndex = 0;
+    let wizardPhotoCount = 0;
+
+    function currentTuningPayload() {
         const tuning = {};
         colourTuningFields.forEach(field => { tuning[fieldKey(field)] = Number(byId(field).value); });
+        return { WallColourHex: byId("wallColourHex").value, Tuning: tuning };
+    }
+
+    function calibrationRequest() {
         return {
             Side: byId("calibrationSide").value,
-            Colour: byId("calibrationColour").value,
-            WallColourHex: byId("wallColourHex").value,
-            Tuning: tuning
+            Colour: wizardColours[wizardStepIndex],
+            ...currentTuningPayload()
         };
+    }
+
+    function renderWizardState(state) {
+        const stepIndex = state.StepIndex ?? state.stepIndex ?? 0;
+        const stepCount = state.StepCount ?? state.stepCount ?? wizardColours.length;
+        const colourName = state.ColourName ?? state.colourName ?? wizardColours[stepIndex];
+        const photoCount = state.PhotoCount ?? state.photoCount ?? 0;
+        wizardStepIndex = stepIndex;
+        wizardPhotoIndex = state.PhotoIndex ?? state.photoIndex ?? 0;
+        wizardPhotoCount = photoCount;
+        byId("wizardStepLabel").textContent = `${stepIndex + 1} of ${stepCount} — ${colourName} tuning`;
+        byId("wizardPrev").disabled = stepIndex === 0;
+        byId("wizardNext").disabled = stepIndex === stepCount - 1;
+        byId("wizardAnotherPhoto").disabled = photoCount <= 1;
+    }
+
+    // Moves the wizard on the server, which the open TV page picks up on its
+    // next poll, and -- only if a preview is already running -- carries the
+    // sliders' current values along so the LEDs are restarted in sync.
+    function moveWizard(stepIndex, photoIndex) {
+        wizardStepIndex = Math.max(0, Math.min(wizardColours.length - 1, stepIndex));
+        wizardPhotoIndex = Math.max(0, photoIndex);
+        return window.ApiClient.ajax({
+            type: "POST",
+            url: window.ApiClient.getUrl("RealtimeAmbilight/Calibration/WizardState"),
+            data: JSON.stringify({
+                StepIndex: wizardStepIndex,
+                PhotoIndex: wizardPhotoIndex,
+                Side: byId("calibrationSide").value,
+                ...currentTuningPayload()
+            }),
+            contentType: "application/json",
+            dataType: "json"
+        }).then(renderWizardState);
+    }
+
+    function loadWizardState() {
+        return window.ApiClient
+            .getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Calibration/WizardState"))
+            .then(state => {
+                byId("calibrationSide").value = state.Side ?? state.side ?? "Top";
+                renderWizardState(state);
+            })
+            .catch(() => {});
     }
 
     function startCalibrationPreview(quietly = false) {
@@ -528,7 +579,7 @@ export default function (view) {
                 return loadDevices(config.TargetDeviceId || "");
             })
             .then(findWled)
-            .then(() => Promise.all([checkControllerSettings(), checkControllerStatus()]))
+            .then(() => Promise.all([checkControllerSettings(), checkControllerStatus(), loadWizardState()]))
             .finally(() => Dashboard.hideLoadingMsg());
     }
 
@@ -596,16 +647,27 @@ export default function (view) {
     byId("wledHost").addEventListener("change", checkControllerStatus);
     byId("wledHttpPort").addEventListener("change", checkControllerStatus);
     byId("calibrationSide").addEventListener("change", () => {
-        updateCalibrationPatternUrl();
+        moveWizard(wizardStepIndex, wizardPhotoIndex);
         if (calibrationPreviewIsActive) {
             startCalibrationPreview(true);
         }
     });
-    byId("calibrationColour").addEventListener("change", () => {
-        updateCalibrationPatternUrl();
-        if (calibrationPreviewIsActive) {
-            startCalibrationPreview(true);
-        }
+    byId("wizardPrev").addEventListener("click", () => {
+        moveWizard(wizardStepIndex - 1, 0).then(() => {
+            if (calibrationPreviewIsActive) {
+                startCalibrationPreview(true);
+            }
+        });
+    });
+    byId("wizardNext").addEventListener("click", () => {
+        moveWizard(wizardStepIndex + 1, 0).then(() => {
+            if (calibrationPreviewIsActive) {
+                startCalibrationPreview(true);
+            }
+        });
+    });
+    byId("wizardAnotherPhoto").addEventListener("click", () => {
+        moveWizard(wizardStepIndex, wizardPhotoIndex + 1);
     });
     byId("copyCalibrationUrl").addEventListener("click", () => {
         const url = byId("calibrationPatternUrl").value;

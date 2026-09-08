@@ -165,15 +165,27 @@ inverse reflectance correction, so it adds back a little of the primary the
 wall absorbs most. It cannot make a very dark wall reflect light it does not
 have.
 
-For the precise pass, open **Fine-tune each side** and generate a test-pattern
-link to open full-screen in the TV's browser, keeping the Jellyfin dashboard on
-a phone or laptop. Pick one side and one reference colour (soft white, red,
-green or blue), then start the live preview. The plugin lights only that
-physical side through the regular realtime protocol while the TV shows the
-same colour at its edge. Adjust that side's brightness and RGB trims until the
-wall glow meets the on-screen edge; repeat for the four sides and save. The
-preview never writes WLED configuration, and real playback automatically takes
-priority over a forgotten preview.
+For the precise pass, open **Fine-tune each side**: a seven-step wizard, in
+order, white &rarr; blue &rarr; red &rarr; green &rarr; yellow &rarr; purple
+&rarr; orange. Copy the single test-pattern link and open it full-screen in
+the TV's own browser **once** -- it polls the plugin every 1.5 s and updates
+itself as you click **Next**/**Back** on the settings page, so the TV is never
+touched again for the rest of the wizard. Choose a side, start the live
+preview, and the plugin lights only that physical side through the regular
+realtime protocol while the TV shows the matching colour at its edge. Adjust
+that side's brightness and RGB trims until the wall glow meets the on-screen
+edge, click Next, and repeat; save when done. The preview never writes WLED
+configuration, and real playback automatically takes priority over a
+forgotten preview.
+
+Every step but white also shows a curated nature photograph centred on the
+TV -- never touching the sampled edge band, so it cannot interfere with the
+match itself -- credited to its Wallhaven photographer by name with a link
+back to their profile and the source page. **Try another photo** cycles
+through two or three picks per colour if the first doesn't read clearly on
+your wall. White has no photo: a flat plane is what the eye needs to judge a
+clean white by, which a photograph can never quite give under camera-specific
+white balance.
 
 Output is temporally dithered: WLED drives its LEDs straight from the byte
 value, and linear light gives the darkest tones the fewest of the 256

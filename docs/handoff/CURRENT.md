@@ -33,6 +33,82 @@ engineer can continue without relying on chat history.
 
 ## Build and test status
 
+**PASS (2026-09-08, colour-tuning wizard).**
+
+```bash
+DOTNET_CLI_HOME=/tmp/jfar2-dotnet-cli NUGET_PACKAGES=/tmp/jfar2-nuget-packages \
+dotnet build src/Jellyfin.Plugin.RealtimeAmbilight/Jellyfin.Plugin.RealtimeAmbilight.csproj \
+    --configuration Release --no-incremental -p:UseSharedCompilation=false
+DOTNET_ROLL_FORWARD=Major dotnet test \
+tests/Jellyfin.Plugin.RealtimeAmbilight.Tests/Jellyfin.Plugin.RealtimeAmbilight.Tests.csproj \
+    --configuration Release -p:UseSharedCompilation=false
+```
+
+Zero warnings/errors; **80/80** (no new tests: the wizard's own pure logic --
+`CalibrationWizard.PhotoAt`'s wraparound, `CalibrationWizardState.MoveTo`'s
+clamping -- lives in the Plugin project's root namespace like
+`CalibrationReferenceColour` before it, which the test project has never
+referenced; it only references Core, deliberately, so it builds without
+Jellyfin.Controller/Model. Adding a test would mean adding that reference for
+one file, an inconsistency not worth introducing this late in a session).
+
+Replaces the old single side+colour dropdown pair with a seven-step wizard
+(`CalibrationWizard.ColourOrder`: White, Blue, Red, Green, Yellow, Purple,
+Orange) driven from the **Ambilight** tab. Mechanism:
+
+- `CalibrationWizardState` (a field on `JellyfinWledOutputService`, alongside
+  the existing `_calibrationPreview`) holds `{StepIndex, PhotoIndex, Side}`
+  in memory only -- a restart returns to step 0, which is harmless.
+- `GET RealtimeAmbilight/Calibration/WizardState` is `[AllowAnonymous]`
+  (same precedent as `Pattern`) so the already-open TV page can poll it every
+  1.5 s without a login, and updates its DOM in place -- no navigation, no
+  query parameters -- when the step/photo/side key changes.
+- `POST RealtimeAmbilight/Calibration/WizardState` (admin) moves the wizard
+  and, only when `IsCalibrationPreviewActive`, restarts the LED preview with
+  the new step's colour, mirroring the old side/colour-dropdown-change
+  behaviour instead of replacing it.
+- The centred photograph and its Wallhaven credit are purely decorative:
+  Ambilight only ever samples the solid edge glow (unchanged mechanism), and
+  the photo's CSS inset matches the old decorative `.art` div's, so it can
+  never reach the sampled edge band.
+
+**Wallhaven sourcing.** 17 photos across the six non-white colours, picked by
+hand this session using Wallhaven's public API `colors` filter (a fixed
+32-swatch palette -- arbitrary hex values return zero results, see
+`WledDiscoveryService`-adjacent research if this needs redoing) combined with
+`q=nature`/`q=sunflower`/`q=lavender` etc., `categories=100` (General only,
+deviating from the operator's own example link's `101` to exclude the People
+category), `purity=100` (SFW only, deviating from the example link's `110`
+"sketchy" for a shared living-room TV -- flagged to the operator, not
+silently decided). Each candidate's thumbnail was downloaded and visually
+checked before inclusion; two initially-strong sunflower results (`48ey9k`,
+`lqx9dq`) were dropped because their Wallhaven uploader accounts are
+`"deleted"` -- there is no one to credit, and crediting is the whole point of
+including them. Hotlinked at `thumbs.large` size (not the full original,
+which can exceed 10 MB) directly from `th.wallhaven.cc`; confirmed reachable
+with no hotlink/referer protection from both no-referer and a foreign
+(Jellyfin-origin) referer.
+
+**Caught before deployment, not after: a JSON-casing bug in the embedded TV
+page's own polling script.** It was first written reading `state.stepIndex`
+etc. (camelCase), copying the assumption from `config.js`'s defensive
+`?? camelCase` fallbacks elsewhere in this file. But `curl
+localhost:8096/System/Info/Public` -- Jellyfin's own core API, sharing this
+plugin's ASP.NET pipeline -- returns **PascalCase**
+(`"LocalAddress"`, `"ServerName"`, ...), confirming PascalCase is what this
+host actually serializes, not camelCase. Fixed with a `pick(state, "Name")`
+helper trying PascalCase first, camelCase second, inside the embedded script
+too. `config.js`'s own wizard code already did this correctly by following
+existing convention; only the newly hand-written TV-page script had the bug.
+**This is the same class of mistake as the `hostName`/`host` fix earlier
+today** -- verify the actual wire format instead of assuming it, especially
+in hand-written JSON consumers that are not the shared `config.js` module.
+
+**Not yet exercised end-to-end in a browser** (see the standing item below):
+built, unit-tested where the architecture allows it, and the Wallhaven URLs
+were curl-verified reachable, but nobody has clicked Next on the actual
+settings page while watching the actual TV page update.
+
 **PASS (2026-09-08, settings-page redesign and calibration follow-ups).**
 
 ```bash
