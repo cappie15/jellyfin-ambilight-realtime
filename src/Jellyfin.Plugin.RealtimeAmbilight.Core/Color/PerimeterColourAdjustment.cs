@@ -28,6 +28,31 @@ public readonly record struct PerimeterColourAdjustment(
     public bool IsIdentity => Global.IsIdentity && Top.IsIdentity && Right.IsIdentity && Bottom.IsIdentity && Left.IsIdentity
         && BlackLevelFloor <= 0f && (Curve is null || Curve.IsIdentity);
 
+    /// <summary>
+    /// How much of an RGBW strip's shared grey should still go to the
+    /// physical white LED, 0-1, for <see cref="Output.DitheredRgbw32Encoder"/>.
+    /// Derived from how far the White step's own colour-temperature control
+    /// (<see cref="ColourAdjustment.RedGain"/>/<see cref="ColourAdjustment.BlueGain"/>
+    /// on <see cref="Global"/>, clamped 40-160% i.e. +-0.6 around 1) currently
+    /// sits from centre -- <c>1</c> (full extraction, today's exact
+    /// behaviour) when centred, tapering toward <c>0</c> at either extreme.
+    /// This is a single frame-wide value, not evaluated per pixel: it tracks
+    /// the operator's own calibrated setting, never any one pixel's own
+    /// saturation, so it never affects ordinary saturated video content on
+    /// its own.
+    /// </summary>
+    public float WhiteExtractionFactor
+    {
+        get
+        {
+            var shift = Math.Max(MathF.Abs(Global.RedGain - 1f), MathF.Abs(Global.BlueGain - 1f));
+            var fraction = Math.Clamp(shift / 0.6f, 0f, 1f);
+            return 1f - SmoothStep(fraction);
+        }
+    }
+
+    private static float SmoothStep(float t) => t * t * (3f - (2f * t));
+
     /// <remarks>
     /// The hue-correction curve (from the colour-tuning wizard's Red/Green/
     /// Blue/Yellow/Cyan/Magenta steps) runs between the black-level floor and

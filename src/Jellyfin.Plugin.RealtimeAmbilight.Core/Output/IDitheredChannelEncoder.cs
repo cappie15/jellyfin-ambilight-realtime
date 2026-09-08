@@ -11,5 +11,16 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Output;
 /// </summary>
 public interface IDitheredChannelEncoder
 {
-    byte[] Encode(ReadOnlySpan<LinearRgb> linearFrame, Rgb24Encoding encoding);
+    /// <param name="whiteExtractionFactor">
+    /// RGBW32-only: how much of a pixel's shared grey (<c>min(r,g,b)</c>)
+    /// actually goes to the physical white LED, 0-1, defaulting to 1 (extract
+    /// all of it -- today's behaviour, and RGB24 ignores this entirely).
+    /// Driven by how far the White step's own colour-temperature control is
+    /// currently set from centre (see <c>PerimeterColourAdjustment.WhiteExtractionFactor</c>),
+    /// not by any one pixel's own saturation, so ordinary saturated video
+    /// content is never affected by it -- only the frame's global white
+    /// balance is. See <see cref="DitheredRgbw32Encoder"/> for why this
+    /// exists.
+    /// </param>
+    byte[] Encode(ReadOnlySpan<LinearRgb> linearFrame, Rgb24Encoding encoding, float whiteExtractionFactor = 1f);
 }

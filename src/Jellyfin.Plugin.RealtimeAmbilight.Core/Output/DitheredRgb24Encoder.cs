@@ -23,7 +23,7 @@ public sealed class DitheredRgb24Encoder : IDitheredChannelEncoder
 {
     private float[] _carriedError = [];
 
-    public byte[] Encode(ReadOnlySpan<LinearRgb> linearFrame, Rgb24Encoding encoding)
+    public byte[] Encode(ReadOnlySpan<LinearRgb> linearFrame, Rgb24Encoding encoding, float whiteExtractionFactor = 1f)
     {
         if (linearFrame.IsEmpty)
         {

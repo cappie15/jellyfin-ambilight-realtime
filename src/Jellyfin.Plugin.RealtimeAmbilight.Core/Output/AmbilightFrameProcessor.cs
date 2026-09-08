@@ -78,6 +78,6 @@ public sealed class AmbilightFrameProcessor
             }
         }
 
-        return _encoder.Encode(physicalFrame, _encodingResolver());
+        return _encoder.Encode(physicalFrame, _encodingResolver(), adjustment.WhiteExtractionFactor);
     }
 }

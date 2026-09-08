@@ -52,7 +52,33 @@ public sealed class DitheredRgbw32Encoder : IDitheredChannelEncoder
 {
     private float[] _carriedError = [];
 
-    public byte[] Encode(ReadOnlySpan<LinearRgb> linearFrame, Rgb24Encoding encoding)
+    /// <remarks>
+    /// <paramref name="whiteExtractionFactor"/> exists because a fixed-CCT
+    /// white die cannot, by itself, be dialled warmer or cooler -- only a
+    /// shifted mix of the colour LEDs can actually move the perceived
+    /// temperature. At <c>1</c> (this class's long-standing default, and the
+    /// White step centred), extraction is exactly <c>min(r,g,b)</c> as
+    /// before, byte-identical to prior behaviour. As it is dialled toward
+    /// <c>0</c> -- driven by how far the White step's colour-temperature
+    /// slider currently sits from centre, not by any one pixel's own
+    /// saturation, so ordinary saturated video content is never touched by
+    /// this -- less of the shared grey is sent to the (unshiftable) white
+    /// die and correspondingly more stays on the colour LEDs, which is what
+    /// actually lets the perceived white reach the requested temperature
+    /// instead of being pulled back toward the die's own fixed point.
+    ///
+    /// Reported live and confirmed mathematically: reducing extraction alone
+    /// raises the *total* summed output across all four channels for the
+    /// same input (full extraction is always the total-minimising choice),
+    /// which is exactly "de witte led komt daar nog bij bovenop... het
+    /// geheel is te fel". So after computing the tapered split, every
+    /// channel is rescaled by a single compensation factor that pins the
+    /// four channels' combined total back to what full extraction of the
+    /// same pixel would already have produced -- shifting temperature this
+    /// way changes which channels carry the light, not how much of it there
+    /// is in total.
+    /// </remarks>
+    public byte[] Encode(ReadOnlySpan<LinearRgb> linearFrame, Rgb24Encoding encoding, float whiteExtractionFactor = 1f)
     {
         if (linearFrame.IsEmpty)
         {
@@ -67,17 +93,33 @@ public sealed class DitheredRgbw32Encoder : IDitheredChannelEncoder
             _carriedError = new float[linearFrame.Length * 3];
         }
 
+        var extractionFactor = Math.Clamp(whiteExtractionFactor, 0f, 1f);
+
         var rgbw32 = new byte[linearFrame.Length * 4];
         for (var index = 0; index < linearFrame.Length; index++)
         {
             var colour = linearFrame[index];
-            var white = MathF.Min(colour.Red, MathF.Min(colour.Green, colour.Blue));
+            var minComponent = MathF.Min(colour.Red, MathF.Min(colour.Green, colour.Blue));
+            var white = extractionFactor * minComponent;
+
+            var compensation = 1f;
+            if (extractionFactor < 1f)
+            {
+                var sum = colour.Red + colour.Green + colour.Blue;
+                var totalAtFullExtraction = sum - (2f * minComponent);
+                var totalAtCurrentExtraction = sum - (2f * white);
+                if (totalAtCurrentExtraction > 1e-6f)
+                {
+                    compensation = totalAtFullExtraction / totalAtCurrentExtraction;
+                }
+            }
+
             var offset = index * 4;
             var errorOffset = index * 3;
-            rgbw32[offset] = EncodeDitheredComponent(colour.Red - white, encoding, errorOffset);
-            rgbw32[offset + 1] = EncodeDitheredComponent(colour.Green - white, encoding, errorOffset + 1);
-            rgbw32[offset + 2] = EncodeDitheredComponent(colour.Blue - white, encoding, errorOffset + 2);
-            rgbw32[offset + 3] = EncodePlainComponent(white, encoding);
+            rgbw32[offset] = EncodeDitheredComponent((colour.Red - white) * compensation, encoding, errorOffset);
+            rgbw32[offset + 1] = EncodeDitheredComponent((colour.Green - white) * compensation, encoding, errorOffset + 1);
+            rgbw32[offset + 2] = EncodeDitheredComponent((colour.Blue - white) * compensation, encoding, errorOffset + 2);
+            rgbw32[offset + 3] = EncodePlainComponent(white * compensation, encoding);
         }
 
         return rgbw32;

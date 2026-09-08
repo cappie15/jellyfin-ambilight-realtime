@@ -349,7 +349,11 @@ export default function (view) {
     function renderStepControls(colourName) {
         const container = byId("wizardStepControls");
 
-        if (colourName === "White") {
+        // "White level" is the finetuning replay of the White tuning step
+        // against the operator's own real white-level photos instead of the
+        // synthetic swatch -- same control, same underlying red/blue gain
+        // push-pull, just shown again later with real-photo context.
+        if (colourName === "White" || colourName === "White level") {
             container.innerHTML = `<div class="inputContainer"><input is="emby-input" id="wizardQuickField" type="range" min="-${wizardWhiteRange}" max="${wizardWhiteRange}" step="1" label="Colour temperature" /><div class="fieldDescription">Cooler &harr; <strong id="wizardQuickValue"></strong> &harr; Warmer</div></div>`;
             const quick = byId("wizardQuickField");
             quick.value = Math.round((Number(byId("redGainPercent").value) - Number(byId("blueGainPercent").value)) / 2);

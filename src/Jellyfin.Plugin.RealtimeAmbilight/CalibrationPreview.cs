@@ -3,23 +3,24 @@ namespace Jellyfin.Plugin.RealtimeAmbilight;
 /// <summary>
 /// The settings page's colour-tuning wizard: a fixed, logical order of steps.
 /// Every step's edges are sampled through the ordinary Ambilight pipeline,
-/// same as real video -- White from the operator's own photos, the six
-/// primary/secondary steps from a rendered flat-colour swatch (see
-/// <see cref="SwatchColours"/>), and the finetuning steps from the
-/// operator's own two-colour photos.
+/// same as real video -- White and the six primary/secondary steps from a
+/// rendered flat-colour swatch (see <see cref="SwatchColours"/>), and every
+/// finetuning step from one of the operator's own real photos.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Three phases, one continuous sequence. The first ("tuning", White plus
 /// every RGB primary and secondary) builds the six-anchor
-/// <see cref="Core.Color.HueCorrectionCurve"/> from a synthetic swatch at
-/// each colour's own canonical hue -- not a photo, so nothing about the
-/// photo's own white balance or exposure can bias the reading -- while White
-/// keeps its own three real photos, cycled via "try another photo", exactly
-/// as before. The second ("finetuning") walks the same six anchors again
-/// through the operator's real two-colour photos, offering both colours'
-/// sliders together so the anchors can be refined with real-photo context
-/// instead of an isolated swatch, per <see cref="FinetuningColourPairs"/>.
+/// <see cref="Core.Color.HueCorrectionCurve"/> plus White's own red/blue
+/// gain from a synthetic swatch at each colour's own canonical hue -- not a
+/// photo, so nothing about a photo's own white balance or exposure can bias
+/// the reading, White included (a real "white" photo is rarely perfectly
+/// neutral; a synthetic (255,255,255) swatch always is). The second
+/// ("finetuning") replays every one of those against the operator's own
+/// real photos instead: the six hue anchors two at a time, from a two-colour
+/// photo showing both (per <see cref="FinetuningColourPairs"/>), and White
+/// on its own from the three original white-level photos ("White level"),
+/// now here instead of at the tuning step.
 /// </para>
 /// <para>
 /// <c>s3_finaltest.jpg</c> was dropped rather than kept as a seventh
@@ -42,15 +43,22 @@ public static class CalibrationWizard
     /// filename alone.
     /// </summary>
     public static readonly IReadOnlyList<string> ConfirmationOrder =
-        ["Blue-Green", "Orange-Red", "Purple-Teal", "Yellow-Pink"];
+        ["White level", "Blue-Green", "Orange-Red", "Purple-Teal", "Yellow-Pink"];
 
     public static readonly IReadOnlyList<string> ColourOrder = [.. TuningOrder, .. ConfirmationOrder];
 
-    /// <summary>Embedded JPEG file names (under <c>Configuration/CalibrationPhotos</c>) for each step that uses one.</summary>
+    /// <summary>
+    /// Embedded JPEG file names (under <c>Configuration/CalibrationPhotos</c>)
+    /// for each step that uses one. White's own three real photos moved here
+    /// (as "White level") from the White tuning step, which now uses a
+    /// synthetic swatch like every other primary/secondary -- consistent
+    /// with how each of those gets a swatch for tuning and, where a suitable
+    /// real photo exists, a finetuning replay against real content.
+    /// </summary>
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> Photos =
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["White"] = ["s0_whitelevel1.jpg", "s0_whitelevel2.jpg", "s0_whitelevel3.jpg"],
+            ["White level"] = ["s0_whitelevel1.jpg", "s0_whitelevel2.jpg", "s0_whitelevel3.jpg"],
             ["Blue-Green"] = ["s3_blue_green.jpg"],
             ["Orange-Red"] = ["s3_orange_red.jpg"],
             ["Purple-Teal"] = ["s3_purple_teal.jpg"],
@@ -62,11 +70,17 @@ public static class CalibrationWizard
     /// saturation and value (red 0°, yellow 60°, green 120°, cyan 180°, blue
     /// 240°, magenta 300° -- the same six angles <c>HueCorrectionCurve</c>
     /// anchors on), rendered flat and sampled through the real edge-sampling
-    /// pipeline exactly as a photo would be.
+    /// pipeline exactly as a photo would be. White is included too, at
+    /// (255,255,255): the White step's colour-temperature control no longer
+    /// samples a real photo (whose own white balance and exposure could bias
+    /// the reading) -- a perfectly neutral synthetic swatch means the White
+    /// step starts from an exact (r=g=b) reading every time, matching the
+    /// RGBW extraction's own identity case exactly at centre.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, (byte Red, byte Green, byte Blue)> SwatchColours =
         new Dictionary<string, (byte, byte, byte)>(StringComparer.OrdinalIgnoreCase)
         {
+            ["White"] = (255, 255, 255),
             ["Red"] = (255, 0, 0),
             ["Yellow"] = (255, 255, 0),
             ["Green"] = (0, 255, 0),

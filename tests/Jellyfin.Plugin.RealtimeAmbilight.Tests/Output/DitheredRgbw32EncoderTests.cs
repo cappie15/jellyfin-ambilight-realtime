@@ -94,6 +94,64 @@ public sealed class DitheredRgbw32EncoderTests
         Assert.True(plainFlips < ditheredFlips, $"expected fewer flips plain-rounded ({plainFlips}) than dithered ({ditheredFlips})");
     }
 
+    [Fact]
+    public void FullExtractionFactorIsByteIdenticalToTheDefault()
+    {
+        var withDefault = new DitheredRgbw32Encoder();
+        var withExplicitOne = new DitheredRgbw32Encoder();
+        var colour = new LinearRgb(0.8f, 0.5f, 0.2f);
+
+        var defaultResult = withDefault.Encode([colour], Rgb24Encoding.Linear);
+        var explicitResult = withExplicitOne.Encode([colour], Rgb24Encoding.Linear, whiteExtractionFactor: 1f);
+
+        Assert.Equal(defaultResult, explicitResult);
+    }
+
+    [Fact]
+    public void ReducingTheExtractionFactorMovesGreyFromWhiteToTheColourResidual()
+    {
+        // A calibration-shifted near-white pixel: red pushed up, blue pushed
+        // down, green untouched -- exactly the White step's own red/blue
+        // push-pull.
+        var colour = new LinearRgb(0.55f, 0.5f, 0.45f);
+
+        var full = new DitheredRgbw32Encoder().Encode([colour], Rgb24Encoding.Linear, whiteExtractionFactor: 1f);
+        var tapered = new DitheredRgbw32Encoder().Encode([colour], Rgb24Encoding.Linear, whiteExtractionFactor: 0.3f);
+
+        Assert.True(tapered[3] < full[3], $"expected less white at a lower extraction factor: tapered={tapered[3]}, full={full[3]}");
+        // At least one colour channel must have picked up the difference.
+        Assert.True(tapered[0] > full[0] || tapered[1] > full[1] || tapered[2] > full[2]);
+    }
+
+    [Fact]
+    public void NoExtractionSendsThePixelAsAPureColourResidualWithNothingOnWhite()
+    {
+        var colour = new LinearRgb(0.55f, 0.5f, 0.45f);
+
+        var pureResidual = new DitheredRgbw32Encoder().Encode([colour], Rgb24Encoding.Linear, whiteExtractionFactor: 0f);
+
+        Assert.Equal(0, pureResidual[3]);
+    }
+
+    [Fact]
+    public void TotalCombinedOutputDoesNotIncreaseAsTheExtractionFactorIsTapered()
+    {
+        // The actual bug being fixed: a warmer/cooler White shift must not
+        // make the strip's total output climb just because less of the
+        // shared grey lands on the (unshiftable) white die. Checked at every
+        // taper level against the same input colour.
+        var colour = new LinearRgb(0.7f, 0.5f, 0.3f);
+        var fullTotal = SumRgbw(new DitheredRgbw32Encoder().Encode([colour], Rgb24Encoding.Linear, whiteExtractionFactor: 1f));
+
+        foreach (var factor in new[] { 0.75f, 0.5f, 0.25f, 0f })
+        {
+            var total = SumRgbw(new DitheredRgbw32Encoder().Encode([colour], Rgb24Encoding.Linear, whiteExtractionFactor: factor));
+            Assert.True(total <= fullTotal + 1, $"factor {factor}: total {total} exceeded the full-extraction total {fullTotal}");
+        }
+    }
+
+    private static int SumRgbw(byte[] frame) => frame[0] + frame[1] + frame[2] + frame[3];
+
     private static int CountFlips(IEnumerable<byte> sequence)
     {
         var flips = 0;

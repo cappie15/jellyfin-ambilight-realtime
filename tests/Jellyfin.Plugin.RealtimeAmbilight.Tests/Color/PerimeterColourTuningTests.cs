@@ -107,6 +107,33 @@ public sealed class PerimeterColourTuningTests
     }
 
     [Fact]
+    public void WhiteExtractionFactorIsOneWhenTheWhiteBalanceIsCentred()
+    {
+        Assert.Equal(1f, PerimeterColourTuning.Default.ToAdjustment().WhiteExtractionFactor, 5);
+    }
+
+    [Fact]
+    public void WhiteExtractionFactorTapersTowardsZeroAsTheWhiteBalanceShiftsToItsExtreme()
+    {
+        // RedGainPercent's clamp is 40-160 (see the test above); its extreme
+        // is the White step's colour-temperature slider's own extreme.
+        var extreme = PerimeterColourTuning.Default with { RedGainPercent = 160 };
+
+        Assert.Equal(0f, extreme.ToAdjustment().WhiteExtractionFactor, 4);
+    }
+
+    [Fact]
+    public void WhiteExtractionFactorDecreasesMonotonicallyAsTheShiftGrows()
+    {
+        var centred = PerimeterColourTuning.Default.ToAdjustment().WhiteExtractionFactor;
+        var slight = (PerimeterColourTuning.Default with { RedGainPercent = 120 }).ToAdjustment().WhiteExtractionFactor;
+        var extreme = (PerimeterColourTuning.Default with { RedGainPercent = 160 }).ToAdjustment().WhiteExtractionFactor;
+
+        Assert.True(centred > slight, $"{centred} should be greater than {slight}");
+        Assert.True(slight > extreme, $"{slight} should be greater than {extreme}");
+    }
+
+    [Fact]
     public void SideTrimOnlyChangesItsOwnPhysicalRun()
     {
         var tuning = PerimeterColourTuning.Default with { RightBlueGainPercent = 125 };

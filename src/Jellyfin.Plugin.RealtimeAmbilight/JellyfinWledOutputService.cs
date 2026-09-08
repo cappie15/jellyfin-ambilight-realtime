@@ -237,7 +237,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             physicalFrame[index] = adjustment.Apply(physicalFrame[index], index, _physicalLayout);
         }
 
-        await _output.SendFrameAsync(_calibrationEncoder.Encode(physicalFrame, _encoding), cancellationToken).ConfigureAwait(false);
+        await _output.SendFrameAsync(_calibrationEncoder.Encode(physicalFrame, _encoding, adjustment.WhiteExtractionFactor), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
