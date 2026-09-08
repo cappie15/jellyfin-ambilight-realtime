@@ -28,6 +28,13 @@ guid="$(read_metadata guid)"
 # for a fork, or pass it as the first argument.
 base_url="${1:-https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v$version}"
 
+# The catalog icon Jellyfin's dashboard shows on the plugin card and detail
+# page. It is a release asset, not part of the installed zip -- `gh release
+# upload` must publish it alongside the zip and manifest.json for the URL
+# below to resolve.
+icon_source="docs/images/ambilight-hero.png"
+icon_name="ambilight-logo.png"
+
 echo "==> Building $name $version"
 # PathMap rewrites the checkout path embedded in the assemblies to a fixed root,
 # so the artifact does not leak the build machine's directory layout.
@@ -98,10 +105,12 @@ ZIP
 checksum="$(md5sum "$archive" | cut -d' ' -f1)"
 timestamp="$(date -u +%Y-%m-%dT%H:%M:%S.0000000Z)"
 
+cp "$icon_source" "$artifacts/$icon_name"
+
 echo "==> Writing manifest"
 CHECKSUM="$checksum" TIMESTAMP="$timestamp" VERSION="$version" \
 TARGET_ABI="$target_abi" GUID="$guid" NAME="$name" \
-SOURCE_URL="$base_url/$archive_name" METADATA="$metadata" \
+SOURCE_URL="$base_url/$archive_name" IMAGE_URL="$base_url/$icon_name" METADATA="$metadata" \
 python3 - "$artifacts/manifest.json" <<'PY'
 import json, os, sys
 
@@ -113,6 +122,7 @@ manifest = [{
     "overview": metadata["overview"],
     "owner": metadata["owner"],
     "category": metadata["category"],
+    "imageUrl": os.environ["IMAGE_URL"],
     "versions": [{
         "version": os.environ["VERSION"],
         "changelog": "",
@@ -130,5 +140,10 @@ PY
 echo
 echo "    package  $archive"
 echo "    md5      $checksum"
+echo "    icon     $artifacts/$icon_name"
 echo "    manifest $artifacts/manifest.json"
 echo "    source   $base_url/$archive_name"
+echo
+echo "    Publish all three ($archive_name, $icon_name, manifest.json) as release"
+echo "    assets, then register $base_url/manifest.json as a repository under"
+echo "    Dashboard -> Plugins -> Repositories in Jellyfin."
