@@ -876,7 +876,14 @@ export default function (view) {
                 byId("hueEnabled").checked = config.HueEnabled === true;
                 byId("hueBrightnessPercent").value = config.HueBrightnessPercent || 100;
                 byId("hueResponsePercent").value = config.HueResponsePercent ?? 50;
-                byId("hueEndBehaviour").value = String(config.HueEndBehaviour ?? 0);
+                // Jellyfin's plugin configuration API returns an enum as its
+                // string name ("WarmWhiteDim"), not the numeric value the
+                // <select>'s own options use -- the same mismatch already
+                // handled for realtimeProtocol above. Setting a <select>'s
+                // value to a string with no matching <option> just leaves it
+                // blank, which is exactly what was reported: the saved
+                // choice reads back empty after a refresh.
+                byId("hueEndBehaviour").value = String({ WarmWhiteDim: 0, RestorePreviousState: 1 }[config.HueEndBehaviour] ?? config.HueEndBehaviour ?? 0);
                 if (config.HueEntertainmentConfigurationId && config.HueEntertainmentConfigurationId !== "00000000-0000-0000-0000-000000000000") {
                     show("hueSelectionSection", true);
                 }
