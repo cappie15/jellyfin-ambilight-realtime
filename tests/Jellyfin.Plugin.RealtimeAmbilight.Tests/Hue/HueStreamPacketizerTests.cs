@@ -57,8 +57,12 @@ public class HueStreamPacketizerTests
         Assert.Equal((byte)7, packet[channelsStart]);
         Assert.Equal(255, packet[channelsStart + 1]); // R high byte
         Assert.Equal(255, packet[channelsStart + 2]); // R low byte
-        Assert.Equal((byte)Math.Round(0.5f * 255f), packet[channelsStart + 3]); // G high
-        Assert.Equal((byte)Math.Round(0.5f * 255f), packet[channelsStart + 4]); // G low
+        // sRGB-encoded, not linear*255: 0.5 linear-light encodes to ~0.715,
+        // i.e. ~182/255, well above the naive 128 a linear scaling would give.
+        var srgbHalf = (1.055 * Math.Pow(0.5, 1d / 2.4)) - 0.055;
+        var expectedGreen = (byte)Math.Round(srgbHalf * 255);
+        Assert.Equal(expectedGreen, packet[channelsStart + 3]); // G high
+        Assert.Equal(expectedGreen, packet[channelsStart + 4]); // G low
         Assert.Equal(0, packet[channelsStart + 5]); // B high
         Assert.Equal(0, packet[channelsStart + 6]); // B low
 
@@ -91,6 +95,37 @@ public class HueStreamPacketizerTests
     public void PacketizeRejectsAnEmptyChannelList()
     {
         Assert.Throws<ArgumentException>(() => HueStreamPacketizer.Packetize(ConfigurationId, []));
+    }
+
+    [Fact]
+    public void MidToneLinearLightEncodesBrighterThanNaiveLinearScaling()
+    {
+        // Regression test for a real bug: colour used to be sent as raw
+        // linear*255, which HueApi.ColorConverters' own gamut math (its sRGB
+        // decode, x/12.92 or ((x+0.055)/1.055)^2.4) proves is the wrong
+        // convention -- this whole ecosystem expects gamma-encoded sRGB, so
+        // every non-extreme colour arrived far darker than intended. A 0.5
+        // linear-light component must now come out well above the naive
+        // 128/255 a plain linear scaling would give.
+        var packet = Assert.Single(HueStreamPacketizer.Packetize(
+            ConfigurationId,
+            [new HueStreamPacketizer.ChannelColour(0, new LinearRgb(0.5f, 0.5f, 0.5f))]));
+
+        const int channelsStart = 52;
+        Assert.True(packet[channelsStart + 1] > 128, $"expected sRGB-encoded byte above naive linear 128, was {packet[channelsStart + 1]}");
+    }
+
+    [Theory]
+    [InlineData(0f, 0)]
+    [InlineData(1f, 255)]
+    public void PureBlackAndPureWhiteAreUnaffectedBySrgbEncoding(float linear, byte expectedByte)
+    {
+        var packet = Assert.Single(HueStreamPacketizer.Packetize(
+            ConfigurationId,
+            [new HueStreamPacketizer.ChannelColour(0, new LinearRgb(linear, linear, linear))]));
+
+        const int channelsStart = 52;
+        Assert.Equal(expectedByte, packet[channelsStart + 1]);
     }
 
     [Fact]

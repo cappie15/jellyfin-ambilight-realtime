@@ -59,6 +59,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     private HueDtlsChannel? _channel;
     private HueCredentials? _credentials;
     private IReadOnlyList<HueEntertainmentChannel> _channels = [];
+    private IReadOnlyDictionary<Guid, Guid> _lightIdsByServiceId = new Dictionary<Guid, Guid>();
     private byte[]? _lastPacket;
     private DateTimeOffset _lastSend = DateTimeOffset.MinValue;
     private DateTimeOffset _nextRetryAt = DateTimeOffset.MinValue;
@@ -283,6 +284,14 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             }
 
             _channels = selected.Channels;
+            // A channel member's own id is an *entertainment service* id,
+            // not the light resource id CLIP v2 light calls need -- resolved
+            // once per connect (cheap: one bridge call) rather than assuming
+            // the two ids are interchangeable, which they are not. See
+            // HueEntertainmentServiceParser's remarks for why this exists.
+            _lightIdsByServiceId = await _bridgeClient
+                .ResolveLightIdsAsync(configuration.HueBridgeHost, credentials.CertificateThumbprintSha256, credentials.ApplicationKey, _shutdown.Token)
+                .ConfigureAwait(false);
             // Built fresh on every connect, not cached for the service's
             // whole lifetime: cheap to construct, and it means a changed
             // HueResponsePercent takes effect on the next reconnect (stop
@@ -317,10 +326,36 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         // No finally clearing _lifecycleTask here -- see LifecycleTaskIsFree's remarks.
     }
 
+    /// <summary>
+    /// Maps each channel's own member ids (entertainment service ids) to the
+    /// light resource ids CLIP v2 light calls actually need, via
+    /// <see cref="_lightIdsByServiceId"/>. A member with no resolved mapping
+    /// is dropped with a warning rather than sent to the bridge as-is, which
+    /// would just 404 -- exactly the failure this whole mapping step exists
+    /// to fix.
+    /// </summary>
+    private List<Guid> ResolveLightIds(IEnumerable<HueEntertainmentChannel> channels)
+    {
+        var lightIds = new List<Guid>();
+        foreach (var serviceId in channels.SelectMany(c => c.MemberServiceIds).Distinct())
+        {
+            if (_lightIdsByServiceId.TryGetValue(serviceId, out var lightId))
+            {
+                lightIds.Add(lightId);
+            }
+            else
+            {
+                _logger.LogWarning("Hue Entertainment could not resolve entertainment service {ServiceId} to a light; skipping it for snapshot/end-of-session commands.", serviceId);
+            }
+        }
+
+        return lightIds;
+    }
+
     private async Task<HueSessionSnapshot?> CaptureSnapshotAsync(
         PluginConfiguration configuration, HueCredentials credentials, HueEntertainmentConfiguration selected, string sessionId)
     {
-        var lightIds = selected.Channels.SelectMany(c => c.MemberServiceIds).Distinct().ToArray();
+        var lightIds = ResolveLightIds(selected.Channels);
         var entries = new List<HueLightSnapshotEntry>();
         foreach (var lightId in lightIds)
         {
@@ -450,7 +485,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
 
     private async Task ApplyEndBehaviourAsync(PluginConfiguration configuration, HueCredentials credentials)
     {
-        var lightIds = _channels.SelectMany(c => c.MemberServiceIds).Distinct().ToArray();
+        var lightIds = ResolveLightIds(_channels);
         var snapshot = _snapshot;
         _snapshot = null;
 

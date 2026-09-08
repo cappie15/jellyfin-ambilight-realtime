@@ -165,6 +165,27 @@ public sealed class HueBridgeClient
     }
 
     /// <summary>
+    /// Maps each channel member's <c>entertainment</c> service id (from
+    /// <see cref="HueEntertainmentChannel.MemberServiceIds"/>) to the actual
+    /// <c>light</c> resource id it renders to -- required before any plain
+    /// CLIP v2 light call (<see cref="HueLightControl"/>), since those two
+    /// ids are different resources on the bridge. See
+    /// <see cref="HueEntertainmentServiceParser"/> for why.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<Guid, Guid>> ResolveLightIdsAsync(
+        string host, string expectedCertificateThumbprintSha256, string applicationKey, CancellationToken cancellationToken)
+    {
+        using var client = CreatePinnedClient(host, expectedCertificateThumbprintSha256);
+        client.DefaultRequestHeaders.Add("hue-application-key", applicationKey);
+        using var response = await client
+            .GetAsync(new Uri($"https://{host}:{Port}/clip/v2/resource/entertainment"), cancellationToken)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        return HueEntertainmentServiceParser.ParseLightIdsByServiceId(json);
+    }
+
+    /// <summary>
     /// A properly configured <see cref="LocalHueApi"/>, for callers that need
     /// HueApi's own typed client (e.g. light state PUTs for the end-of-session
     /// behaviour) rather than this class's own hand-rolled calls -- still with
