@@ -314,13 +314,56 @@ public sealed class WledDiscoveryService
                         ? parsedMaxPower
                         : 0;
 
-                var hasWhiteChannelHardware = root.TryGetProperty("hw", out var hw)
-                    && hw.TryGetProperty("led", out var hwLed)
-                    && hwLed.TryGetProperty("ins", out var ins)
-                    && ins.ValueKind == JsonValueKind.Array
+                root.TryGetProperty("hw", out var hw);
+                hw.TryGetProperty("led", out var hwLed);
+                hwLed.TryGetProperty("ins", out var ins);
+
+                var hasWhiteChannelHardware = ins.ValueKind == JsonValueKind.Array
                     && ins.EnumerateArray().Any(strip => strip.TryGetProperty("type", out var type)
                         && type.TryGetInt32(out var typeValue)
                         && typeValue == RgbwLedType);
+
+                // The controller's own configured refresh-rate cap. A large
+                // single-pin strip is physically bounded well below this by
+                // the LED protocol's own bit-banging time (831 RGBW LEDs on
+                // one WS281x-family pin measured at ~18 Hz actual against a
+                // 42 Hz cap here, on the reference strip) -- shown so an
+                // operator setting the plugin's own output rate above the
+                // achievable ceiling can see why raising it further does
+                // nothing, rather than assuming the plugin is at fault.
+                var ledFramesPerSecond = hwLed.TryGetProperty("fps", out var fps) && fps.TryGetInt32(out var parsedFps)
+                    ? parsedFps
+                    : (int?)null;
+
+                // Deciseconds until WLED reclaims the strip once realtime
+                // data stops arriving -- the number ADR-004's own keepalive
+                // design has to stay under.
+                var realtimeTimeoutMilliseconds = interfaceRoot.TryGetProperty("live", out var liveTimeoutRoot)
+                    && liveTimeoutRoot.TryGetProperty("timeout", out var timeoutDeciseconds)
+                    && timeoutDeciseconds.TryGetInt32(out var parsedTimeout)
+                        ? parsedTimeout * 100
+                        : (int?)null;
+
+                // 0 = Manual, the only mode RGBW32 output is correct under:
+                // anything else has WLED deriving or subtracting its own
+                // white value from what this plugin already computed and
+                // sent, double-processing it. Read from the first configured
+                // LED output (this project's reference install has exactly
+                // one), not the top-level default-for-new-strips value.
+                var rgbwMode = ins.ValueKind == JsonValueKind.Array
+                    && ins.GetArrayLength() > 0
+                    && ins[0].TryGetProperty("rgbwm", out var rgbwModeElement)
+                    && rgbwModeElement.TryGetInt32(out var parsedRgbwMode)
+                        ? parsedRgbwMode
+                        : (int?)null;
+                var rgbwModeIsManual = rgbwMode is null or 0;
+                if (hasWhiteChannelHardware && !rgbwModeIsManual)
+                {
+                    _logger.LogWarning(
+                        "WLED {Host} has RGBW mode {RgbwMode} instead of Manual (0) on its white-capable strip; this plugin's own white-channel output will be double-processed by WLED's own auto-white derivation until this is fixed.",
+                        authority,
+                        rgbwMode);
+                }
 
                 var appliesGamma = !realtimeExempt && colourGamma > 1d;
                 _logger.LogInformation(
@@ -341,7 +384,10 @@ public sealed class WledDiscoveryService
                     appliesGamma ? Rgb24Encoding.Bt709 : Rgb24Encoding.Linear,
                     forcesMaxBrightness,
                     maxPowerMilliamps,
-                    hasWhiteChannelHardware);
+                    hasWhiteChannelHardware,
+                    ledFramesPerSecond,
+                    realtimeTimeoutMilliseconds,
+                    hasWhiteChannelHardware && !rgbwModeIsManual);
             }
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException
@@ -401,6 +447,51 @@ public sealed class WledDiscoveryService
         }
     }
 
+    /// <summary>
+    /// Sets the first configured LED output's RGBW mode to Manual (0) --
+    /// the only mode this plugin's own RGBW32 output is correct under,
+    /// since anything else has WLED deriving or subtracting its own white
+    /// value from what this plugin already computed. Same opt-in gate and
+    /// fixed-length request body as <see cref="TryDisableForceMaxBrightnessAsync"/>.
+    /// </summary>
+    public async Task<bool> TryFixRgbwModeAsync(string host, int port, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(host);
+        var authority = port == 80 ? host : string.Create(CultureInfo.InvariantCulture, $"{host}:{port}");
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(ProbeTimeout);
+
+            var client = _httpClientFactory.CreateClient();
+            using var content = new StringContent(
+                """{"hw":{"led":{"ins":[{"rgbwm":0}]}}}""",
+                System.Text.Encoding.UTF8,
+                "application/json");
+            using var response = await client
+                .PostAsync(new Uri($"http://{authority}/json/cfg"), content, timeout.Token)
+                .ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "WLED {Host} rejected the request to set RGBW mode to Manual: {StatusCode}.",
+                    authority,
+                    response.StatusCode);
+                return false;
+            }
+
+            _logger.LogInformation("Set RGBW mode to Manual on WLED {Host}.", authority);
+            return true;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or UriFormatException
+            || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            _logger.LogWarning(exception, "Could not reach WLED {Host} to set RGBW mode to Manual.", authority);
+            return false;
+        }
+    }
+
     private static bool IsPrivateIpv4(string? host)
     {
         if (!IPAddress.TryParse(host, out var address) || address.AddressFamily != AddressFamily.InterNetwork)
@@ -423,7 +514,14 @@ public sealed class WledDiscoveryService
 /// go undetected; the settings page's "send white channel" checkbox is
 /// always the operator's own manual override regardless of this value.
 /// </param>
-public sealed record WledRealtimeSettings(Rgb24Encoding Encoding, bool ForcesMaxBrightness, int MaxPowerMilliamps, bool HasWhiteChannelHardware);
+public sealed record WledRealtimeSettings(
+    Rgb24Encoding Encoding,
+    bool ForcesMaxBrightness,
+    int MaxPowerMilliamps,
+    bool HasWhiteChannelHardware,
+    int? LedFramesPerSecond,
+    int? RealtimeTimeoutMilliseconds,
+    bool RgbwModeIsMisconfigured);
 
 /// <summary>Reachability and temporary realtime ownership reported by WLED.</summary>
 public sealed record WledControllerStatus(bool IsOnline, bool IsRealtimeActive)
