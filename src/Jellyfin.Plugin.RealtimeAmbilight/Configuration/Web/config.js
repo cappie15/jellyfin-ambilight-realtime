@@ -8,13 +8,14 @@ export default function (view) {
     ];
     const numericFields = [
         "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond", "stopFadeMilliseconds",
-        "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisFramesPerSecond", "samplingDepthPercent", ...colourTuningFields
+        "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisFramesPerSecond", "samplingDepthPercent",
+        "minimumColourHoldMilliseconds", ...colourTuningFields
     ];
     const defaults = {
         WledHttpPort: 80, RealtimeProtocol: 0, OutputDelayMilliseconds: 0, OutputFramesPerSecond: 30,
         StopFadeMilliseconds: 250, TopLedCount: 265, RightLedCount: 150,
         BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160, AnalysisFramesPerSecond: 30,
-        SamplingDepthPercent: 10, BrightnessPercent: 100, SaturationPercent: 100,
+        SamplingDepthPercent: 10, MinimumColourHoldMilliseconds: 0, BrightnessPercent: 100, SaturationPercent: 100,
         RedGainPercent: 100, GreenGainPercent: 100, BlueGainPercent: 100,
         BlackLevelFloorPercent: 0,
         WallColourCorrectionPercent: 100,
@@ -132,7 +133,7 @@ export default function (view) {
             scale.style.cssText = "display:flex;justify-content:space-between;margin-top:-.25em;font-size:.82em";
             range.insertAdjacentElement("afterend", scale);
 
-            const suffix = range.id.includes("Percent") ? "%" : range.id === "outputDelayMilliseconds" ? " ms" : "";
+            const suffix = range.id.includes("Percent") ? "%" : range.id.includes("Milliseconds") ? " ms" : "";
             const update = () => {
                 scale.innerHTML = `<span>${range.min}${suffix}</span><strong>${range.value}${suffix}</strong><span>${range.max}${suffix}</span>`;
             };
@@ -187,7 +188,11 @@ export default function (view) {
         byId("openCalibrationPattern").href = url;
     }
 
-    const wizardColours = ["White", "Blue", "Red", "Green", "Yellow", "Purple", "Orange"];
+    // Mirrors CalibrationWizard.ColourOrder server-side: 7 tuning steps (white,
+    // then every RGB primary and secondary) followed by 10 confirmation steps.
+    // Only used as a fallback bound before the server's own StepCount is known.
+    const wizardStepCountFallback = 17;
+    const wizardTuningStepCount = 7;
     let wizardStepIndex = 0;
     let wizardPhotoIndex = 0;
     let wizardPhotoCount = 0;
@@ -204,10 +209,6 @@ export default function (view) {
         if (!tvConnected) {
             return "Waiting for the TV to open the link above…";
         }
-        const colourName = state.ColourName ?? state.colourName ?? wizardColours[wizardStepIndex];
-        if (colourName === "White") {
-            return active ? "Live — adjust the sliders below." : "TV connected. Adjust a slider below to light the strip.";
-        }
         return active
             ? "Live — adjust the sliders below."
             : "TV connected; waiting for it to load this step's photo…";
@@ -215,13 +216,16 @@ export default function (view) {
 
     function renderWizardState(state) {
         const stepIndex = state.StepIndex ?? state.stepIndex ?? 0;
-        const stepCount = state.StepCount ?? state.stepCount ?? wizardColours.length;
-        const colourName = state.ColourName ?? state.colourName ?? wizardColours[stepIndex];
+        const stepCount = state.StepCount ?? state.stepCount ?? wizardStepCountFallback;
+        const colourName = state.ColourName ?? state.colourName ?? "";
+        const isConfirmation = state.IsConfirmationStep ?? state.isConfirmationStep ?? (stepIndex >= wizardTuningStepCount);
         const photoCount = state.PhotoCount ?? state.photoCount ?? 0;
         wizardStepIndex = stepIndex;
         wizardPhotoIndex = state.PhotoIndex ?? state.photoIndex ?? 0;
         wizardPhotoCount = photoCount;
-        byId("wizardStepLabel").textContent = `${stepIndex + 1} of ${stepCount} — ${colourName} tuning`;
+        byId("wizardStepLabel").textContent = isConfirmation
+            ? `Confirmation ${stepIndex - wizardTuningStepCount + 1} of ${stepCount - wizardTuningStepCount} — ${colourName}`
+            : `${stepIndex + 1} of ${wizardTuningStepCount} — ${colourName} tuning`;
         byId("wizardPrev").disabled = stepIndex === 0;
         byId("wizardNext").disabled = stepIndex === stepCount - 1;
         byId("wizardAnotherPhoto").disabled = photoCount <= 1;
@@ -229,10 +233,10 @@ export default function (view) {
     }
 
     // Moves the wizard on the server, which the already-open TV page picks up
-    // on its next poll and, for a photo step, uploads its own sampled edges
-    // from -- this call never needs to know a photo's actual colours itself.
+    // on its next poll and uploads its own sampled edges from the new step's
+    // photo -- this call never needs to know a photo's actual colours itself.
     function moveWizard(stepIndex, photoIndex) {
-        wizardStepIndex = Math.max(0, Math.min(wizardColours.length - 1, stepIndex));
+        wizardStepIndex = Math.max(0, Math.min(wizardStepCountFallback - 1, stepIndex));
         wizardPhotoIndex = Math.max(0, photoIndex);
         return window.ApiClient.ajax({
             type: "POST",
@@ -293,6 +297,11 @@ export default function (view) {
         const percent = Number(byId("samplingDepthPercent").value);
         byId("samplingDepthValue").textContent = percent === 10 ? "10% (recommended)" : `${percent}%`;
         updateLayoutDiagram();
+    }
+
+    function setMinimumColourHoldLabel() {
+        const value = Number(byId("minimumColourHoldMilliseconds").value);
+        byId("minimumColourHoldValue").textContent = value === 0 ? "0 ms (off)" : `${value} ms`;
     }
 
     function updateLayoutDiagram() {
@@ -606,6 +615,7 @@ export default function (view) {
                 setDelayLabel();
                 setAnalysisLabel();
                 setDepthLabel();
+                setMinimumColourHoldLabel();
                 setColourLabels();
                 updateCalibrationPatternUrl();
                 setLedTotal();
@@ -663,6 +673,7 @@ export default function (view) {
     byId("realtimeAmbilightConfigurationForm").addEventListener("submit", save);
     byId("outputDelayMilliseconds").addEventListener("input", setDelayLabel);
     byId("samplingDepthPercent").addEventListener("input", setDepthLabel);
+    byId("minimumColourHoldMilliseconds").addEventListener("input", setMinimumColourHoldLabel);
     colourTuningFields.forEach(field => byId(field).addEventListener("input", retune));
     byId("wallColourHex").addEventListener("input", retune);
     byId("analysisWidth").addEventListener("change", setAnalysisLabel);

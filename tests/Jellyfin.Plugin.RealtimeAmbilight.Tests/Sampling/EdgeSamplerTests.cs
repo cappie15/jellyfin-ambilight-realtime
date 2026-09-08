@@ -110,6 +110,39 @@ public class EdgeSamplerTests
         });
     }
 
+    [Fact]
+    public void SampleBgraWeightsThePicturesTrueEdgeMoreThanTheBandsInnerRow()
+    {
+        const int width = 20;
+        const int height = 20;
+        var frame = new byte[width * height * 4];
+        for (var pixel = 0; pixel < width * height; pixel++)
+        {
+            var offset = pixel * 4;
+            frame[offset] = 16;
+            frame[offset + 1] = 16;
+            frame[offset + 2] = 235; // red everywhere, BT.709 full scale
+        }
+
+        // At 10% depth on a 20 px frame the top band is two rows deep, starting
+        // at row 1 (row 0 is the 1 px ADR-010 guard, excluded from sampling).
+        // Row 1 is the picture's true edge; overwrite only that row to blue.
+        for (var x = 0; x < width; x++)
+        {
+            var offset = ((width + x) * 4);
+            frame[offset] = 235;
+            frame[offset + 1] = 16;
+            frame[offset + 2] = 16;
+        }
+
+        var samples = EdgeSampler.SampleBgra(frame, width, height, new CropInsets(), new LogicalSamplingLayout(2, 2, 2, 2));
+
+        // An unweighted average of one blue row and one red row would split the
+        // two evenly; weighting the true edge more heavily should make every
+        // top sample read closer to the edge's blue than to the interior's red.
+        Assert.All(samples.Top, sample => Assert.True(sample.Blue > sample.Red, $"blue={sample.Blue} red={sample.Red}"));
+    }
+
     private static bool Overlaps(SamplingZone first, SamplingZone second)
         => first.Left < second.Right && second.Left < first.Right && first.Top < second.Bottom && second.Top < first.Bottom;
 }

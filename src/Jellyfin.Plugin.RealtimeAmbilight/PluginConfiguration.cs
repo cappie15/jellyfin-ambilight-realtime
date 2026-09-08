@@ -187,4 +187,14 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// only ever displays.
     /// </summary>
     public bool AllowWledControl { get; set; }
+
+    /// <summary>
+    /// A physical LED is held at its last colour until a newly sampled colour
+    /// has persisted continuously for at least this long, so a single-frame
+    /// flash -- a cut, a lens flare, one strobe frame -- cannot snap the wall
+    /// to a colour that was never really "in the picture" long enough to read
+    /// as such. Zero (the default) disables it: every sampled frame is shown
+    /// exactly as sampled, matching every installation before this existed.
+    /// </summary>
+    public int MinimumColourHoldMilliseconds { get; set; }
 }

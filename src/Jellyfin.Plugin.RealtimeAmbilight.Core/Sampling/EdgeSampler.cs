@@ -5,11 +5,28 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Sampling;
 
 /// <summary>
 /// Implements the candidate ADR-010 geometry against packed BT.709 limited-range
-/// BGRA frames. Each zone uses an unweighted mean in linear light and adjacent
-/// edge runs deliberately overlap at corners.
+/// BGRA frames. Each zone is a linearly weighted mean in linear light --
+/// heaviest at the picture's true edge, lightest at the sampled band's inner
+/// boundary -- and adjacent edge runs deliberately overlap at corners.
 /// </summary>
 public static class EdgeSampler
 {
+    /// <summary>
+    /// The sampled band's innermost row/column counts this much against the
+    /// full weight of 1.0 at the picture's true edge. Never zero: a shallow
+    /// band (low sampling depth, or a small analysis frame) should still use
+    /// every pixel it has, just not equally.
+    /// </summary>
+    private const double EdgeWeightFloor = 0.3;
+
+    private enum EdgeSide
+    {
+        Top,
+        Right,
+        Bottom,
+        Left,
+    }
+
     /// <summary>Fraction of each axis sampled per side, as a percentage.</summary>
     public const int DefaultDepthPercent = 10;
 
@@ -34,10 +51,10 @@ public static class EdgeSampler
         ValidateFrame(bgraFrame, frameWidth, frameHeight);
         var zones = CreateZones(frameWidth, frameHeight, crop, layout, depthPercent);
         return new PerimeterSamples(
-            SampleRun(bgraFrame, frameWidth, zones.Top),
-            SampleRun(bgraFrame, frameWidth, zones.Right),
-            SampleRun(bgraFrame, frameWidth, zones.Bottom),
-            SampleRun(bgraFrame, frameWidth, zones.Left));
+            SampleRun(bgraFrame, frameWidth, zones.Top, EdgeSide.Top),
+            SampleRun(bgraFrame, frameWidth, zones.Right, EdgeSide.Right),
+            SampleRun(bgraFrame, frameWidth, zones.Bottom, EdgeSide.Bottom),
+            SampleRun(bgraFrame, frameWidth, zones.Left, EdgeSide.Left));
     }
 
     /// <summary>
@@ -59,10 +76,10 @@ public static class EdgeSampler
         ValidateFrame(rgbaFrame, frameWidth, frameHeight);
         var zones = CreateZones(frameWidth, frameHeight, crop, layout, depthPercent);
         return new PerimeterSamples(
-            SampleRunSrgb(rgbaFrame, frameWidth, zones.Top),
-            SampleRunSrgb(rgbaFrame, frameWidth, zones.Right),
-            SampleRunSrgb(rgbaFrame, frameWidth, zones.Bottom),
-            SampleRunSrgb(rgbaFrame, frameWidth, zones.Left));
+            SampleRunSrgb(rgbaFrame, frameWidth, zones.Top, EdgeSide.Top),
+            SampleRunSrgb(rgbaFrame, frameWidth, zones.Right, EdgeSide.Right),
+            SampleRunSrgb(rgbaFrame, frameWidth, zones.Bottom, EdgeSide.Bottom),
+            SampleRunSrgb(rgbaFrame, frameWidth, zones.Left, EdgeSide.Left));
     }
 
     public static EdgeSamplingZones CreateZones(
@@ -161,7 +178,7 @@ public static class EdgeSampler
         return (widenedStart, widenedStart + 3);
     }
 
-    private static LinearRgb[] SampleRun(ReadOnlySpan<byte> bgraFrame, int frameWidth, SamplingZone[] zones)
+    private static LinearRgb[] SampleRun(ReadOnlySpan<byte> bgraFrame, int frameWidth, SamplingZone[] zones, EdgeSide side)
     {
         var samples = new LinearRgb[zones.Length];
         for (var index = 0; index < zones.Length; index++)
@@ -170,25 +187,57 @@ public static class EdgeSampler
             double red = 0;
             double green = 0;
             double blue = 0;
+            double weightSum = 0;
             for (var y = zone.Top; y < zone.Bottom; y++)
             {
                 for (var x = zone.Left; x < zone.Right; x++)
                 {
+                    var weight = EdgeWeight(zone, x, y, side);
                     var offset = checked(((y * frameWidth) + x) * 4);
-                    blue += Bt709LimitedToLinear(bgraFrame[offset]);
-                    green += Bt709LimitedToLinear(bgraFrame[offset + 1]);
-                    red += Bt709LimitedToLinear(bgraFrame[offset + 2]);
+                    blue += Bt709LimitedToLinear(bgraFrame[offset]) * weight;
+                    green += Bt709LimitedToLinear(bgraFrame[offset + 1]) * weight;
+                    red += Bt709LimitedToLinear(bgraFrame[offset + 2]) * weight;
+                    weightSum += weight;
                 }
             }
 
-            var pixelCount = zone.Width * zone.Height;
             samples[index] = new LinearRgb(
-                (float)(red / pixelCount),
-                (float)(green / pixelCount),
-                (float)(blue / pixelCount));
+                (float)(red / weightSum),
+                (float)(green / weightSum),
+                (float)(blue / weightSum));
         }
 
         return samples;
+    }
+
+    /// <summary>
+    /// A linear ramp from <see cref="EdgeWeightFloor"/> at the sampled band's
+    /// inner boundary up to 1.0 at the picture's true outer edge -- the row or
+    /// column nearest the physical LEDs, which is what a wall actually
+    /// continues, counts most; the row or column deepest into the picture,
+    /// least. A single-row/column zone (a very shallow band) has nowhere to
+    /// ramp across and is weighted uniformly at 1.0.
+    /// </summary>
+    private static double EdgeWeight(SamplingZone zone, int x, int y, EdgeSide side)
+    {
+        (int Position, int Outer, int Inner) span = side switch
+        {
+            EdgeSide.Top => (y, zone.Top, zone.Bottom - 1),
+            EdgeSide.Bottom => (y, zone.Bottom - 1, zone.Top),
+            EdgeSide.Left => (x, zone.Left, zone.Right - 1),
+            EdgeSide.Right => (x, zone.Right - 1, zone.Left),
+            _ => throw new ArgumentOutOfRangeException(nameof(side)),
+        };
+
+        if (span.Inner == span.Outer)
+        {
+            return 1.0;
+        }
+
+        var fromOuter = Math.Abs(span.Position - span.Outer);
+        var depth = Math.Abs(span.Inner - span.Outer);
+        var towardInner = fromOuter / (double)depth;
+        return 1.0 - (towardInner * (1.0 - EdgeWeightFloor));
     }
 
     private static double Bt709LimitedToLinear(byte codeValue)
@@ -199,7 +248,7 @@ public static class EdgeSampler
             : Math.Pow((nonlinear + 0.099d) / 1.099d, 1d / 0.45d);
     }
 
-    private static LinearRgb[] SampleRunSrgb(ReadOnlySpan<byte> rgbaFrame, int frameWidth, SamplingZone[] zones)
+    private static LinearRgb[] SampleRunSrgb(ReadOnlySpan<byte> rgbaFrame, int frameWidth, SamplingZone[] zones, EdgeSide side)
     {
         var samples = new LinearRgb[zones.Length];
         for (var index = 0; index < zones.Length; index++)
@@ -208,22 +257,24 @@ public static class EdgeSampler
             double red = 0;
             double green = 0;
             double blue = 0;
+            double weightSum = 0;
             for (var y = zone.Top; y < zone.Bottom; y++)
             {
                 for (var x = zone.Left; x < zone.Right; x++)
                 {
+                    var weight = EdgeWeight(zone, x, y, side);
                     var offset = checked(((y * frameWidth) + x) * 4);
-                    red += SrgbToLinear(rgbaFrame[offset]);
-                    green += SrgbToLinear(rgbaFrame[offset + 1]);
-                    blue += SrgbToLinear(rgbaFrame[offset + 2]);
+                    red += SrgbToLinear(rgbaFrame[offset]) * weight;
+                    green += SrgbToLinear(rgbaFrame[offset + 1]) * weight;
+                    blue += SrgbToLinear(rgbaFrame[offset + 2]) * weight;
+                    weightSum += weight;
                 }
             }
 
-            var pixelCount = zone.Width * zone.Height;
             samples[index] = new LinearRgb(
-                (float)(red / pixelCount),
-                (float)(green / pixelCount),
-                (float)(blue / pixelCount));
+                (float)(red / weightSum),
+                (float)(green / weightSum),
+                (float)(blue / weightSum));
         }
 
         return samples;

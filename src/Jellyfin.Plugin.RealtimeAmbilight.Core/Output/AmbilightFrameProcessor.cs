@@ -17,7 +17,10 @@ public sealed class AmbilightFrameProcessor
     private readonly int _samplingDepthPercent;
     private readonly Func<Rgb24Encoding> _encodingResolver;
     private readonly Func<PerimeterColourAdjustment> _adjustmentResolver;
+    private readonly Func<int> _minimumColourHoldMillisecondsResolver;
     private readonly DitheredRgb24Encoder _encoder = new();
+    private readonly DwellFilter _dwellFilter = new();
+    private DateTimeOffset? _lastProcessedAt;
 
     public AmbilightFrameProcessor(
         LedLayout physicalLayout,
@@ -25,7 +28,8 @@ public sealed class AmbilightFrameProcessor
         Func<AnalysisFrame, CropInsets> cropResolver,
         int samplingDepthPercent = EdgeSampler.DefaultDepthPercent,
         Func<Rgb24Encoding>? encodingResolver = null,
-        Func<PerimeterColourAdjustment>? adjustmentResolver = null)
+        Func<PerimeterColourAdjustment>? adjustmentResolver = null,
+        Func<int>? minimumColourHoldMillisecondsResolver = null)
     {
         _physicalLayout = physicalLayout ?? throw new ArgumentNullException(nameof(physicalLayout));
         _logicalLayout = logicalLayout ?? throw new ArgumentNullException(nameof(logicalLayout));
@@ -33,6 +37,7 @@ public sealed class AmbilightFrameProcessor
         _samplingDepthPercent = Math.Clamp(samplingDepthPercent, EdgeSampler.MinimumDepthPercent, EdgeSampler.MaximumDepthPercent);
         _encodingResolver = encodingResolver ?? (static () => Rgb24Encoding.Bt709);
         _adjustmentResolver = adjustmentResolver ?? (static () => PerimeterColourAdjustment.None);
+        _minimumColourHoldMillisecondsResolver = minimumColourHoldMillisecondsResolver ?? (static () => 0);
     }
 
     public byte[] Process(AnalysisFrame frame)
@@ -52,6 +57,10 @@ public sealed class AmbilightFrameProcessor
             samples.Right,
             samples.Bottom,
             samples.Left);
+        var now = DateTimeOffset.UtcNow;
+        var elapsedMilliseconds = _lastProcessedAt is { } last ? (now - last).TotalMilliseconds : 0;
+        _lastProcessedAt = now;
+        _dwellFilter.Apply(physicalFrame, _minimumColourHoldMillisecondsResolver(), elapsedMilliseconds);
         var adjustment = _adjustmentResolver();
         if (!adjustment.IsIdentity)
         {

@@ -276,6 +276,11 @@
                         <div class="fieldDescription">Now: <strong id="samplingDepthValue"></strong>. Lower is more literal; higher is calmer. <strong>Default: 10%.</strong></div>
                     </div>
 
+                    <div class="inputContainer">
+                        <input is="emby-input" id="minimumColourHoldMilliseconds" type="range" min="0" max="1500" step="50" label="Minimum colour hold" />
+                        <div class="fieldDescription">Now: <strong id="minimumColourHoldValue"></strong>. A colour must stay in the picture for at least this long before the LEDs follow it, so a single flash cut or lens flare cannot snap the wall to a colour that was barely there. <strong>Default: 0 ms (off, every sampled frame shown as-is).</strong></div>
+                    </div>
+
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" id="autoDetectLedGamma" type="checkbox" />
                         <span>Match LED brightness to the picture, read from the controller</span>

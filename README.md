@@ -165,38 +165,53 @@ inverse reflectance correction, so it adds back a little of the primary the
 wall absorbs most. It cannot make a very dark wall reflect light it does not
 have.
 
-The precise pass is a seven-step wizard, in order: white, blue, red, green,
-yellow, purple, orange. Open the short link shown on the **Ambilight** tab
-**once**, full-screen, in the TV's own browser -- it is deliberately as short
-as an address can be, because a remote control types it one arrow key at a
-time, and it is always plain `http://`: typed bare, some TV browsers guess
-`https://` first, which fails with no certificate on a local address. Opening
-that link is the whole "start": the TV page polls the plugin every 1.5 s, so
-the moment it is open the settings page's own wizard state jumps back to step
-one automatically, and the TV shows a small "Continue on your phone" hint the
-whole time.
+The precise pass is a seventeen-step wizard: seven tuning steps in order --
+white, red, green, blue, yellow, cyan, magenta, covering every RGB primary
+and secondary -- followed by ten confirmation steps with varied, colour-rich
+real-world scenes, so the operator can see the whole result rather than
+trusting seven isolated steps to compose correctly. Open the short link shown
+on the **Ambilight** tab **once**, full-screen, in the TV's own browser -- it
+is deliberately as short as an address can be, because a remote control
+types it one arrow key at a time, and it is always plain `http://`: typed
+bare, some TV browsers guess `https://` first, which fails with no
+certificate on a local address. Opening that link is the whole "start": the
+TV page polls the plugin every 1.5 s, so the moment it is open the settings
+page's own wizard state jumps back to step one automatically, and the TV
+shows a small "Continue on your phone" hint the whole time.
 
-Six of the seven steps show a curated, full-resolution (4K where a good match
-existed) Wallhaven nature photograph, **full-screen** -- not a flat colour
-swatch. Its own edges are sampled by exactly the same code path real Jellyfin
-playback uses (the browser draws the photo to a canvas, downsizes it, and the
-plugin runs it through the ordinary edge-sampling and colour pipeline), so a
-single well-chosen photo can carry useful colour at more than one edge at
-once -- a forest-and-sky photo tunes green at the bottom and blue at the top
-together. One continuous LED strip usually runs the whole way round a TV, so
-the wizard tunes brightness, saturation and white balance for **all four
-sides at once**, not one side at a time; a separate, explicitly optional
+Every step, White included, shows one of the operator's own curated photos --
+cropped to 16:9 and resized to 1080p, embedded in the plugin itself so
+nothing is fetched from the internet and every photo loads instantly -- shown
+**full-screen**, never a flat colour swatch. Its own edges are sampled by
+exactly the same code path real Jellyfin playback uses (the browser draws the
+photo to a canvas, downsizes it, and the plugin runs it through the ordinary
+edge-sampling and colour pipeline), so a single well-chosen photo can carry
+useful colour at more than one edge at once -- a forest-and-sky photo tunes
+green at the bottom and blue at the top together. Sampling itself now weighs
+the picture's true outer edge more heavily than the inner edge of the
+sampled band, on a linear ramp, so the reading reflects what is actually at
+the border rather than being pulled toward the band's more central content.
+One continuous LED strip usually runs the whole way round a TV, so the
+wizard tunes brightness, saturation and white balance for **all four sides
+at once**, not one side at a time; a separate, explicitly optional
 "fine-tune each side" section still exists below it for the rare strip that
 genuinely needs it. Every slider updates the LEDs live as you drag it -- no
 Save, no round trip -- and each one has small **&minus;/+** buttons next to
 it so a step can be repeated by tapping the same spot on a phone while
-watching the TV instead of the phone. **Try another photo** cycles through
-two or three picks per colour if the first doesn't read clearly on your wall,
-and each is credited by name to its Wallhaven photographer with links to
-their profile and the source page. White alone stays a plain plane, which is
-what the eye needs to judge a clean white by -- a photograph never quite
-gives that under camera-specific white balance. The preview never writes WLED
-configuration, and real playback always takes priority over it.
+watching the TV instead of the phone. White alone offers three photos to
+flip between with **Try another photo**; every other step has exactly one.
+The preview never writes WLED configuration, and real playback always takes
+priority over it.
+
+Two related settings live in **Advanced**, deliberately outside the wizard,
+because they shape ordinary playback rather than the calibration photos
+themselves: **Sampling resolution** (unchanged, and not derived from the
+wizard's photos -- a lower analysis size stays the right choice for a
+resource-constrained host regardless of how the calibration looks) and the
+new **Minimum colour hold**, which holds a physical LED at its last colour
+until a newly sampled colour has persisted in the picture for at least that
+long. Off by default; raise it only if fast cuts or flashes make the strip
+feel twitchy, since it trades a little responsiveness for steadiness.
 
 Output is temporally dithered: WLED drives its LEDs straight from the byte
 value, and linear light gives the darkest tones the fewest of the 256

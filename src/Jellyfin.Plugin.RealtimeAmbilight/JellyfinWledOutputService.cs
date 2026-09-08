@@ -64,7 +64,6 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private readonly int _ledCount;
     private readonly DitheredRgb24Encoder _calibrationEncoder = new();
     private readonly object _calibrationPhotoLock = new();
-    private CalibrationPreview? _calibrationPreview;
     private bool _calibrationActive;
     private byte[]? _calibrationPhotoPixels;
     private int _calibrationPhotoWidth;
@@ -112,7 +111,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                 EdgeSampler.MinimumDepthPercent,
                 EdgeSampler.MaximumDepthPercent),
             () => _encoding,
-            static () => BuildColourTuning(Plugin.Instance?.Configuration).ToAdjustment());
+            static () => BuildColourTuning(Plugin.Instance?.Configuration).ToAdjustment(),
+            static () => Plugin.Instance?.Configuration.MinimumColourHoldMilliseconds ?? 0);
         _output = new WledRealtimeOutput(
             new WledEndpoint(configuration.WledHost, Math.Clamp(configuration.WledHttpPort, 1, ushort.MaxValue)),
             configuration.RealtimeProtocol,
@@ -127,38 +127,11 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     }
 
     /// <summary>
-    /// Temporarily takes the same realtime output path used by playback and
-    /// paints exactly one physical side. The browser pattern is intentionally
-    /// separate so an installer can open it on a TV browser while keeping the
-    /// Jellyfin dashboard and sliders on a phone or laptop.
-    /// </summary>
-    public async Task<bool> ShowCalibrationPreviewAsync(CalibrationPreview preview, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(preview);
-        if (_coordinator.ActiveSessionId is not null)
-        {
-            return false;
-        }
-
-        lock (_calibrationPhotoLock)
-        {
-            _calibrationPhotoPixels = null;
-            _calibrationAdjustment = preview.Adjustment;
-        }
-
-        Volatile.Write(ref _calibrationPreview, preview);
-        Volatile.Write(ref _calibrationActive, true);
-        await _output.SendFrameAsync(BuildCalibrationFrame(preview), cancellationToken).ConfigureAwait(false);
-        return true;
-    }
-
-    /// <summary>
     /// Uploads one calibration photo's already-downsized pixels -- full-range
     /// sRGB RGBA, exactly what a browser <c>canvas</c> hands back -- and drives
     /// the LEDs from its actual sampled edges through the same sampling,
-    /// interpolation and colour pipeline real playback uses. Unlike
-    /// <see cref="ShowCalibrationPreviewAsync"/> this is not one flat colour:
-    /// each side gets whatever the photo's own edge actually contains.
+    /// interpolation and colour pipeline real playback uses: each side gets
+    /// whatever the photo's own edge actually contains, not one flat colour.
     /// </summary>
     /// <remarks>
     /// Takes no tuning: the anonymous TV page uploads pixels only, and this
@@ -184,17 +157,16 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             adjustment = _calibrationAdjustment;
         }
 
-        Volatile.Write(ref _calibrationPreview, null);
         Volatile.Write(ref _calibrationActive, true);
         await SendCalibrationPhotoFrameAsync(rgbaPixels, width, height, adjustment, cancellationToken).ConfigureAwait(false);
         return true;
     }
 
     /// <summary>
-    /// Re-applies fresh tuning to whatever the calibration preview currently
-    /// shows -- the cached photo's sampled edges, or the flat synthetic colour
-    /// -- without re-fetching or re-sampling anything. A slider therefore feels
+    /// Re-applies fresh tuning to the cached photo's already-sampled edges
+    /// without re-fetching or re-sampling anything. A slider therefore feels
     /// live: only the cheap colour-adjustment step reruns, not image capture.
+    /// Returns <see langword="false"/> when no photo has been uploaded yet.
     /// </summary>
     public async Task<bool> RetuneCalibrationAsync(PerimeterColourAdjustment adjustment, CancellationToken cancellationToken)
     {
@@ -214,28 +186,18 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             photoHeight = _calibrationPhotoHeight;
         }
 
-        if (photoPixels is not null)
-        {
-            await SendCalibrationPhotoFrameAsync(photoPixels, photoWidth, photoHeight, adjustment, cancellationToken).ConfigureAwait(false);
-            return true;
-        }
-
-        var preview = Volatile.Read(ref _calibrationPreview);
-        if (preview is null)
+        if (photoPixels is null)
         {
             return false;
         }
 
-        var retuned = preview with { Adjustment = adjustment };
-        Volatile.Write(ref _calibrationPreview, retuned);
-        await _output.SendFrameAsync(BuildCalibrationFrame(retuned), cancellationToken).ConfigureAwait(false);
+        await SendCalibrationPhotoFrameAsync(photoPixels, photoWidth, photoHeight, adjustment, cancellationToken).ConfigureAwait(false);
         return true;
     }
 
     /// <summary>Returns control to WLED after an installer leaves calibration.</summary>
     public async Task StopCalibrationPreviewAsync(CancellationToken cancellationToken)
     {
-        Volatile.Write(ref _calibrationPreview, null);
         Volatile.Write(ref _calibrationActive, false);
         lock (_calibrationPhotoLock)
         {
@@ -338,8 +300,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                     // The initial frame is sent by ShowCalibrationPreviewAsync or
                     // ShowCalibrationPhotoAsync; one keepalive per second maintains
                     // WLED's temporary ownership without resending 30 identical
-                    // frames per second -- KeepAliveAsync repeats whatever was
-                    // last sent, synthetic colour or sampled photo alike.
+                    // frames per second -- KeepAliveAsync repeats whatever the
+                    // last sampled photo frame was.
                     if (DateTimeOffset.UtcNow - lastSend >= PauseKeepAliveInterval)
                     {
                         await _output.KeepAliveAsync(_shutdown.Token).ConfigureAwait(false);
@@ -353,7 +315,6 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                 {
                     // Never let a forgotten preview steal a real film. Playback
                     // wins and the next normal frame takes control immediately.
-                    Volatile.Write(ref _calibrationPreview, null);
                     Volatile.Write(ref _calibrationActive, false);
                     lock (_calibrationPhotoLock)
                     {
@@ -565,27 +526,6 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
 
         _output.Dispose();
         _shutdown.Dispose();
-    }
-
-    private byte[] BuildCalibrationFrame(CalibrationPreview preview)
-    {
-        var frame = new LinearRgb[_ledCount];
-        var (start, count) = preview.Side switch
-        {
-            CalibrationSide.Top => (0, _physicalLayout.TopLedCount),
-            CalibrationSide.Right => (_physicalLayout.TopLedCount, _physicalLayout.RightLedCount),
-            CalibrationSide.Bottom => (_physicalLayout.TopLedCount + _physicalLayout.RightLedCount, _physicalLayout.BottomLedCount),
-            CalibrationSide.Left => (_physicalLayout.TopLedCount + _physicalLayout.RightLedCount + _physicalLayout.BottomLedCount, _physicalLayout.LeftLedCount),
-            CalibrationSide.All => (0, _ledCount),
-            _ => throw new ArgumentOutOfRangeException(nameof(preview)),
-        };
-
-        for (var index = start; index < start + count; index++)
-        {
-            frame[index] = preview.Adjustment.Apply(preview.Colour, index, _physicalLayout);
-        }
-
-        return _calibrationEncoder.Encode(frame, _encoding);
     }
 
     private static PerimeterColourTuning BuildColourTuning(PluginConfiguration? configuration)

@@ -33,6 +33,101 @@ engineer can continue without relying on chat history.
 
 ## Build and test status
 
+**PASS (2026-09-08, operator-curated photo set, 17-step wizard, edge weighting, dwell filter).**
+
+```bash
+DOTNET_CLI_HOME=/tmp/jfar2-dotnet-cli NUGET_PACKAGES=/tmp/jfar2-nuget-packages \
+dotnet build src/Jellyfin.Plugin.RealtimeAmbilight/Jellyfin.Plugin.RealtimeAmbilight.csproj \
+    --configuration Release --no-incremental -p:UseSharedCompilation=false
+DOTNET_ROLL_FORWARD=Major dotnet test \
+tests/Jellyfin.Plugin.RealtimeAmbilight.Tests/Jellyfin.Plugin.RealtimeAmbilight.Tests.csproj \
+    --configuration Release -p:UseSharedCompilation=false
+```
+
+Zero warnings/errors; **86/86**. Deployed and live-verified via curl again
+(same no-admin-credential constraint as every round so far): `/amb` → 200,
+fresh `WizardState?tv=true` → `StepCount:17, PhotoCount:3` for White,
+`Calibration/Photo/White/0` → the real embedded JPEG in ~12 ms (was a
+network fetch to Wallhaven before), `Calibration/Photo/Bogus/0` → 404,
+`Calibration/Photo/Final%20test/0` (a confirmation-step name with a space) →
+200, a synthetic `PhotoFrame` upload → 204 and WLED's `/json/info` reported
+`live: true` immediately after, `maxpwr` unchanged at 40000 throughout, and
+`systemctl restart` released it back to `live: false` cleanly (same
+credential-free cleanup path as last round).
+
+The operator supplied 19 hand-picked, hand-labelled photos this round
+(`s0_whitelevel{1,2,3}`, `s1_{red,green,blue}`, `s2_{cyan,magenta,yellow}`,
+six more `s3_*` and four `s4_*`), which **replace the Wallhaven set
+entirely** -- no more external hosting, no attribution needed, no CORS
+proxy-fetch cost. Every image was downloaded, cropped to 16:9 and resized to
+1080p with `ffmpeg` (`scale=1920:1080:force_original_aspect_ratio=increase,
+crop=1920:1080`, the "cover" fit), landing at 51 KB-720 KB each (4.3 MB for
+all 19 -- was multi-MB *per photo* hotlinked from Wallhaven), and embedded
+directly in the plugin under `Configuration/CalibrationPhotos/*.jpg`
+(`<EmbeddedResource>` in the csproj, same mechanism as `config.html`/`.js`).
+`CalibrationController.GetPhoto` now reads
+`typeof(Plugin).Assembly.GetManifestResourceStream(...)` instead of
+proxying an HTTP fetch -- confirmed resource names with a throwaway
+`Assembly.GetManifestResourceNames()` console app before trusting the path
+string, given how much this session has been burned by unverified
+assumptions about wire formats.
+
+**The wizard restructured around the operator's own naming, based on their
+answers to five clarifying questions asked before any of this was built**
+(all four via `AskUserQuestion`, one folded into the write-up): 7 tuning
+steps (`CalibrationWizard.TuningOrder`: White, Red, Green, Blue, Yellow,
+Cyan, Magenta -- the correct RGB secondary set, not the previous session's
+ad hoc Yellow/Purple/Orange) from `s0`+`s1`+`s2`, followed by 10 confirmation
+steps (`ConfirmationOrder`, named after their `s3`/`s4` file suffixes:
+Blue-Green, Cyan-Magenta, Final test, Orange-Red, Purple, Purple-Teal,
+Blue-Red, Blue-Yellow, Pink-Grey, Yellow-Pink) with sliders left live and
+visible throughout, not a separate non-interactive mode -- the operator
+chose "manual next, sliders still visible" specifically. White is no longer
+special-cased: given the operator curated three dedicated white-level photos
+and chose to cycle through them the same way as any other step's "try
+another photo", White now goes through the identical real-photo-sampling
+path as every other step. This deleted the entire synthetic-colour
+machinery from the previous round as genuinely dead code rather than leaving
+it unused: `CalibrationPreview`/`CalibrationSide`/`CalibrationReferenceColour`
+records, `ShowCalibrationPreviewAsync`, `BuildCalibrationFrame`, and the
+`Credit*`/`HtmlColour`/`Side` fields on the wizard-state DTO (no external
+attribution needed for the operator's own photos; no synthetic edge colour
+left to report). `JellyfinWledOutputService` now tracks calibration liveness
+with one plain `_calibrationActive` flag instead of overloading a
+now-deleted record's non-nullness.
+
+**Two new Core mechanisms, both requested directly by the operator and kept
+out of the wizard on their explicit instruction, added to the Advanced tab
+instead:**
+
+- **Linearly weighted edge sampling** (`EdgeSampler`'s `EdgeWeight`, shared
+  by both `SampleRun`/`SampleRunSrgb`): a sampled band's row/column nearest
+  the picture's true edge counts up to 1.0, ramping linearly down to a
+  `EdgeWeightFloor` of 0.3 at the band's inner boundary, instead of the
+  previous flat unweighted mean. Physically motivated: a wall continues what
+  is *at* the edge, not an average of a band that reaches some way into the
+  picture. Always on, no new setting -- the operator suggested a plain
+  linear ramp over "an algorithm", and there was no compelling reason to
+  gate anything this cheap and this clearly correct behind a toggle.
+- **`DwellFilter`** (new, `Core/Output`): holds each physical LED at its last
+  committed colour until a newly sampled colour has persisted, independently
+  per LED, for at least `MinimumColourHoldMilliseconds` (new
+  `PluginConfiguration` field, Advanced tab, default 0/off). The operator
+  chose the "hard threshold" option over a soft crossfade or both combined.
+  Deliberately takes elapsed time as a parameter rather than reading the
+  clock itself, so it is a pure function of its inputs and needed no real
+  `Task.Delay` to unit test. Wired into `AmbilightFrameProcessor.Process`
+  between interpolation and colour adjustment -- i.e. it gates on the raw
+  sampled picture colour, before the operator's own brightness/saturation
+  preference is layered on. Calibration photos do not use it: a single
+  static image has nothing to debounce.
+
+Deferred, not forgotten: yellow still has no true 4K photo (documented in
+`CalibrationWizard.Photos`'s doc comment, unchanged from last round -- the
+operator's own `s2_yellow.jpg` is a sunflower macro, fine as delivered but
+not re-verified against a 4K bar since it was never fetched from an external
+source to check).
+
 **PASS (2026-09-08, operator feedback round on the wizard: whole-perimeter tuning, real photo edge-sampling, short URL).**
 
 ```bash
@@ -821,52 +916,44 @@ A warning appears above the brightness slider when the controller reports
 ## Next actions (ordered)
 
 1. **Actually click through the settings page and the wizard in a browser.**
-   This has been the top item for two rounds running and is still not done.
-   The two rounds so far each shipped at least one bug (`hostName`/`host`,
-   `tv=1` vs `tv=true`) that only surfaced once something was actually
-   exercised live -- the pattern is real, not bad luck. Specifically unverified:
-   the `+`/`-` step buttons next to `emby-input` ranges render sanely, the
-   TV's canvas-sampling actually fires and its photo shows genuinely
-   full-screen, the wall colour preset dropdown round-trips through
-   save/load, the black level floor slider's live retune, and (only if
-   there's a live reason to, since it writes to the real controller) the
-   "Turn it off in WLED" button.
+   This has been the top item for three rounds running and is still not done.
+   Every round so far shipped at least one bug (`hostName`/`host`, `tv=1` vs
+   `tv=true`) that only surfaced once something was actually exercised live --
+   the pattern is real, not bad luck. Specifically unverified: the `+`/`-`
+   step buttons next to `emby-input` ranges render sanely, the TV's
+   canvas-sampling actually fires on all 17 steps and each photo shows
+   genuinely full-screen, the wizard's confirmation-phase label text
+   ("Confirmation 3 of 10 — ...") reads sensibly, the new minimum-colour-hold
+   slider's live retune, the wall colour preset dropdown round-trips through
+   save/load, and (only if there's a live reason to, since it writes to the
+   real controller) the "Turn it off in WLED" button.
 2. **Finish the colour calibration for real, using the wizard.** Brightness,
    colour intensity and white balance are all still at 100% on the live
-   installation. Open `/amb` on the TV once, walk white through orange, and
-   save.
-3. Consider a second Wallhaven pass for **Yellow** specifically -- the
-   colour-swatch search never found a true yellow *scene* at 4K, only
-   near-black astrophotography with a small yellow accent (documented in
-   `CalibrationWizard.Photos`'s doc comment). The existing three yellow
-   photos are real sunflower fields and look right, just not 4K.
-4. Consider consolidating the **7 steps into fewer** by choosing photos whose
-   edges deliberately span two target colours at once (a sunset with orange
-   sky and purple horizon, say) -- the sampling pipeline already supports
-   this since 2026-09-08 (a photo's actual sampled edges drive the LEDs, not
-   a name), this session just did not have time to re-curate around it.
-5. A colourful **confirmation slideshow** after the seven tuning steps was
-   requested but deliberately deferred this session: cycle through several
-   more varied (tertiary-colour) photos, non-interactively, so the operator
-   can visually sanity-check the whole result rather than trusting seven
-   individual steps compose correctly.
-6. Decide whether a warm **tint** is wanted. A gain cannot add red to a pure
+   installation. Open `/amb` on the TV once, walk white through magenta, look
+   through the ten confirmation photos, and save.
+3. Consider consolidating the **7 tuning steps into fewer** by choosing (or
+   re-cropping) photos whose edges deliberately span two target colours at
+   once (a sunset with orange sky and purple horizon, say). The sampling
+   pipeline already supports this -- a photo's actual sampled edges drive the
+   LEDs, not its name -- and the ten confirmation photos already prove the
+   idea works; nobody has re-curated the *tuning* set around it yet.
+4. Decide whether a warm **tint** is wanted. A gain cannot add red to a pure
    blue sky; only a tint can, and it deviates from the picture. Not implemented
    pending that decision.
-7. Run a full TV checklist while tailing the log: start, pause, resume, seek and
+5. Run a full TV checklist while tailing the log: start, pause, resume, seek and
    stop, on SD, HD and HDR. Confirm all four pipeline markers appear, that the
    configured fade is visible on stop, that resuming does not show WLED's own
    effect in between, and `maxpwr=40000` each time.
-8. Verify the device binding filters: play on a device other than the bound TV
+6. Verify the device binding filters: play on a device other than the bound TV
    and confirm the LEDs stay dark, then play on the TV and confirm they do not.
    The `ignored playback on device` log line reports both sides of any mismatch.
-9. Find out why the decoder loses its lead under real playback when it holds it
+7. Find out why the decoder loses its lead under real playback when it holds it
    perfectly standalone. Instrument the gap between stamped frame position and
    clock over a whole film rather than reasoning from restarts.
-10. Calibrate `OutputDelayMilliseconds` from 0 ms upwards, only when the LEDs are
-    demonstrably ahead of the picture.
-11. Add source-profile detection and separately validate HDR10, HLG and Dolby
-    Vision before claiming HDR support. The HDR graph now runs, but only HDR10
-    has been seen working.
-12. Publish a release: tag it, attach the packaged zip and host the manifest so
+8. Calibrate `OutputDelayMilliseconds` from 0 ms upwards, only when the LEDs are
+   demonstrably ahead of the picture.
+9. Add source-profile detection and separately validate HDR10, HLG and Dolby
+   Vision before claiming HDR support. The HDR graph now runs, but only HDR10
+   has been seen working.
+10. Publish a release: tag it, attach the packaged zip and host the manifest so
     `sourceUrl` resolves. Build and manifest generation already exist.

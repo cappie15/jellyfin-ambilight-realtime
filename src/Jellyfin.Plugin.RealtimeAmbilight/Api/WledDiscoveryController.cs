@@ -97,16 +97,17 @@ public sealed class WledDiscoveryController : ControllerBase
 [Authorize(Policy = "RequiresElevation")]
 public sealed class CalibrationController : ControllerBase
 {
-    /// <summary>A calibration photo, once fetched, rarely changes; the fixed 19-photo set costs a bounded amount of memory to keep hot.</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (byte[] Bytes, string ContentType)> PhotoCache = new();
+    /// <summary>Resource name prefix built from the plugin's embedded calibration photos folder.</summary>
+    private const string PhotoResourcePrefix = "Jellyfin.Plugin.RealtimeAmbilight.Configuration.CalibrationPhotos.";
+
+    /// <summary>Read once per file name and kept hot: the fixed 19-photo set is a bounded, small amount of memory.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> PhotoCache = new();
 
     private readonly JellyfinWledOutputService _outputService;
-    private readonly IHttpClientFactory _httpClientFactory;
 
-    public CalibrationController(JellyfinWledOutputService outputService, IHttpClientFactory httpClientFactory)
+    public CalibrationController(JellyfinWledOutputService outputService)
     {
         _outputService = outputService ?? throw new ArgumentNullException(nameof(outputService));
-        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
     }
 
     /// <summary>
@@ -114,7 +115,7 @@ public sealed class CalibrationController : ControllerBase
     /// open for the whole wizard: it polls <see cref="GetWizardState"/> every
     /// 1.5 s and updates itself in place, so "Next" on the settings page never
     /// requires touching the TV again -- and opening the link at all is enough
-    /// to (re)start the wizard at White, see <see cref="GetWizardState"/>.
+    /// to (re)start the wizard at step one, see <see cref="GetWizardState"/>.
     /// Also reachable at the short <c>/amb</c> alias: this address is typed on
     /// a remote control one letter at a time, so its length matters.
     /// </summary>
@@ -130,24 +131,17 @@ public sealed class CalibrationController : ControllerBase
             <title>Ambilight calibration</title>
             <style>
               * { box-sizing:border-box } html,body { width:100%;height:100%;margin:0;background:#060914;overflow:hidden }
-              img, .whiteBlock { position:fixed;inset:0;width:100%;height:100%;object-fit:cover;display:block }
-              .whiteBlock { background:#f4f4f2 }
+              img { position:fixed;inset:0;width:100%;height:100%;object-fit:cover;display:block }
               .label { position:fixed;left:50%;top:5vh;transform:translateX(-50%);z-index:4;color:#fff;font:600 clamp(14px,2vw,27px) system-ui,sans-serif;text-align:center;letter-spacing:.04em;text-shadow:0 2px 10px #000 }
-              .credit { position:fixed;left:0;right:0;bottom:0;padding:1.4em 1.6em;z-index:2;background:linear-gradient(transparent,rgba(0,0,0,.72));color:#fff;font:500 clamp(11px,1.3vw,16px) system-ui,sans-serif;text-align:right }
-              .credit a { color:#fff }
               .hint { position:fixed;right:1.2em;bottom:1.2em;z-index:5;padding:.5em 1em;border-radius:1.4em;background:rgba(0,0,0,.55);color:#fff;font:600 clamp(11px,1.2vw,15px) system-ui,sans-serif;text-shadow:0 1px 4px #000 }
               [hidden] { display:none !important }
             </style></head><body>
-            <div class="whiteBlock" id="whiteBlock" hidden></div>
             <img id="photo" alt="" hidden />
-            <div class="credit" id="credit" hidden></div>
             <div class="label" id="label">Loading&hellip;</div>
             <div class="hint">Continue on your phone &rarr;</div>
             <canvas id="canvas" width="320" height="180" hidden></canvas>
             <script>
-              const whiteBlock = document.getElementById("whiteBlock");
               const photo = document.getElementById("photo");
-              const credit = document.getElementById("credit");
               const label = document.getElementById("label");
               const canvas = document.getElementById("canvas");
               let lastKey = "";
@@ -171,20 +165,16 @@ public sealed class CalibrationController : ControllerBase
                 }
               }
               function render(state) {
-                const colourName = pick(state, "ColourName");
                 const photoUrl = pick(state, "PhotoUrl");
-                const isWhite = !photoUrl;
-                whiteBlock.hidden = !isWhite;
-                photo.hidden = isWhite;
-                credit.hidden = isWhite;
-                if (!isWhite) {
-                  if (photo.src !== photoUrl) {
-                    photo.onload = uploadSample;
-                    photo.src = photoUrl;
-                  }
-                  credit.innerHTML = `Photo by <a href="${pick(state, "CreditProfileUrl")}" target="_blank" rel="noopener">${pick(state, "CreditName")}</a> on <a href="${pick(state, "CreditSourceUrl")}" target="_blank" rel="noopener">Wallhaven</a>`;
+                photo.hidden = !photoUrl;
+                if (photoUrl && photo.src !== photoUrl) {
+                  photo.onload = uploadSample;
+                  photo.src = photoUrl;
                 }
-                label.textContent = `${colourName} tuning · step ${pick(state, "StepIndex") + 1} of ${pick(state, "StepCount")}`;
+                const stepIndex = pick(state, "StepIndex");
+                const isConfirmation = pick(state, "IsConfirmationStep");
+                const phase = isConfirmation ? `Confirmation ${stepIndex - 6} of 10` : `Step ${stepIndex + 1} of 7`;
+                label.textContent = `${phase} — ${pick(state, "ColourName")}`;
               }
               async function tick() {
                 try {
@@ -207,69 +197,55 @@ public sealed class CalibrationController : ControllerBase
     }
 
     /// <summary>
-    /// Proxies one curated Wallhaven photo through the plugin's own origin.
-    /// Two independent reasons this has to be same-origin, not a raw link to
-    /// Wallhaven's CDN: the TV's canvas cannot read pixels from a cross-origin
-    /// image with no CORS header (Wallhaven sends none, confirmed this
-    /// session -- it would silently throw on every sample), and the operator
-    /// should not need internet access on the TV's own network path once the
-    /// photo is cached here.
+    /// Serves one of the operator's own calibration photos, embedded in the
+    /// plugin so there is no external fetch, no attribution and no load time
+    /// beyond what is already on disk. Same-origin also matters mechanically:
+    /// the TV's canvas can only read pixels from a same-origin image.
     /// </summary>
     [AllowAnonymous]
     [HttpGet("Photo/{colour}/{index:int}")]
-    public async Task<IActionResult> GetPhotoAsync(string colour, int index, CancellationToken cancellationToken)
+    public IActionResult GetPhoto(string colour, int index)
     {
-        var photo = CalibrationWizard.PhotoAt(colour, index);
-        if (photo is null)
+        var fileName = CalibrationWizard.PhotoAt(colour, index);
+        if (fileName is null)
         {
             return NotFound();
         }
 
-        var cacheKey = photo.ImageUrl;
-        if (PhotoCache.TryGetValue(cacheKey, out var cached))
+        if (PhotoCache.TryGetValue(fileName, out var cached))
         {
-            return File(cached.Bytes, cached.ContentType);
+            return File(cached, "image/jpeg");
         }
 
-        try
+        using var stream = typeof(Plugin).Assembly.GetManifestResourceStream(PhotoResourcePrefix + fileName);
+        if (stream is null)
         {
-            var client = _httpClientFactory.CreateClient();
-            using var response = await client.GetAsync(new Uri(photo.ImageUrl), cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                return StatusCode(StatusCodes.Status502BadGateway);
-            }
+            return NotFound();
+        }
 
-            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-            var contentType = response.Content.Headers.ContentType?.ToString() ?? "image/jpeg";
-            PhotoCache[cacheKey] = (bytes, contentType);
-            return File(bytes, contentType);
-        }
-        catch (HttpRequestException)
-        {
-            return StatusCode(StatusCodes.Status502BadGateway);
-        }
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        var bytes = buffer.ToArray();
+        PhotoCache[fileName] = bytes;
+        return File(bytes, "image/jpeg");
     }
 
     /// <summary>
     /// Read by the TV pattern page every 1.5 s, and by the settings page once
     /// on load. Only the TV's own poll (<paramref name="tv"/>) can restart the
     /// wizard: a poll gap over 20 s means the link was just opened fresh, so
-    /// stepping through <see cref="CalibrationWizardState.NoteTvPoll"/> resets
-    /// to White automatically -- opening the link is then the whole "start".
+    /// <see cref="CalibrationWizardState.NoteTvPoll"/> resets to step one --
+    /// opening the link is then the whole "start". The TV's own next photo
+    /// upload re-drives the LEDs; nothing needs starting from here.
     /// </summary>
     [AllowAnonymous]
     [HttpGet("WizardState")]
     [ProducesResponseType(typeof(CalibrationWizardStateResponse), StatusCodes.Status200OK)]
-    public async Task<ActionResult<CalibrationWizardStateResponse>> GetWizardState(
-        [FromQuery] bool tv,
-        CancellationToken cancellationToken)
+    public ActionResult<CalibrationWizardStateResponse> GetWizardState([FromQuery] bool tv)
     {
-        if (tv && _outputService.Wizard.NoteTvPoll() && _outputService.IsCalibrationPreviewActive)
+        if (tv)
         {
-            // The wizard just reset to White under an already-live preview
-            // (an earlier session's Stop was skipped): match the LEDs to it.
-            await StartWhiteAsync(cancellationToken).ConfigureAwait(false);
+            _outputService.Wizard.NoteTvPoll();
         }
 
         return Ok(BuildWizardStateResponse());
@@ -277,23 +253,14 @@ public sealed class CalibrationController : ControllerBase
 
     /// <summary>
     /// Moves the wizard, so the already-open TV page picks it up on its next
-    /// poll. Arriving at White auto-starts its flat preview; arriving at a
-    /// photo colour does not -- the TV's own upload after it loads that photo
-    /// is what starts those, independently and asynchronously.
+    /// poll, loads that step's photo, and uploads its sampled edges -- which is
+    /// what actually drives the LEDs; this endpoint only ever changes position.
     /// </summary>
     [HttpPost("WizardState")]
     [ProducesResponseType(typeof(CalibrationWizardStateResponse), StatusCodes.Status200OK)]
-    public async Task<ActionResult<CalibrationWizardStateResponse>> MoveWizardAsync(
-        [FromBody] CalibrationWizardMoveRequest request,
-        CancellationToken cancellationToken)
+    public ActionResult<CalibrationWizardStateResponse> MoveWizard([FromBody] CalibrationWizardMoveRequest request)
     {
-        _outputService.Wizard.MoveTo(request.StepIndex, request.PhotoIndex, CalibrationSide.All);
-
-        if (_outputService.Wizard.ColourName == "White")
-        {
-            await StartWhiteAsync(cancellationToken, request).ConfigureAwait(false);
-        }
-
+        _outputService.Wizard.MoveTo(request.StepIndex, request.PhotoIndex);
         return Ok(BuildWizardStateResponse());
     }
 
@@ -348,28 +315,10 @@ public sealed class CalibrationController : ControllerBase
         return Ok(new CalibrationPreviewResponse(retuned, retuned ? "Live." : "Nothing is being previewed yet."));
     }
 
-    private async Task StartWhiteAsync(CancellationToken cancellationToken, CalibrationWizardMoveRequest? request = null)
-    {
-        if (!CalibrationReferenceColour.TryParse("White", out _, out _, out var white))
-        {
-            return;
-        }
-
-        var adjustment = request?.ToTuning().ToAdjustment() ?? PerimeterColourAdjustment.None;
-        await _outputService
-            .ShowCalibrationPreviewAsync(new CalibrationPreview(CalibrationSide.All, white, adjustment), cancellationToken)
-            .ConfigureAwait(false);
-    }
-
     private CalibrationWizardStateResponse BuildWizardStateResponse()
     {
         var wizard = _outputService.Wizard;
         var colourName = wizard.ColourName;
-        if (!CalibrationReferenceColour.TryParse(colourName, out _, out var htmlColour, out _))
-        {
-            throw new InvalidOperationException($"The built-in \"{colourName}\" calibration colour is missing.");
-        }
-
         var photo = CalibrationWizard.PhotoAt(colourName, wizard.PhotoIndex);
         var photoCount = CalibrationWizard.Photos.TryGetValue(colourName, out var photos) ? photos.Count : 0;
         var proxiedPhotoUrl = photo is null ? null : $"/RealtimeAmbilight/Calibration/Photo/{colourName}/{wizard.PhotoIndex}";
@@ -377,15 +326,11 @@ public sealed class CalibrationController : ControllerBase
         return new CalibrationWizardStateResponse(
             wizard.StepIndex,
             CalibrationWizard.ColourOrder.Count,
+            CalibrationWizard.IsConfirmationStep(wizard.StepIndex),
             colourName,
-            htmlColour,
-            wizard.Side.ToString(),
             wizard.PhotoIndex,
             photoCount,
             proxiedPhotoUrl,
-            photo?.UploaderName,
-            photo?.UploaderProfileUrl,
-            photo?.SourcePageUrl,
             _outputService.IsCalibrationPreviewActive,
             _outputService.Wizard.TvConnected);
     }
@@ -433,14 +378,10 @@ public sealed record CalibrationPreviewResponse(bool Active, string Message);
 public sealed record CalibrationWizardStateResponse(
     int StepIndex,
     int StepCount,
+    bool IsConfirmationStep,
     string ColourName,
-    string HtmlColour,
-    string Side,
     int PhotoIndex,
     int PhotoCount,
     string? PhotoUrl,
-    string? CreditName,
-    string? CreditProfileUrl,
-    string? CreditSourceUrl,
     bool PreviewActive,
     bool TvConnected);
