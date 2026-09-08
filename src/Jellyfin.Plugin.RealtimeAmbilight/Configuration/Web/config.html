@@ -323,6 +323,11 @@
                         <div class="fieldDescription">Now: <strong id="minimumColourHoldValue"></strong>. A colour must stay in the picture for at least this long before the LEDs follow it, so a single flash cut or lens flare cannot snap the wall to a colour that was barely there. <strong>Default: 0 ms (off, every sampled frame shown as-is).</strong></div>
                     </div>
 
+                    <div class="inputContainer">
+                        <input is="emby-input" id="wledSmoothingMilliseconds" type="range" min="0" max="500" step="10" label="Smoothing" />
+                        <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED toward a newly sampled colour instead of jumping straight to it -- lower is more reactive/intense, higher lets colour flow smoothly into the next, most noticeable as fewer visible little steps at low brightness. A real cut or fast pan still catches up within a few times this value. <strong>Default: 0 ms (off, fully reactive).</strong></div>
+                    </div>
+
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" id="autoDetectLedGamma" type="checkbox" />
                         <span>Match LED brightness to the picture, read from the controller</span>

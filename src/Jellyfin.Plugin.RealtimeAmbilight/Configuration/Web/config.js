@@ -54,13 +54,13 @@ export default function (view) {
     const numericFields = [
         "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond", "stopFadeMilliseconds",
         "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisFramesPerSecond", "samplingDepthPercent",
-        "minimumColourHoldMilliseconds", ...colourTuningFields
+        "minimumColourHoldMilliseconds", "wledSmoothingMilliseconds", ...colourTuningFields
     ];
     const defaults = {
         WledHttpPort: 80, RealtimeProtocol: 0, OutputDelayMilliseconds: 0, OutputFramesPerSecond: 30,
         StopFadeMilliseconds: 250, TopLedCount: 265, RightLedCount: 150,
         BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160, AnalysisFramesPerSecond: 30,
-        SamplingDepthPercent: 10, MinimumColourHoldMilliseconds: 0, BrightnessPercent: 100, SaturationPercent: 100,
+        SamplingDepthPercent: 10, MinimumColourHoldMilliseconds: 0, WledSmoothingMilliseconds: 0, BrightnessPercent: 100, SaturationPercent: 100,
         RedGainPercent: 100, GreenGainPercent: 100, BlueGainPercent: 100,
         BlackLevelFloorPercent: 0,
         WallColourCorrectionPercent: 100,
@@ -570,6 +570,11 @@ export default function (view) {
         byId("minimumColourHoldValue").textContent = value === 0 ? "0 ms (off)" : `${value} ms`;
     }
 
+    function setWledSmoothingLabel() {
+        const value = Number(byId("wledSmoothingMilliseconds").value);
+        byId("wledSmoothingValue").textContent = value === 0 ? "0 ms (off, fully reactive)" : `${value} ms`;
+    }
+
     function updateLayoutDiagram() {
         const depth = Math.max(1, Math.min(30, Number(byId("samplingDepthPercent").value) || 10));
         byId("ledLayoutDiagram").style.setProperty("--sampling-inset", `${depth}%`);
@@ -897,6 +902,7 @@ export default function (view) {
                 setAnalysisLabel();
                 setDepthLabel();
                 setMinimumColourHoldLabel();
+                setWledSmoothingLabel();
                 setColourLabels();
                 updateCalibrationPatternUrl();
                 setLedTotal();
@@ -1203,6 +1209,7 @@ export default function (view) {
     byId("outputDelayMilliseconds").addEventListener("input", setDelayLabel);
     byId("samplingDepthPercent").addEventListener("input", setDepthLabel);
     byId("minimumColourHoldMilliseconds").addEventListener("input", setMinimumColourHoldLabel);
+    byId("wledSmoothingMilliseconds").addEventListener("input", setWledSmoothingLabel);
     colourTuningFields.forEach(field => byId(field).addEventListener("input", retune));
     byId("wallColourHex").addEventListener("input", retune);
     byId("analysisWidth").addEventListener("change", setAnalysisLabel);

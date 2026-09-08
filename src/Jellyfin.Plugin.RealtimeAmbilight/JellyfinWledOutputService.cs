@@ -116,7 +116,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             () => _encoding,
             static () => BuildColourTuning(Plugin.Instance?.Configuration).ToAdjustment(),
             static () => Plugin.Instance?.Configuration.MinimumColourHoldMilliseconds ?? 0,
-            configuration.SendWhiteChannel);
+            configuration.SendWhiteChannel,
+            static () => Plugin.Instance?.Configuration.WledSmoothingMilliseconds ?? 0);
         _output = new WledRealtimeOutput(
             new WledEndpoint(configuration.WledHost, Math.Clamp(configuration.WledHttpPort, 1, ushort.MaxValue)),
             configuration.RealtimeProtocol,

@@ -33,6 +33,55 @@ engineer can continue without relying on chat history.
 
 ## Build and test status
 
+**PASS (2026-09-08, White/RGBW fix + WLED temporal smoothing, branch `feat/colour-calibration-curve`, committed, not merged/pushed).**
+
+```bash
+DOTNET_CLI_HOME=/tmp/jfar2-dotnet-cli NUGET_PACKAGES=/tmp/jfar2-nuget-packages \
+dotnet build src/Jellyfin.Plugin.RealtimeAmbilight/Jellyfin.Plugin.RealtimeAmbilight.csproj \
+    --configuration Release --no-incremental -p:UseSharedCompilation=false
+DOTNET_ROLL_FORWARD=Major dotnet test \
+tests/Jellyfin.Plugin.RealtimeAmbilight.Tests/Jellyfin.Plugin.RealtimeAmbilight.Tests.csproj \
+    --configuration Release -p:UseSharedCompilation=false
+```
+
+Zero warnings/errors; **179/179** (19 new since the previous entry below).
+Two pieces of feedback from the operator's own next hands-on test round,
+both WLED-only:
+
+- **White calibration no longer piles the RGB residual on top of the white
+  LED.** `DitheredRgbw32Encoder.Encode` gained `whiteExtractionFactor`
+  (0-1, default 1 = unchanged). `PerimeterColourAdjustment.WhiteExtractionFactor`
+  computes it once per frame from how far the White step's own red/blue gain
+  currently sits from centre (not from any pixel's own saturation, so
+  ordinary saturated video content is never affected) -- 1 when centred,
+  tapering to 0 at either extreme, so a shifted white sends progressively
+  more of itself as a genuine RGB mix rather than being diluted by the
+  white die's own fixed colour temperature. Because reducing extraction
+  alone raises total combined output (full extraction always minimises it
+  for a given pixel -- exactly the reported "too bright overall"), every
+  channel is then rescaled by a single compensation factor pinning the
+  total back to what full extraction of that pixel would have produced.
+  Also: the White tuning step now samples a synthetic swatch like every
+  other primary/secondary, and its three original real photos moved to a
+  new "White level" finetuning step -- see `docs/architecture/adr/` for the
+  general swatch/finetuning design (recorded against the calibration-curve
+  entry below) and `DitheredRgbw32Encoder`'s own remarks for the exact
+  maths. **Not yet re-tested against the physical strip.**
+- **New WLED temporal smoothing**, `ADR-012`. Researched HyperHDR's
+  "Infinite Color Engine" from its own source rather than the name (it is a
+  target-easing interpolator over a configurable settling time, still
+  driving ordinary 8-bit strips) before building anything; confirmed DDP/
+  WLED's realtime path is 8-bit with no higher-precision variant, so "send
+  10/12-bit" was not implementable and is not what actually fixes visible
+  "steps between source and target colour". New `Core/Output/WledTemporalSmoother.cs`
+  (a simple exponential low-pass, explicit elapsed-time parameter, no wall
+  clock) runs as the last step before encoding. New
+  `PluginConfiguration.WledSmoothingMilliseconds` (default 0, off,
+  byte-identical to before for every existing install), a new "Smoothing"
+  slider on the Advanced tab. **Not yet re-tested against the physical
+  strip** -- the operator's own report of visible stepping is what prompted
+  this and still needs a real look during playback.
+
 **PARTIAL (2026-09-08, WLED colour-tuning wizard rebuilt around a hue-correction curve, branch `feat/colour-calibration-curve`, committed, not merged/pushed).**
 
 ```bash

@@ -236,6 +236,20 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public int MinimumColourHoldMilliseconds { get; set; }
 
     /// <summary>
+    /// Eases each LED toward a newly sampled colour over roughly this many
+    /// milliseconds instead of jumping straight to it, so a real cut or a
+    /// fast pan still reads as reactive while frame-to-frame sampling noise
+    /// -- most visible as small "steps" between source and target colour at
+    /// low brightness, where the eye is most sensitive to a brightness
+    /// change -- gets smoothed away before it ever reaches the temporal
+    /// ditherer. Zero (the default) disables it: every sampled frame is
+    /// shown exactly as sampled, matching every installation before this
+    /// existed. Researched against HyperHDR's own "Infinite Color Engine"
+    /// before building this -- see <see cref="Core.Output.WledTemporalSmoother"/>.
+    /// </summary>
+    public int WledSmoothingMilliseconds { get; set; }
+
+    /// <summary>
     /// Sends RGBW32 instead of RGB24, so a strip with its own white LEDs
     /// reproduces white and near-white tones on that channel instead of
     /// mixing them from red, green and blue. Off by default: not every strip

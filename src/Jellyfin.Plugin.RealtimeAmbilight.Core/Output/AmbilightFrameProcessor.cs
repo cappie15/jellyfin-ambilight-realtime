@@ -18,8 +18,10 @@ public sealed class AmbilightFrameProcessor
     private readonly Func<Rgb24Encoding> _encodingResolver;
     private readonly Func<PerimeterColourAdjustment> _adjustmentResolver;
     private readonly Func<int> _minimumColourHoldMillisecondsResolver;
+    private readonly Func<int> _smoothingMillisecondsResolver;
     private readonly IDitheredChannelEncoder _encoder;
     private readonly DwellFilter _dwellFilter = new();
+    private readonly WledTemporalSmoother _smoother = new();
     private DateTimeOffset? _lastProcessedAt;
 
     /// <param name="sendWhiteChannel">
@@ -36,7 +38,8 @@ public sealed class AmbilightFrameProcessor
         Func<Rgb24Encoding>? encodingResolver = null,
         Func<PerimeterColourAdjustment>? adjustmentResolver = null,
         Func<int>? minimumColourHoldMillisecondsResolver = null,
-        bool sendWhiteChannel = false)
+        bool sendWhiteChannel = false,
+        Func<int>? smoothingMillisecondsResolver = null)
     {
         _physicalLayout = physicalLayout ?? throw new ArgumentNullException(nameof(physicalLayout));
         _logicalLayout = logicalLayout ?? throw new ArgumentNullException(nameof(logicalLayout));
@@ -45,6 +48,7 @@ public sealed class AmbilightFrameProcessor
         _encodingResolver = encodingResolver ?? (static () => Rgb24Encoding.Bt709);
         _adjustmentResolver = adjustmentResolver ?? (static () => PerimeterColourAdjustment.None);
         _minimumColourHoldMillisecondsResolver = minimumColourHoldMillisecondsResolver ?? (static () => 0);
+        _smoothingMillisecondsResolver = smoothingMillisecondsResolver ?? (static () => 0);
         _encoder = sendWhiteChannel ? new DitheredRgbw32Encoder() : new DitheredRgb24Encoder();
     }
 
@@ -77,6 +81,8 @@ public sealed class AmbilightFrameProcessor
                 physicalFrame[index] = adjustment.Apply(physicalFrame[index], index, _physicalLayout);
             }
         }
+
+        _smoother.Apply(physicalFrame, _smoothingMillisecondsResolver(), elapsedMilliseconds);
 
         return _encoder.Encode(physicalFrame, _encodingResolver(), adjustment.WhiteExtractionFactor);
     }
