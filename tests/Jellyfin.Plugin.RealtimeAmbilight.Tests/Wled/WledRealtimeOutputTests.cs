@@ -70,6 +70,30 @@ public class WledRealtimeOutputTests
         Assert.Empty(sender.Datagrams);
     }
 
+    [Fact]
+    public async Task RgbwAlwaysUsesDdpEvenWhenHyperionRawRgbWasRequested()
+    {
+        var sender = new CapturingUdpSender();
+        var output = new WledRealtimeOutput(new WledEndpoint("wled.local"), WledRealtimeProtocol.HyperionRawRgb, sender, bytesPerLed: 4);
+        var frame = new byte[3 * 4];
+
+        await output.SendFrameAsync(frame, CancellationToken.None);
+
+        var sent = Assert.Single(sender.Datagrams);
+        Assert.Equal(WledRealtimeOutput.DdpPort, sent.Port);
+        Assert.Equal(WledRealtimeProtocol.Ddp, output.CurrentProtocol!.Protocol);
+        Assert.Equal(Jellyfin.Plugin.RealtimeAmbilight.Core.Protocol.DdpPacketizer.Rgbw32, sent.Payload[2]);
+    }
+
+    [Fact]
+    public async Task RgbwRejectsAFrameThatIsNotAWholeNumberOfQuadruplets()
+    {
+        var sender = new CapturingUdpSender();
+        var output = new WledRealtimeOutput(new WledEndpoint("wled.local"), WledRealtimeProtocol.Ddp, sender, bytesPerLed: 4);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => output.SendFrameAsync(new byte[6], CancellationToken.None));
+    }
+
     private static WledRealtimeOutput CreateOutput(
         WledRealtimeProtocol protocol,
         CapturingUdpSender sender)

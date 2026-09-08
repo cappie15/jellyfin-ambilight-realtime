@@ -1,5 +1,6 @@
 #pragma warning disable CA1848, CA1873
 using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
@@ -20,6 +21,15 @@ namespace Jellyfin.Plugin.RealtimeAmbilight;
 /// </remarks>
 public sealed class WledDiscoveryService
 {
+    /// <summary>
+    /// WLED's digital LED type id for SK6812 RGBW, the only chipset id this
+    /// plugin has actually confirmed carries a physical fourth (white) diode
+    /// (see ADR-004). <c>hw.led.ins[].type</c> is hardware fact reported by
+    /// the controller, unlike <c>info.leds.wv</c>/<c>lc</c>, which reflect
+    /// WLED's auto-white UI mode and are not reliable for detection.
+    /// </summary>
+    private const int RgbwLedType = 30;
+
     private static readonly IPEndPoint MdnsEndpoint = new(IPAddress.Parse("224.0.0.251"), 5353);
     private static readonly TimeSpan ListenWindow = TimeSpan.FromMilliseconds(1500);
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(2);
@@ -304,6 +314,14 @@ public sealed class WledDiscoveryService
                         ? parsedMaxPower
                         : 0;
 
+                var hasWhiteChannelHardware = root.TryGetProperty("hw", out var hw)
+                    && hw.TryGetProperty("led", out var hwLed)
+                    && hwLed.TryGetProperty("ins", out var ins)
+                    && ins.ValueKind == JsonValueKind.Array
+                    && ins.EnumerateArray().Any(strip => strip.TryGetProperty("type", out var type)
+                        && type.TryGetInt32(out var typeValue)
+                        && typeValue == RgbwLedType);
+
                 var appliesGamma = !realtimeExempt && colourGamma > 1d;
                 _logger.LogInformation(
                     "WLED {Host} reports colour gamma {Gamma} and realtime gamma {RealtimeGamma}; sending {Encoding} values.",
@@ -322,7 +340,8 @@ public sealed class WledDiscoveryService
                 return new WledRealtimeSettings(
                     appliesGamma ? Rgb24Encoding.Bt709 : Rgb24Encoding.Linear,
                     forcesMaxBrightness,
-                    maxPowerMilliamps);
+                    maxPowerMilliamps,
+                    hasWhiteChannelHardware);
             }
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException
@@ -397,7 +416,14 @@ public sealed class WledDiscoveryService
 }
 
 /// <summary>Controller settings that change how realtime output looks.</summary>
-public sealed record WledRealtimeSettings(Rgb24Encoding Encoding, bool ForcesMaxBrightness, int MaxPowerMilliamps);
+/// <param name="HasWhiteChannelHardware">
+/// Read from <c>hw.led.ins[].type</c> -- true only for a chipset id this
+/// plugin has confirmed carries a physical white diode (currently SK6812
+/// RGBW). A strip with a different RGBW chipset may still have one and just
+/// go undetected; the settings page's "send white channel" checkbox is
+/// always the operator's own manual override regardless of this value.
+/// </param>
+public sealed record WledRealtimeSettings(Rgb24Encoding Encoding, bool ForcesMaxBrightness, int MaxPowerMilliamps, bool HasWhiteChannelHardware);
 
 /// <summary>Reachability and temporary realtime ownership reported by WLED.</summary>
 public sealed record WledControllerStatus(bool IsOnline, bool IsRealtimeActive)

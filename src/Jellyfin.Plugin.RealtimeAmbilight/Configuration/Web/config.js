@@ -230,7 +230,7 @@ export default function (view) {
     // one of these ultimately just moves the same RedGainPercent /
     // GreenGainPercent / BlueGainPercent fields the advanced panel shows.
     const wizardStepControlSpecs = {
-        White: { kind: "balance", a: "redGainPercent", b: "blueGainPercent", label: "Colour temperature", lowLabel: "Warmer", highLabel: "Cooler" },
+        White: { kind: "balance", a: "redGainPercent", b: "blueGainPercent", label: "Colour temperature", lowLabel: "Cooler", highLabel: "Warmer" },
         Red: { kind: "single", field: "redGainPercent", label: "Red intensity" },
         Green: { kind: "single", field: "greenGainPercent", label: "Green intensity" },
         Blue: { kind: "single", field: "blueGainPercent", label: "Blue intensity" },
@@ -306,7 +306,11 @@ export default function (view) {
         renderStepControls(colourName);
         byId("wizardPrev").disabled = stepIndex === 0;
         byId("wizardNext").disabled = isLastStep;
-        byId("wizardAnotherPhoto").disabled = photoCount <= 1;
+        // Hidden, not merely disabled, when a step has only one photo: a
+        // "Try another photo" button that can never do anything is a dead
+        // affordance the operator otherwise keeps running into on almost
+        // every step (only White currently has more than one photo).
+        show("wizardAnotherPhoto", photoCount > 1);
         byId("finishCalibrationWizard").textContent = isLastStep ? "✓ Done — finish calibration" : "Stop & release LEDs";
         byId("calibrationPreviewStatus").textContent = describeStatus(state);
     }
@@ -611,9 +615,15 @@ export default function (view) {
                 abl.textContent = maxPower > 0
                     ? `Power limit (ABL) on WLED: ${maxPower} mA — read-only, this plugin never changes it.`
                     : "";
+                // Detection only ever suggests turning the checkbox on; it
+                // never flips it itself, so an operator's own choice (on or
+                // off) always wins on every later load.
+                const hasWhiteChannel = Boolean(settings && (settings.HasWhiteChannelHardware ?? settings.hasWhiteChannelHardware));
+                show("rgbwSuggestion", hasWhiteChannel && !byId("sendWhiteChannel").checked);
             })
             .catch(() => {
                 show("maxBrightnessWarning", false);
+                show("rgbwSuggestion", false);
                 abl.textContent = "";
             });
     }
@@ -693,6 +703,7 @@ export default function (view) {
                 byId("correctLedGamma").checked = config.CorrectLedGamma !== false;
                 byId("autoDetectLedGamma").checked = config.AutoDetectLedGamma !== false;
                 byId("allowWledControl").checked = config.AllowWledControl === true;
+                byId("sendWhiteChannel").checked = config.SendWhiteChannel === true;
                 byId("allowWledControlSummary").textContent = config.AllowWledControl === true
                     ? "This plugin may fix WLED settings for you."
                     : "This plugin only reads WLED until you turn this on.";
@@ -745,6 +756,7 @@ export default function (view) {
             CorrectLedGamma: byId("correctLedGamma").checked,
             AutoDetectLedGamma: byId("autoDetectLedGamma").checked,
             AllowWledControl: byId("allowWledControl").checked,
+            SendWhiteChannel: byId("sendWhiteChannel").checked,
             TargetDeviceId: byId("targetDeviceId").value,
             TargetDeviceName: targetDeviceName(),
             WledHost: hostName,

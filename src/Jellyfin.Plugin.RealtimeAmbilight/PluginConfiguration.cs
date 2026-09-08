@@ -197,4 +197,16 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// exactly as sampled, matching every installation before this existed.
     /// </summary>
     public int MinimumColourHoldMilliseconds { get; set; }
+
+    /// <summary>
+    /// Sends RGBW32 instead of RGB24, so a strip with its own white LEDs
+    /// reproduces white and near-white tones on that channel instead of
+    /// mixing them from red, green and blue. Off by default: not every strip
+    /// has a fourth, white LED, and turning this on for one that does not
+    /// would map its real fourth channel (if any) or simply be ignored,
+    /// wasting one extra DDP packet per frame for nothing. Restart after
+    /// changing it, like the other WLED connection settings -- this is a
+    /// hardware fact about the strip, not a live-tunable preference.
+    /// </summary>
+    public bool SendWhiteChannel { get; set; }
 }

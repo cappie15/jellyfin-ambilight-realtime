@@ -19,7 +19,7 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Output;
 /// output rate this plugin uses, to sit well above flicker fusion and read as
 /// nothing but a smooth fade.
 /// </remarks>
-public sealed class DitheredRgb24Encoder
+public sealed class DitheredRgb24Encoder : IDitheredChannelEncoder
 {
     private float[] _carriedError = [];
 

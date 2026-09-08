@@ -33,6 +33,177 @@ engineer can continue without relying on chat history.
 
 ## Build and test status
 
+**PASS (2026-09-08, RGBW32 hands-on-test fixes: colour-temperature direction, white flicker, dead "try another photo" button).**
+
+The operator turned `SendWhiteChannel` on and tested against the real strip
+same day. Three bugs reported, all fixed, redeployed (stop → copy → start),
+97/97 tests pass, clean startup log, `/amb` still correctly 404s unarmed:
+
+- **White step's colour-temperature slider was backwards** (cold read as
+  warmer and vice versa). `wizardStepControlSpecs.White` in `config.js` had
+  `lowLabel`/`highLabel` swapped relative to its own `a`/`b` gain convention
+  -- `a: redGainPercent, b: blueGainPercent` means a positive delta raises
+  red and lowers blue (warmer), but `highLabel` said "Cooler" for positive
+  delta. Confirmed against Magenta's spec, which uses the same convention
+  correctly (`highLabel: "More red"` for positive delta, a = redGainPercent).
+  Fixed by swapping White's two labels; no change to the underlying gain
+  logic, which was always correct.
+- **White LEDs visibly blinked; colours did not.** Root-caused as
+  achromatic (luminance) flicker being far more perceptible than chromatic
+  flicker: once a pixel's whole grey component sits on one physically
+  brighter channel instead of being spread across three independently (and
+  out-of-phase) dithered colour channels whose combined ripple partially
+  cancels, that channel's own error-diffusion alternation reads as a
+  distinct, regular blink. **First attempted fix (a short low-pass filter on
+  the pre-dither white value, with a monotonic-clock elapsed-time parameter)
+  was measured and found not to work** -- confirmed numerically (a Python
+  simulation of the exact algorithm, then reproduced as a failing xUnit
+  test) that smoothing a near-constant target does not reduce dithering's own
+  flip rate, because the flicker comes from error diffusion needing to
+  alternate to represent *any* held fractional target, not from noisy input;
+  smoothing occasionally made the pattern *more* regular. That attempt was
+  fully reverted (`IDitheredChannelEncoder.Encode` back to its original
+  2-argument signature). **Actual fix: white is no longer temporally
+  dithered at all** -- `DitheredRgbw32Encoder` plain-rounds the extracted
+  white component while the colour residual keeps dithering exactly as
+  before. Verified in `DitheredRgbw32EncoderTests`: a constant target now
+  produces zero flips (was previously guaranteed to alternate), and under
+  randomised realistic sampling noise the flip rate roughly halves versus
+  dithering white the same way as a colour channel. Trade-off, stated
+  plainly in the class's own remarks and accepted deliberately: a slow fade
+  through a white-heavy tone can now show the original 8-bit "stepping"
+  near black that dithering was built to fix, specifically on white. Not
+  yet re-confirmed against the physical strip that the blink is actually
+  gone -- next thing for the operator to check.
+- **"Try another photo" kept appearing on steps that only have one photo**
+  (11 of 12 steps -- only White has three). The button was already
+  functionally `disabled` in that case, not broken, but a disabled button
+  that is still visually present on almost every step reads as a dead
+  affordance. Changed to `show()` (hide entirely) instead of `disabled`
+  when `photoCount <= 1`. **Did not fabricate or source new photos** -- this
+  project's established convention is the operator's own curated,
+  hand-labelled photography only (no external hosting, no stock images,
+  and reusing a "confirmation" scene's mixed-hue photo as a substitute
+  "tuning" photo would muddy exactly the single-dominant-hue signal tuning
+  steps depend on). **If the operator wants real cycling on more steps,
+  that needs a few more photos from them per step**, uploaded the same way
+  as the original 19 (e.g. via imgbb links) -- flagged back to them rather
+  than invented.
+
+**PASS (2026-09-08, RGBW32 white-channel output, opt-in).**
+
+```bash
+DOTNET_CLI_HOME=/tmp/jfar2-dotnet-cli NUGET_PACKAGES=/tmp/jfar2-nuget-packages \
+dotnet build src/Jellyfin.Plugin.RealtimeAmbilight/Jellyfin.Plugin.RealtimeAmbilight.csproj \
+    --configuration Release --no-incremental -p:UseSharedCompilation=false
+DOTNET_ROLL_FORWARD=Major dotnet test \
+tests/Jellyfin.Plugin.RealtimeAmbilight.Tests/Jellyfin.Plugin.RealtimeAmbilight.Tests.csproj \
+    --configuration Release -p:UseSharedCompilation=false
+```
+
+Zero warnings/errors; **95/95** (10 new: `DitheredRgbw32EncoderTests`,
+`DdpPacketizerRgbwTests`, two new `WledRealtimeOutputTests`). Deployed
+(stop → copy both DLLs → start) and confirmed a clean startup log with no
+`[ERR]`/`[FTL]` lines and the usual `Realtime Ambilight output pump started.`
+Re-verified the anonymous surface still 404s while unarmed
+(`/amb`, `GetWizardState?tv=true`), i.e. the round-4 security fix survived
+this change. **Not verified this round, same standing gap: the settings
+page's new checkbox, and actually driving W on the physical strip** -- no
+admin credential in this environment to save `SendWhiteChannel: true`
+through the UI, so the feature has only been exercised via unit tests and a
+clean-startup check with the (default, off) flag unchanged.
+
+Built the feature the operator explicitly asked to unblock this round: an
+**opt-in RGBW32 output path**, default off, so a plain-RGB installation is
+byte-for-byte unaffected (`SendWhiteChannel` defaults to `false`, and the
+whole path was smoke-tested at that default). Design follows exactly what
+was investigated last round (see below and ADR-004), now actually built:
+
+- **`Core/Output/IDitheredChannelEncoder`** (new): the one-method interface
+  `DitheredRgb24Encoder` and the new `DitheredRgbw32Encoder` both implement,
+  so `AmbilightFrameProcessor` and `JellyfinWledOutputService`'s calibration
+  path can hold "whichever encoder this strip needs" without a type branch at
+  every call site.
+- **`Core/Output/DitheredRgbw32Encoder`** (new): mirrors
+  `DitheredRgb24Encoder` exactly (per-channel temporal error diffusion, same
+  transfer function via `Rgb24Encoder.ToTransferValue`) but for four channels.
+  Per LED: `w = min(r, g, b)`, then `r -= w`, `g -= w`, `b -= w`; each of the
+  four channels carries its own rounding error forward independently. This
+  runs **last**, after brightness/saturation/gain/black-floor/wall-colour and
+  the White step's colour-temperature push-pull have already been applied to
+  the ordinary `LinearRgb` values -- so a warmer/cooler bias before
+  extraction naturally comes out as "dimmer white channel + a tinted RGB
+  residual" with no special-casing needed anywhere in the wizard.
+- **`Core/Protocol/DdpPacketizer`**: `Packetize` gained an optional
+  `bytesPerLed` parameter (default 3, unchanged call sites); it validates
+  frame length against it and writes the DDP data-type byte as `Rgb24`
+  (`0x0B`, unchanged) or the new `Rgbw32` (`0x1B`) constant accordingly.
+  `ChannelsPerPacket` (1440) needed no change: it happens to divide evenly by
+  both 3 and 4 (480 and 360 LEDs per packet), so no LED's bytes ever split
+  across a packet boundary either way, though DDP would tolerate that anyway.
+- **`Core/Wled/WledRealtimeOutput`**: new constructor parameter `bytesPerLed`
+  (default 3). When it is 4, the send path **always** uses DDP and never
+  consults `WledProtocolSelector` or `HyperionRawRgbPacketizer` at all --
+  Hyperion Raw RGB has no RGBW variant, so RGBW silently overrides even an
+  explicit "Hyperion Raw RGB" protocol choice rather than erroring or
+  dropping the white channel. `CurrentProtocol` is still set (to a
+  `WledProtocolSelection(Ddp, "RGBW forces DDP...")`) so the settings page's
+  protocol readout stays accurate. Frame-length validation now checks
+  `% bytesPerLed` instead of a hardcoded `% 3`.
+- **`Core/Output/AmbilightFrameProcessor`**: new constructor parameter
+  `sendWhiteChannel` (default false) picks `DitheredRgbw32Encoder` or
+  `DitheredRgb24Encoder` once, at construction -- like the physical LED
+  layout, this is treated as a hardware fact fixed for the processor's
+  lifetime, not a live-tunable resolved per frame the way brightness/
+  saturation are.
+- **`JellyfinWledOutputService`**: reads `configuration.SendWhiteChannel` once
+  at startup, derives `_bytesPerLed` (3 or 4), and threads it through both the
+  real-playback `AmbilightFrameProcessor` and the calibration photo path's own
+  encoder field (now `IDitheredChannelEncoder`, was hardcoded
+  `DitheredRgb24Encoder`). Also fixed a latent bug this surfaced: the
+  blank-the-strip-at-playback-start call built `new byte[_ledCount * 3]`
+  unconditionally, which would have thrown inside `WledRealtimeOutput`'s
+  frame-length validation on every playback start once RGBW was enabled
+  (`_ledCount * 4` bytes needed, not `* 3`) -- would only ever have been
+  caught live, on a real playback start, exactly the kind of bug this project
+  has repeatedly only found by testing, not by review; fixed before it could
+  ship instead.
+- **`PluginConfiguration.SendWhiteChannel`** (new, default `false`): the
+  opt-in switch itself. Documented as a restart-required hardware fact, like
+  `WledHost`, not a live preference.
+- **`WledDiscoveryService`**: `ReadRealtimeSettingsAsync` (backs the existing
+  `GET RealtimeAmbilight/Discovery/Settings` endpoint the settings page
+  already calls on every load) now also reads `hw.led.ins[].type` from
+  `/json/cfg` and reports `HasWhiteChannelHardware` -- true only when a strip
+  reports chipset type `30` (SK6812 RGBW), the one type ADR-004 actually
+  confirmed carries a physical white diode for this installation. No new
+  endpoint was needed since the existing one already round-trips through the
+  settings page.
+- **Settings page (WLED tab)**: new "Does your strip have a white LED?"
+  section with a `sendWhiteChannel` checkbox (off by default, loads/saves
+  like `allowWledControl`) and a suggestion banner (`#rgbwSuggestion`) that
+  appears only when `HasWhiteChannelHardware` came back true **and** the
+  checkbox is currently unchecked -- detection only ever suggests, it never
+  flips the checkbox itself, so a saved operator choice (on or off) always
+  wins on the next load. This directly matches what the operator confirmed:
+  *auto-detect with a manual override that always wins*.
+- **Skipped, per explicit operator instruction this round:** the live
+  current-draw safety test that would otherwise have blocked this. The
+  operator stated they had already measured it previously with everything on
+  and are "comfortably within the 40 A of the supply" (`ruimschoots binnen
+  de 40 A van de voering`), which the RGBW path cannot exceed anyway since it
+  only *redistributes* each LED's already-computed light output across R/G/B
+  and W rather than adding to it (`w = min(r,g,b)` is subtracted from the
+  colour channels it is extracted from, never added on top) -- driving W
+  costs at most what driving R+G+B mixed white already cost, per WLED's own
+  ABL, which still enforces `maxpwr` regardless of channel count.
+- **Not changed, on purpose:** the White step's colour-temperature slider
+  stays exactly what it already was (an R/gain vs B/gain push-pull, still
+  purely relative/subjective, no Kelvin value) -- confirmed with the
+  operator this round that a relative slider is sufficient, so nothing in
+  the wizard's per-step control code needed to change for RGBW to work
+  correctly with it.
+
 **PASS (2026-09-08, second operator hands-on-test round: session-gated TV surface, per-step controls, mobile fix, muted wall colours).**
 
 ```bash
@@ -1020,7 +1191,7 @@ A warning appears above the brightness slider when the controller reports
 ## Next actions (ordered)
 
 1. **Actually click through the settings page and the wizard in a browser.**
-   This has been the top item for four rounds running and is still not done.
+   This has been the top item for five rounds running and is still not done.
    Every round so far shipped at least one bug (`hostName`/`host`, `tv=1` vs
    `tv=true`) that only surfaced once something was actually exercised live --
    the pattern is real, not bad luck. Specifically unverified this round: the
@@ -1028,16 +1199,27 @@ A warning appears above the brightness slider when the controller reports
    no admin credential in this environment to call it), whether the
    per-step "quick" controls (colour temperature / balance / single gain)
    actually feel right in the hand, whether `addStepButtons`'s flex-wrap fix
-   actually fixed the reported mobile layout bug on a real phone, and the
-   new muted wall colour presets against the operator's actual wall.
-2. Consider implementing **RGBW32 output with a real white channel** --
-   investigated this round (see the entry above and ADR-004), not built.
-   The operator wants it specifically to make the White step's new
-   colour-temperature control mean something beyond an R/B gain trick.
-   Requires a fresh current-draw measurement with W actually driven before
-   it ships, and verifying `rgbwm` has not drifted back to an auto mode on
-   every session start (it already has once, silently, via a firmware
-   update).
+   actually fixed the reported mobile layout bug on a real phone, the new
+   muted wall colour presets against the operator's actual wall, **and now
+   also the new "send a real white signal (RGBW)" checkbox and its
+   auto-detect suggestion banner**.
+2. **Re-verify the white-flicker fix and the colour-temperature direction
+   against the real strip.** `SendWhiteChannel` is already on and tested
+   once; that test is what surfaced the three bugs fixed in the entry above.
+   Specifically confirm: the White step's slider now reads warmer/cooler the
+   right way round, the white LEDs no longer visibly blink (colour residual
+   dithering is unchanged, so colours should still be fine), and whether the
+   accepted trade-off -- white no longer temporally dithered, so a slow fade
+   through a white-heavy tone could show 8-bit stepping near black again --
+   is actually noticeable in practice. Also re-check `rgbwm` is still `0`
+   (Manual) on WLED -- a firmware update has silently flipped it to
+   auto-white once before, and RGBW32 output depends on WLED not
+   deriving/subtracting white on its own.
+2b. If the operator wants "try another photo" to do something on more than
+   just the White step, that needs a few more real photos per step from
+   them (same process as the original 19 -- imgbb links or similar); nothing
+   was fabricated or substituted this round to avoid muddying the
+   single-dominant-hue signal the tuning steps depend on.
 3. **Finish the colour calibration for real, using the wizard.** Brightness,
    colour intensity and white balance are all still at 100% on the live
    installation. Click Start, walk white through magenta, look through the

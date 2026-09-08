@@ -69,6 +69,24 @@
                 </div>
 
                 <div class="verticalSection">
+                    <h3 class="sectionTitle">Does your strip have a white LED?</h3>
+                    <p class="fieldDescription">
+                        Some strips (RGBW) have a fourth, dedicated white LED alongside red, green and blue. Turning
+                        this on sends it a real white signal instead of mixing white from red, green and blue — worth
+                        it if white looks tinted or the strip draws more current than expected on white scenes. Leave
+                        it off if your strip is plain RGB; not every strip has this fourth channel.
+                    </p>
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="sendWhiteChannel" type="checkbox" />
+                        <span>Send a real white signal (RGBW)</span>
+                    </label>
+                    <div class="fieldDescription">Off by default. Restart Jellyfin after changing this.</div>
+                    <div id="rgbwSuggestion" class="fieldDescription" style="display:none;border-left:3px solid currentColor;padding-left:.8em;margin-top:1em">
+                        WLED reports a white LED on this strip. Turning the checkbox above on will use it for a truer white.
+                    </div>
+                </div>
+
+                <div class="verticalSection">
                     <h3 class="sectionTitle">Controlling WLED from here</h3>
                     <p class="fieldDescription">
                         Normally this plugin only reads WLED, so it never needs a separate login. With the box below

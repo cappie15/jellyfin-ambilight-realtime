@@ -18,10 +18,16 @@ public sealed class AmbilightFrameProcessor
     private readonly Func<Rgb24Encoding> _encodingResolver;
     private readonly Func<PerimeterColourAdjustment> _adjustmentResolver;
     private readonly Func<int> _minimumColourHoldMillisecondsResolver;
-    private readonly DitheredRgb24Encoder _encoder = new();
+    private readonly IDitheredChannelEncoder _encoder;
     private readonly DwellFilter _dwellFilter = new();
     private DateTimeOffset? _lastProcessedAt;
 
+    /// <param name="sendWhiteChannel">
+    /// Encodes RGBW32 (one extra byte per LED, the strip's own white die)
+    /// instead of RGB24. Fixed for the processor's lifetime, like the physical
+    /// layout: it depends on the hardware attached, not on anything a slider
+    /// changes live.
+    /// </param>
     public AmbilightFrameProcessor(
         LedLayout physicalLayout,
         LogicalSamplingLayout logicalLayout,
@@ -29,7 +35,8 @@ public sealed class AmbilightFrameProcessor
         int samplingDepthPercent = EdgeSampler.DefaultDepthPercent,
         Func<Rgb24Encoding>? encodingResolver = null,
         Func<PerimeterColourAdjustment>? adjustmentResolver = null,
-        Func<int>? minimumColourHoldMillisecondsResolver = null)
+        Func<int>? minimumColourHoldMillisecondsResolver = null,
+        bool sendWhiteChannel = false)
     {
         _physicalLayout = physicalLayout ?? throw new ArgumentNullException(nameof(physicalLayout));
         _logicalLayout = logicalLayout ?? throw new ArgumentNullException(nameof(logicalLayout));
@@ -38,6 +45,7 @@ public sealed class AmbilightFrameProcessor
         _encodingResolver = encodingResolver ?? (static () => Rgb24Encoding.Bt709);
         _adjustmentResolver = adjustmentResolver ?? (static () => PerimeterColourAdjustment.None);
         _minimumColourHoldMillisecondsResolver = minimumColourHoldMillisecondsResolver ?? (static () => 0);
+        _encoder = sendWhiteChannel ? new DitheredRgbw32Encoder() : new DitheredRgb24Encoder();
     }
 
     public byte[] Process(AnalysisFrame frame)

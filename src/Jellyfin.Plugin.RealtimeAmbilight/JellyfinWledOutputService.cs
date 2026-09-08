@@ -62,7 +62,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private Task? _pump;
     private Rgb24Encoding _encoding;
     private readonly int _ledCount;
-    private readonly DitheredRgb24Encoder _calibrationEncoder = new();
+    private readonly int _bytesPerLed;
+    private readonly IDitheredChannelEncoder _calibrationEncoder;
     private readonly object _calibrationPhotoLock = new();
     private bool _calibrationActive;
     private byte[]? _calibrationPhotoPixels;
@@ -95,6 +96,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             Math.Max(1, configuration.LeftLedCount));
         var logical = LogicalSamplingLayout.FromPhysicalLayout(_physicalLayout);
         _ledCount = _physicalLayout.TotalLedCount;
+        _bytesPerLed = configuration.SendWhiteChannel ? 4 : 3;
+        _calibrationEncoder = configuration.SendWhiteChannel ? new DitheredRgbw32Encoder() : new DitheredRgb24Encoder();
         _encoding = configuration.CorrectLedGamma ? Rgb24Encoding.Linear : Rgb24Encoding.Bt709;
         // The detector is stateful across frames, so it is created once with the
         // service rather than per frame. Disabled, sampling simply uses the whole
@@ -112,11 +115,13 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                 EdgeSampler.MaximumDepthPercent),
             () => _encoding,
             static () => BuildColourTuning(Plugin.Instance?.Configuration).ToAdjustment(),
-            static () => Plugin.Instance?.Configuration.MinimumColourHoldMilliseconds ?? 0);
+            static () => Plugin.Instance?.Configuration.MinimumColourHoldMilliseconds ?? 0,
+            configuration.SendWhiteChannel);
         _output = new WledRealtimeOutput(
             new WledEndpoint(configuration.WledHost, Math.Clamp(configuration.WledHttpPort, 1, ushort.MaxValue)),
             configuration.RealtimeProtocol,
-            new UdpDatagramSender());
+            new UdpDatagramSender(),
+            _bytesPerLed);
         _scheduler = new LatestFrameOutputScheduler(_coordinator.LatestFrames, processor, _output);
     }
 
@@ -349,7 +354,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                     // frame lands, which is seconds into the item.
                     try
                     {
-                        await _scheduler.SendFrameAsync(new byte[_ledCount * 3], _shutdown.Token).ConfigureAwait(false);
+                        await _scheduler.SendFrameAsync(new byte[_ledCount * _bytesPerLed], _shutdown.Token).ConfigureAwait(false);
                         lastFrameSent = DateTimeOffset.UtcNow;
                         lastSend = lastFrameSent;
                     }

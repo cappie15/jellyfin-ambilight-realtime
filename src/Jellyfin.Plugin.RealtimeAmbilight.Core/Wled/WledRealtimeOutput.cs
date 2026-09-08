@@ -17,24 +17,32 @@ public sealed class WledRealtimeOutput : ILedFrameOutput, IDisposable
     private readonly WledEndpoint _endpoint;
     private readonly WledRealtimeProtocol _requestedProtocol;
     private readonly IUdpDatagramSender _udpSender;
+    private readonly int _bytesPerLed;
     private byte[]? _lastFrame;
     private byte _nextDdpSequence = 1;
 
+    /// <param name="bytesPerLed">
+    /// 3 for RGB24 (the default) or 4 for RGBW32. RGBW32 always forces DDP,
+    /// overriding <paramref name="requestedProtocol"/> when it asks for
+    /// Hyperion Raw RGB or Auto: that transport has no RGBW variant.
+    /// </param>
     public WledRealtimeOutput(
         WledEndpoint endpoint,
         WledRealtimeProtocol requestedProtocol,
-        IUdpDatagramSender udpSender)
+        IUdpDatagramSender udpSender,
+        int bytesPerLed = 3)
     {
         _endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
         _requestedProtocol = requestedProtocol;
         _udpSender = udpSender ?? throw new ArgumentNullException(nameof(udpSender));
+        _bytesPerLed = bytesPerLed;
     }
 
     public WledProtocolSelection? CurrentProtocol { get; private set; }
 
     public async Task SendFrameAsync(ReadOnlyMemory<byte> rgb24Frame, CancellationToken cancellationToken)
     {
-        ValidateRgb24Frame(rgb24Frame.Span);
+        ValidateFrame(rgb24Frame.Span);
         await _sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -132,6 +140,23 @@ public sealed class WledRealtimeOutput : ILedFrameOutput, IDisposable
 
     private async Task SendFrameCoreAsync(ReadOnlyMemory<byte> rgb24Frame, CancellationToken cancellationToken)
     {
+        if (_bytesPerLed == 4)
+        {
+            // Hyperion Raw RGB carries only three channels per LED, so RGBW
+            // always goes over DDP regardless of the requested/Auto protocol.
+            CurrentProtocol = new WledProtocolSelection(
+                WledRealtimeProtocol.Ddp,
+                "RGBW forces DDP because Hyperion Raw RGB has no white channel.");
+            var rgbwPackets = DdpPacketizer.Packetize(rgb24Frame.Span, _nextDdpSequence, bytesPerLed: 4);
+            foreach (var packet in rgbwPackets)
+            {
+                await _udpSender.SendAsync(packet, _endpoint.Host, DdpPort, cancellationToken).ConfigureAwait(false);
+                _nextDdpSequence = DdpPacketizer.NextSequence(_nextDdpSequence);
+            }
+
+            return;
+        }
+
         var selection = WledProtocolSelector.Select(_requestedProtocol, rgb24Frame.Length / 3);
         CurrentProtocol = selection;
         if (selection.Protocol == WledRealtimeProtocol.HyperionRawRgb)
@@ -149,11 +174,13 @@ public sealed class WledRealtimeOutput : ILedFrameOutput, IDisposable
         }
     }
 
-    private static void ValidateRgb24Frame(ReadOnlySpan<byte> rgb24Frame)
+    private void ValidateFrame(ReadOnlySpan<byte> rgb24Frame)
     {
-        if (rgb24Frame.IsEmpty || rgb24Frame.Length % 3 != 0)
+        if (rgb24Frame.IsEmpty || rgb24Frame.Length % _bytesPerLed != 0)
         {
-            throw new ArgumentException("A WLED frame must contain at least one complete RGB triplet.", nameof(rgb24Frame));
+            throw new ArgumentException(
+                $"A WLED frame must contain at least one complete {(_bytesPerLed == 4 ? "RGBW quadruplet" : "RGB triplet")}.",
+                nameof(rgb24Frame));
         }
     }
 }
