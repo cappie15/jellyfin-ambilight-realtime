@@ -38,9 +38,10 @@ public sealed class PlaybackEventCoordinator : IAsyncDisposable
         _worker = worker ?? throw new ArgumentNullException(nameof(worker));
         _options = options ?? new PlaybackCoordinatorOptions();
         _options.Validate();
-        _clock = new PlaybackClock(monotonicTime ?? throw new ArgumentNullException(nameof(monotonicTime)));
+        ArgumentNullException.ThrowIfNull(monotonicTime);
+        _clock = new PlaybackClock(monotonicTime);
         _timeProvider = timeProvider ?? TimeProvider.System;
-        LatestFrames = new FanOutFrameBuffer<AnalysisFrame>();
+        LatestFrames = new FanOutFrameBuffer<AnalysisFrame>(monotonicTime);
         _eventLoop = Task.Run(EventLoopAsync);
     }
 

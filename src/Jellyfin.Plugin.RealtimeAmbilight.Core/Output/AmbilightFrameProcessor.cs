@@ -1,6 +1,7 @@
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Color;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Decoding;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Layout;
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Playback;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Sampling;
 
 namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Output;
@@ -22,7 +23,15 @@ public sealed class AmbilightFrameProcessor
     private readonly IDitheredChannelEncoder _encoder;
     private readonly DwellFilter _dwellFilter = new();
     private readonly WledTemporalSmoother _smoother = new();
+    private readonly FrameRateMeter _processRate = new(new StopwatchMonotonicTime());
     private DateTimeOffset? _lastProcessedAt;
+
+    /// <summary>
+    /// How many frames per second are actually being sampled and colour-processed
+    /// here, over the most recently completed one-second window -- dashboard-facing.
+    /// See <see cref="FrameRateMeter"/> for cost and staleness caveats.
+    /// </summary>
+    public double ProcessRateHz => _processRate.RateHz;
 
     /// <param name="sendWhiteChannel">
     /// Encodes RGBW32 (one extra byte per LED, the strip's own white die)
@@ -55,6 +64,7 @@ public sealed class AmbilightFrameProcessor
     public byte[] Process(AnalysisFrame frame)
     {
         ArgumentNullException.ThrowIfNull(frame);
+        _processRate.Increment();
         var samples = EdgeSampler.SampleBgra(
             frame.BgraPixels,
             frame.Width,

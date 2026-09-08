@@ -1,4 +1,5 @@
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Output;
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Playback;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Protocol;
 
 namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Wled;
@@ -18,8 +19,18 @@ public sealed class WledRealtimeOutput : ILedFrameOutput, IDisposable
     private readonly WledRealtimeProtocol _requestedProtocol;
     private readonly IUdpDatagramSender _udpSender;
     private readonly int _bytesPerLed;
+    private readonly FrameRateMeter _sendRate = new(new StopwatchMonotonicTime());
     private byte[]? _lastFrame;
     private byte _nextDdpSequence = 1;
+
+    /// <summary>
+    /// How many frames per second are actually reaching WLED over UDP, over
+    /// the most recently completed one-second window -- counts every real
+    /// send (ordinary playback frames, keepalives and fade-to-black steps
+    /// alike, since all of them are genuine data on the wire), dashboard-facing.
+    /// See <see cref="FrameRateMeter"/> for cost and staleness caveats.
+    /// </summary>
+    public double SendRateHz => _sendRate.RateHz;
 
     /// <param name="bytesPerLed">
     /// 3 for RGB24 (the default) or 4 for RGBW32. RGBW32 always forces DDP,
@@ -140,6 +151,7 @@ public sealed class WledRealtimeOutput : ILedFrameOutput, IDisposable
 
     private async Task SendFrameCoreAsync(ReadOnlyMemory<byte> rgb24Frame, CancellationToken cancellationToken)
     {
+        _sendRate.Increment();
         if (_bytesPerLed == 4)
         {
             // Hyperion Raw RGB carries only three channels per LED, so RGBW

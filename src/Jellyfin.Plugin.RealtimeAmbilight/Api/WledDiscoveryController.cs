@@ -17,11 +17,26 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Api;
 public sealed class WledDiscoveryController : ControllerBase
 {
     private readonly WledDiscoveryService _discoveryService;
+    private readonly JellyfinWledOutputService _outputService;
 
-    public WledDiscoveryController(WledDiscoveryService discoveryService)
+    public WledDiscoveryController(WledDiscoveryService discoveryService, JellyfinWledOutputService outputService)
     {
         _discoveryService = discoveryService ?? throw new ArgumentNullException(nameof(discoveryService));
+        _outputService = outputService ?? throw new ArgumentNullException(nameof(outputService));
     }
+
+    /// <summary>
+    /// Live pipeline throughput (analysis decode / sampling / WLED send),
+    /// each null while no session is active. Reads three already-maintained
+    /// counters -- see <see cref="JellyfinWledOutputService.GetPerformance"/>
+    /// -- so this endpoint itself does no measuring work of its own; safe to
+    /// poll from the settings page at the same cadence as the existing live
+    /// status check.
+    /// </summary>
+    [HttpGet("Performance")]
+    [ProducesResponseType(typeof(PipelinePerformanceSnapshot), StatusCodes.Status200OK)]
+    public ActionResult<PipelinePerformanceSnapshot> GetPerformance()
+        => Ok(_outputService.GetPerformance());
 
     /// <summary>
     /// Reports controller settings that visibly change how the Ambilight looks,

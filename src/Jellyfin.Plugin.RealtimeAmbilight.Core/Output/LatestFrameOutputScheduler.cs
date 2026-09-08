@@ -23,6 +23,9 @@ public sealed class LatestFrameOutputScheduler
         _output = output ?? throw new ArgumentNullException(nameof(output));
     }
 
+    /// <summary>Passthrough to the wrapped <see cref="AmbilightFrameProcessor"/>'s own rate, dashboard-facing.</summary>
+    public double ProcessRateHz => _processor.ProcessRateHz;
+
     /// <returns>True only when a newly decoded frame was sent.</returns>
     public async Task<bool> SendLatestAsync(CancellationToken cancellationToken)
     {

@@ -21,6 +21,22 @@ public sealed class FanOutFrameBuffer<TFrame>
 {
     private readonly object _sync = new();
     private readonly List<LatestFrameBuffer<TFrame>> _subscribers = [];
+    private readonly FrameRateMeter _publishRate;
+
+    public FanOutFrameBuffer(IMonotonicTime? clock = null)
+    {
+        _publishRate = new FrameRateMeter(clock ?? new StopwatchMonotonicTime());
+    }
+
+    /// <summary>
+    /// How many frames per second are actually being published here, over
+    /// the most recently completed one-second window -- the analysis
+    /// decoder's real throughput, dashboard-facing. See
+    /// <see cref="FrameRateMeter"/> for the cost (one interlocked increment
+    /// per publish) and staleness caveat (does not decay to zero on its
+    /// own once publishing stops).
+    /// </summary>
+    public double PublishRateHz => _publishRate.RateHz;
 
     /// <summary>Registers a new independent one-slot consumer.</summary>
     public LatestFrameBuffer<TFrame> Subscribe()
@@ -47,6 +63,7 @@ public sealed class FanOutFrameBuffer<TFrame>
     public void Publish(TFrame frame)
     {
         ArgumentNullException.ThrowIfNull(frame);
+        _publishRate.Increment();
         LatestFrameBuffer<TFrame>[] targets;
         lock (_sync)
         {

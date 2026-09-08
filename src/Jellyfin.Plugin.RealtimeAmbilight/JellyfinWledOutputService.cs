@@ -10,6 +10,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.RealtimeAmbilight;
 
+/// <summary>Dashboard-facing throughput at each pipeline stage, Hz. Null means no session is active.</summary>
+public sealed record PipelinePerformanceSnapshot(double? AnalyseFps, double? SampleFps, double? WledRenderFps);
+
 /// <summary>Runs the latest-only frame pump for the reference 831-led WLED.</summary>
 public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
 {
@@ -79,6 +82,29 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     public CalibrationWizardState Wizard { get; } = new();
 
     public bool IsCalibrationPreviewActive => Volatile.Read(ref _calibrationActive);
+
+    /// <summary>
+    /// The three throughput numbers a real bottleneck actually shows up in,
+    /// each measured at its own choke point in the pipeline rather than
+    /// inferred: how many frames per second the analysis decoder is
+    /// actually producing, how many the sampling/colour stage actually
+    /// processes, and how many actually reach WLED. Comparing them locates
+    /// a stall -- analysis far below the configured decode rate points at
+    /// the decoder (see ADR-013); sampling matching analysis but WLED
+    /// render far below both points at the output side instead. Each
+    /// number is <see langword="null"/> whenever no session is active,
+    /// rather than a stale reading from whatever last played -- the meters
+    /// themselves do not know playback has stopped, only that nothing has
+    /// incremented them since.
+    /// </summary>
+    public PipelinePerformanceSnapshot GetPerformance()
+    {
+        var active = _coordinator.ActiveSessionId is not null;
+        return new PipelinePerformanceSnapshot(
+            active ? _coordinator.LatestFrames.PublishRateHz : null,
+            active ? _scheduler.ProcessRateHz : null,
+            active ? _output.SendRateHz : null);
+    }
 
     public JellyfinWledOutputService(
         PlaybackEventCoordinator coordinator,
