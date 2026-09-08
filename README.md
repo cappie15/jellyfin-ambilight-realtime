@@ -148,11 +148,11 @@ handling take effect during operation.
 
 ### Room calibration
 
-The settings page is organised into four tabs -- **TV**, **WLED**, **Ambilight**
-and **Advanced** -- so the sliders that matter for calibration are not mixed in
-with connection and performance settings. The **Ambilight** tab has a short
-flow for the things that differ between installations: overall level, the wall
-behind the television, and each side on its own.
+The settings page is organised into five tabs -- **TV**, **WLED**, **Ambilight**,
+**Advanced** and **Hue** -- so the sliders that matter for calibration are not
+mixed in with connection and performance settings. The **Ambilight** tab has a
+short flow for the things that differ between installations: overall level, the
+wall behind the television, and each side on its own.
 
 Global brightness, colour intensity and a **black level floor** live at the
 top: a picture edge darker than the floor drives that LED fully off instead of
@@ -250,6 +250,18 @@ instead of requiring a separate login to WLED's own interface. This is the
 only WLED setting the plugin can write, and the request never names the ABL
 power budget (`maxpwr`) or anything else -- that value is only ever displayed,
 never changed by this plugin.
+
+### Philips Hue Entertainment (optional)
+
+The **Hue** tab adds Hue lights as a second, fully independent realtime output
+alongside WLED, following the same picture on the same bound TV. Off by
+default, and harmless when off -- nothing about WLED changes. Version 1
+supports one paired bridge and one existing entertainment area (created and
+edited only in the Hue app, never by this plugin); the square Bridge and
+Bridge Pro are supported, the original round Bridge v1 is not, since it has
+no Entertainment API at all. See
+[`docs/architecture/adr/ADR-011-hue-entertainment-integration.md`](docs/architecture/adr/ADR-011-hue-entertainment-integration.md)
+for the full design, transport choice, and known limitations.
 
 ### Transports
 

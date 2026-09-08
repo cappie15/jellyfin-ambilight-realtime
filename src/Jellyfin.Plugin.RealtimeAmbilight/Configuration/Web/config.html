@@ -16,6 +16,7 @@
             <button type="button" class="raTab" data-tab="wled" role="tab">WLED</button>
             <button type="button" class="raTab" data-tab="ambilight" role="tab">Ambilight</button>
             <button type="button" class="raTab" data-tab="advanced" role="tab">Advanced</button>
+            <button type="button" class="raTab" data-tab="hue" role="tab">Hue</button>
         </div>
 
         <form id="realtimeAmbilightConfigurationForm">
@@ -334,6 +335,79 @@
                         <span>Ignore black borders</span>
                     </label>
                     <div class="fieldDescription">Prevents wide-screen black bars from turning the LEDs off. <strong>Default: on.</strong></div>
+                </div>
+            </div>
+
+            <div class="raTabPanel" data-tab-panel="hue" hidden>
+                <div class="verticalSection">
+                    <h3 class="sectionTitle">Philips Hue Entertainment (optional)</h3>
+                    <p class="fieldDescription">
+                        Adds Hue lights as a second, independent Ambilight output alongside WLED, following the same
+                        picture on the same bound TV. Off by default; nothing here changes WLED. Version 1: one bridge,
+                        one entertainment area, automatic room-shaped mapping from the area you already set up in the
+                        Hue app -- this plugin never creates or edits lights, rooms, or entertainment areas itself.
+                    </p>
+                    <div id="hueStatusLine" class="fieldDescription" aria-live="polite" style="margin:.5em 0"></div>
+                </div>
+
+                <div class="verticalSection" id="huePairingSection">
+                    <h3 class="sectionTitle">1. Connect a bridge</h3>
+                    <button is="emby-button" type="button" id="hueScanBridges" class="raised">Scan the network for a Hue bridge</button>
+                    <div id="hueBridgeCandidatesContainer" class="selectContainer" style="display:none;margin-top:.8em">
+                        <select is="emby-select" id="hueBridgeCandidates" label="Discovered bridge"></select>
+                    </div>
+                    <div id="hueManualBridgeContainer" style="display:none;margin-top:.8em">
+                        <div class="inputContainer">
+                            <input is="emby-input" id="hueManualBridgeHost" type="text" label="Bridge address" />
+                            <div class="fieldDescription">Use only if scanning finds nothing. Example: <code>10.0.0.4</code>.</div>
+                        </div>
+                    </div>
+                    <div id="hueFinderStatus" class="fieldDescription" aria-live="polite" style="margin-top:.5em"></div>
+
+                    <div style="margin-top:1em">
+                        <button is="emby-button" type="button" id="hueStartPairing" class="raised">Pair with this bridge</button>
+                        <div id="huePairingStatus" class="fieldDescription" aria-live="polite" style="margin-top:.5em"></div>
+                    </div>
+                </div>
+
+                <div class="verticalSection" id="hueSelectionSection" style="display:none">
+                    <h3 class="sectionTitle">2. Choose an entertainment area</h3>
+                    <p class="fieldDescription">Only areas that already exist in the Hue app are listed; none are created here.</p>
+                    <div class="selectContainer">
+                        <select is="emby-select" id="hueEntertainmentConfig" label="Entertainment area"></select>
+                    </div>
+                    <button is="emby-button" type="button" id="hueRefreshConfigs" class="raised" style="margin-top:.5em">Refresh list</button>
+
+                    <br /><br />
+                    <div class="inputContainer">
+                        <input is="emby-input" id="hueBrightnessPercent" type="range" min="1" max="100" step="1" label="Overall Hue brightness" />
+                        <div class="fieldDescription">Now: <strong id="hueBrightnessValue"></strong>. A 1% minimum stays on underneath this while synchronised, even at a dark scene. <strong>Default: 100%.</strong></div>
+                    </div>
+
+                    <div class="selectContainer">
+                        <select is="emby-select" id="hueEndBehaviour" label="When playback stops">
+                            <option value="0">Warm white, dim (15%, recommended)</option>
+                            <option value="1">Restore each light's previous state</option>
+                        </select>
+                        <div class="fieldDescription">Applied only to the lights in the selected entertainment area.</div>
+                    </div>
+
+                    <br />
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="hueEnabled" type="checkbox" />
+                        <span>Enable Hue Entertainment</span>
+                    </label>
+                    <div class="fieldDescription">Starts automatically when the bound TV plays, same as WLED. <strong>Default: off.</strong></div>
+
+                    <div style="margin-top:1em">
+                        <button is="emby-button" type="button" id="hueSaveSelection" class="raised">Save Hue settings</button>
+                        <span id="hueSaveStatus" class="fieldDescription" aria-live="polite"></span>
+                    </div>
+
+                    <div style="margin-top:1.5em">
+                        <button is="emby-button" type="button" id="hueUnlink" class="raised">Unlink this bridge</button>
+                        <div class="fieldDescription">Forgets the stored credentials here. Does not change anything on the bridge itself.</div>
+                    </div>
                 </div>
             </div>
 

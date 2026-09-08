@@ -33,6 +33,236 @@ engineer can continue without relying on chat history.
 
 ## Build and test status
 
+**PASS (2026-09-08, Philips Hue Entertainment integration, branch `feat/hue-entertainment`, not merged/committed yet).**
+
+```bash
+DOTNET_CLI_HOME=/tmp/jfar2-dotnet-cli NUGET_PACKAGES=/tmp/jfar2-nuget-packages \
+dotnet build src/Jellyfin.Plugin.RealtimeAmbilight/Jellyfin.Plugin.RealtimeAmbilight.csproj \
+    --configuration Release --no-incremental -p:UseSharedCompilation=false
+DOTNET_ROLL_FORWARD=Major dotnet test \
+tests/Jellyfin.Plugin.RealtimeAmbilight.Tests/Jellyfin.Plugin.RealtimeAmbilight.Tests.csproj \
+    --configuration Release -p:UseSharedCompilation=false
+bash build/package.sh   # now `dotnet publish`s and stages 4 new dependency DLLs, see below
+```
+
+Zero warnings/errors; **148/148** (51 new: `HueStreamPacketizerTests`,
+`HueEntertainmentConfigurationParserTests`, `HueChannelMapperTests`,
+`HueNaturalLightFilterTests`, `HueEntertainmentStateMachineTests`,
+`HueFrameProcessorTests`, `SceneAverageSamplerTests`). Packaged
+(`build/package.sh`, now `dotnet publish`-based, see below) into a 7-file,
+~8 MB zip and unzip-verified. **Not deployed this round** -- the operator's
+own instruction for this task was explicit: no light shows, don't restart
+the live Jellyfin server, live testing happens later together. Read-only,
+non-destructive checks were run directly against the operator's real bridge
+at `10.0.0.4` on the LAN: `GET https://10.0.0.4/api/config` (curl, not yet
+through this plugin's own compiled code, which cannot run outside a Jellyfin
+host) returned a real Hue Bridge Pro -- `bridgeid: C42996FFFEC6512D`,
+**`modelid: BSB003`** (not `BSB002` as this ADR's design notes originally
+assumed from memory; corrected in code and ADR-011 to a deny-list check that
+only excludes the known-unsupported round `BSB001`, which was already the
+right design and is now confirmed correct against real hardware),
+`apiversion: 1.78.0`, `swversion: 2071476020` -- and a raw mDNS PTR query
+for `_hue._tcp.local` (Python, standalone, not this plugin's own mDNS code
+either) got exactly one 225-byte answer from `10.0.0.4`, confirming the
+service name this integration's discovery code queries for is correct on
+this network.
+
+Built the feature the operator specified in a long, detailed, numbered spec
+(13 sections, given in full in-conversation): Hue Entertainment as a second,
+fully independent realtime output alongside WLED, off by default, following
+the same picture on the same bound TV, sharing one FFmpeg analysis decode.
+**Full design rationale, verified library limitations, and every place a
+fact could not be checked against the primary (login-gated) Hue reference
+this session is `docs/architecture/adr/ADR-011-hue-entertainment-integration.md`
+-- read that first, it is extensive and this entry only summarises it.**
+
+- **`Core/Playback/FanOutFrameBuffer`** (new): `PlaybackEventCoordinator.LatestFrames`
+  is now this instead of a plain `LatestFrameBuffer<AnalysisFrame>`, since
+  `LatestFrameBuffer.TryTake` atomically empties the buffer for whichever
+  caller reads it first -- exactly wrong once WLED and Hue both need every
+  latest frame independently. `Subscribe()` hands back a private
+  `LatestFrameBuffer<AnalysisFrame>`; `Publish`/`Clear` fan out to every
+  subscriber. `JellyfinWledOutputService` now calls
+  `_coordinator.LatestFrames.Subscribe()` instead of holding the coordinator's
+  buffer directly -- the only change to any WLED-path file this round, a pure
+  type substitution, covered by the existing (unmodified, still-passing)
+  `PlaybackEventCoordinatorTests`/`FrameSchedulingTests`.
+- **`Core/Hue/`** (new, Core layer, no Jellyfin dependency): `HueStreamPacketizer`
+  (HueStream v2.0 datagram builder, byte layout independently confirmed from
+  `HueApi.Entertainment`'s own source since the primary reference is
+  login-gated), `Model/HueEntertainmentConfiguration(Parser)` (CLIP v2
+  `entertainment_configuration` parsing, tolerant of unknown fields,
+  non-sequential channel ids, multiple channels sharing one Gradient light's
+  service id), `Mapping/HueChannelMapper` (pure front/side/back spatial
+  mapping from a channel's own reported position, blended smoothly across
+  depth -- axis convention explicitly documented as unverified, see below
+  and ADR-011 Decision 3), `HueNaturalLightFilter` (independent colour/
+  brightness smoothing + a hard brightness rate clamp for peak suppression +
+  the 1% floor, all driven by an explicit elapsed-time parameter like
+  `DwellFilter`, never the wall clock), `HueEntertainmentStateMachine` (the
+  8-state lifecycle machine, pure and synchronous), `HueLightSnapshot`
+  (end-of-session state model), `HueFrameProcessor` (orchestrates the above
+  per frame; its own `EdgeSampler`/`SceneAverageSampler`/`BlackBorderDetector`
+  calls, entirely independent of and upstream from every WLED-specific
+  colour step).
+- **`Core/Sampling/SceneAverageSampler`** (new): averages the whole active
+  picture (inside the crop, excluding black bars), not just the edge band --
+  needed for the "behind the viewer" mapping anchor, since an edge-only
+  average would misjudge a scene with a bright centre and dark border.
+- **`Jellyfin.Plugin.RealtimeAmbilight.Core.csproj`** now references
+  `HueApi.Entertainment` 3.3.0 (MIT, multi-targets net8.0/9.0/10.0, verified
+  by fetching its `.csproj` directly rather than trusting the NuGet
+  registration API's summary). Pulls in `HueApi`, `HueApi.ColorConverters`,
+  and `Portable.BouncyCastle` (MIT) transitively -- no GPL conflict, but a
+  real ~8 MB total package size, up from two small assemblies before.
+- **`src/Jellyfin.Plugin.RealtimeAmbilight/Hue/`** (new): `HueCredentialStore`
+  (server-side only, ASP.NET Data Protection-encrypted, never a
+  `PluginConfiguration` field -- see ADR-011 Decision 4 for exactly why that
+  distinction is structural, not cosmetic), `HueBridgeClient` (discovery
+  probe, pairing, entertainment-configuration listing, all through this
+  plugin's own certificate-thumbprint-pinned `HttpClient` -- **not** the
+  Hue library's own default, which was found to use
+  `HttpClientHandler.DangerousAcceptAnyServerCertificateValidator` for one
+  specific internal call; see ADR-011 Decision 1 for the exact scope of that
+  gap), `HueLightControl` (plain CLIP v2 light PUTs for snapshot/restore/
+  warm-white-dim), `HueBridgeDiscoveryService` (mDNS, reusing the existing
+  `MdnsMessage` machinery already proven for WLED discovery), `HueDtlsChannel`
+  (thin `StreamingHueClient` subclass adding a bounded, abandonable connect
+  and raw-packet send), `HueEntertainmentService` (the `IHostedService`
+  driving everything: its own pump loop, its own state machine instance, its
+  own `FanOutFrameBuffer` subscription -- structurally unable to block or
+  disturb WLED even on total Hue failure).
+- **`Api/HueController`** (new, admin-only, `RequiresElevation`): bridge
+  discovery/manual-probe, press-link pairing (polled every 2 s for up to
+  30 s from the settings page), entertainment-configuration listing,
+  selection + brightness + end-behaviour save, status, unlink. **Caught in
+  review and fixed before this commit:** `PairAsync` originally returned the
+  internal, credential-carrying `HuePairingResult` straight to the browser
+  -- exactly the exposure `HueCredentialStore` exists to prevent, just via
+  the HTTP response instead of a `PluginConfiguration` field. Now returns a
+  separate `HuePairingResponse(Success, FailureReason)` DTO with no route to
+  the raw keys. See ADR-011 Decision 4's added note.
+- **`PluginConfiguration`**: `HueEnabled` (default false), `HueBridgeHost`,
+  `HueBridgeId`, `HueEntertainmentConfigurationId`/`Name`,
+  `HueBrightnessPercent` (default 100), `HueEndBehaviour` (default
+  warm-white-dim). Deliberately **no credential fields** here -- see above.
+- **Settings page**: a fifth tab ("Hue"), following the operator's own
+  numbered pairing flow. Deliberately simpler than the WLED wizard --
+  version 1, no live preview during setup. Reuses the shared TV binding
+  already set on the WLED tab; adds no second device binding, per the
+  operator's explicit instruction.
+- **`build/package.sh`**: switched from `dotnet build` + hardcoded 2-file copy
+  to `dotnet publish` + copy-everything, because `dotnet build`'s own output
+  directory does not copy a class library's transitive package references --
+  **verified by inspecting `bin/` directly**, not assumed -- so the old
+  script would have shipped a plugin package that installs and loads, then
+  fails the first time Hue is actually used with a
+  MissingMethodException/FileNotFoundException indistinguishable at a glance
+  from the stale-Core-DLL defect this project has already been burned by
+  once (see "Live deployment and safety invariant" below). Verified end to
+  end this round: ran the script, unzipped the result, confirmed all 7 files
+  (2 plugin DLLs + `HueApi.dll`/`HueApi.Entertainment.dll`/
+  `HueApi.ColorConverters.dll`/`BouncyCastle.Crypto.dll` + `meta.json`) are
+  present.
+
+**Explicitly separating what is actually known, per how thoroughly this
+session's spec asked for that distinction:**
+
+- **Automatically proven (unit tests, 51 new, 148/148 total):** HueStream
+  packet byte layout, entertainment-configuration JSON parsing against a
+  realistic fixture, the spatial mapping's smoothness/symmetry/extremes, the
+  natural-light filter's floor/peak-suppression/rate-limiting/elapsed-time-
+  not-call-count behaviour, every state machine transition (valid and
+  rejected), the whole per-frame processing pipeline end to end against a
+  synthetic frame and a fake monotonic clock.
+- **Visually/behaviourally confirmed this round:** the real bridge answers
+  `/api/config` with the exact JSON shape this plugin's parser expects
+  (confirmed via curl, cross-checked against the parser's field names by
+  reading the code, not by running the actual compiled discovery path,
+  which needs a live Jellyfin host); the real bridge answers an mDNS PTR
+  query for `_hue._tcp.local` (confirmed via a standalone Python probe, not
+  this plugin's own compiled mDNS code); the whole plugin (Core + main +
+  tests) builds and packages cleanly with the new dependency.
+- **Completely unverified until the live hardware test below:** pairing
+  (the physical link-button flow was never exercised -- this session was
+  explicitly told not to simulate it), the DTLS handshake and streaming
+  itself, whether the axis-convention assumption in `HueChannelMapper`
+  (ADR-011 Decision 3) is actually correct, mapping accuracy against the
+  operator's real light placement, whether the 1% floor and natural-light
+  smoothing actually look right on real lights, both end-of-session
+  behaviours, takeover from another streaming app, and recovery after a
+  real bridge/network outage.
+
+## Hardware test checklist (Hue Entertainment)
+
+Run once paired credentials exist and this branch has actually been
+deployed to the live host (neither has happened yet this round). Work
+through in order; each step assumes the previous ones passed.
+
+1. **Offline pairing.** Disconnect this host from the internet (or block
+   outbound WAN at the router) and confirm discovery, press-link pairing,
+   and entertainment-configuration listing all still work -- everything
+   here is meant to be purely local-network. If anything fails offline,
+   find and remove whatever silently assumed internet access.
+2. **Automatic mapping sanity check.** Before trusting any subtlety: play
+   a solid-colour test scene (or use the existing WLED calibration photos)
+   and confirm each Hue light's colour direction makes intuitive sense for
+   where it is physically placed -- a light beside the screen should track
+   that side of the picture; a light behind the couch should track the
+   overall scene, not one screen edge.
+3. **Axis convention.** Specifically confirm ADR-011 Decision 3's
+   assumption: a light placed unambiguously beside the screen should report
+   (once paired and its `entertainment_configuration` is fetched) an `X`
+   near ±1 and a `Y` near 0. If the axes turn out to mean something
+   different than documented, `HueChannelMapper`'s fraction formulas need
+   updating, not just its doc comment.
+4. **Multiple channels on one Gradient light.** If the operator's
+   entertainment area includes a Gradient light, confirm its separate
+   channels genuinely show different colours simultaneously when the
+   picture calls for it (a sunset with one end of the light orange and the
+   other purple, say) -- this is the one thing the Hue documentation's
+   "MultiChannelEffect not supported" phrasing could plausibly have meant,
+   and ADR-011 Decision 1 argues from source that it does not, but this is
+   the only way to actually confirm that argument.
+5. **Dark-scene floor.** Play a genuinely black scene for a sustained
+   period and confirm the lights settle to a dim, steady, non-flickering
+   glow (not off, not black-then-flicker) -- and that it's a colour that
+   makes sense (the last colour on screen before it cut to black, or warm
+   white on a cold start), not an arbitrary hue.
+6. **Natural response, no distracting flicker.** Watch a normal scene with
+   motion and cuts for a few minutes. It should read as "reactive but
+   calm" -- no strobing on quick cuts, no visible stepping on slow fades,
+   colour changes that feel like they settle rather than snap. If it reads
+   as laggy instead, the smoothing time constants in
+   `HueNaturalLightFilter` (currently internal constants, not settings) are
+   the first thing to retune.
+7. **Long pause.** Pause for several minutes. Confirm the lights hold their
+   last colours the whole time (no drift, no drop-out) and that the
+   Entertainment session is still genuinely alive when playback resumes
+   (no reconnect delay/flash on resume).
+8. **Seek and resume.** Seek around during playback; confirm the lights
+   catch up to wherever the picture actually is rather than continuing to
+   show the pre-seek scene, and that resuming from pause behaves the same
+   as a fresh play.
+9. **Both end-of-session behaviours.** Stop playback with "warm white, dim"
+   selected -- confirm exactly the paired lights (not the whole house) go
+   to a dim warm white. Then switch to "restore previous state," set the
+   lights to something distinctive by hand, play something, stop, and
+   confirm they return to what was set before playback started.
+10. **Takeover and recovery.** Start a stream from the Hue app itself (or
+    any other Entertainment app) against the same area, then start
+    playback here and confirm this plugin takes over per the operator's
+    own authorisation. Separately, disconnect the bridge from the network
+    (or power it off) mid-playback and confirm this plugin backs off and
+    retries with growing delay rather than hammering the network, then
+    reconnects automatically once the bridge is back -- without ever
+    having disturbed WLED or playback itself during the outage.
+
+Throughout all of the above: confirm WLED keeps working normally (its own
+calibration wizard, its own colours, its own pause/stop/fade behaviour)
+and that only one FFmpeg analysis process is ever running (`ps aux | grep
+ffmpeg` during playback) -- Hue must never cause a second decode.
+
 **PASS (2026-09-08, RGBW32 hands-on-test fixes: colour-temperature direction, white flicker, dead "try another photo" button).**
 
 The operator turned `SendWhiteChannel` on and tested against the real strip
@@ -1190,6 +1420,16 @@ A warning appears above the brightness slider when the controller reports
 
 ## Next actions (ordered)
 
+0. **The Hue Entertainment integration lives on branch `feat/hue-entertainment`,
+   built off `main`@`496dba8`, and is neither committed nor merged yet.**
+   Review it (the coordinator's report on this round has the summary and the
+   suggested commit message), then either commit-and-merge or ask for
+   changes before it moves further. Once merged and actually deployed to
+   the live host, work through the "Hardware test checklist (Hue
+   Entertainment)" section above in order -- none of it has been exercised
+   against real hardware yet, only unit-tested and checked read-only
+   against the bridge over the network. `docs/architecture/adr/ADR-011-hue-entertainment-integration.md`
+   has the full design rationale and every known limitation.
 1. **Actually click through the settings page and the wizard in a browser.**
    This has been the top item for five rounds running and is still not done.
    Every round so far shipped at least one bug (`hostName`/`host`, `tv=1` vs

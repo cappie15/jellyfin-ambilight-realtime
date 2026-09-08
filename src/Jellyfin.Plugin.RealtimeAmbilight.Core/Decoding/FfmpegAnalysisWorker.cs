@@ -42,7 +42,7 @@ public sealed class FfmpegAnalysisWorker : IPlaybackAnalysisWorker
 
     public async Task RunAsync(
         PlaybackWorkerRequest request,
-        LatestFrameBuffer<AnalysisFrame> latestFrames,
+        FanOutFrameBuffer<AnalysisFrame> latestFrames,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -127,7 +127,7 @@ public sealed class FfmpegAnalysisWorker : IPlaybackAnalysisWorker
         int frameWidth,
         int frameHeight,
         long positionTicks,
-        LatestFrameBuffer<AnalysisFrame> latestFrames,
+        FanOutFrameBuffer<AnalysisFrame> latestFrames,
         CancellationToken cancellationToken)
     {
         var frame = GC.AllocateUninitializedArray<byte>(frameLength);

@@ -3,4 +3,12 @@
     <AssemblyName>Jellyfin.Plugin.RealtimeAmbilight.Core</AssemblyName>
     <RootNamespace>Jellyfin.Plugin.RealtimeAmbilight.Core</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Hue Entertainment's DTLS-PSK transport, per ADR-011: a maintained
+         client (MIT, wraps BouncyCastle for the DTLS handshake itself,
+         written to none of our own) rather than a hand-rolled DTLS stack.
+         Pinned to an exact version that multi-targets net8.0/net9.0/net10.0,
+         verified against this project's own net9.0 TFM before adopting it. -->
+    <PackageReference Include="HueApi.Entertainment" Version="3.3.0" />
+  </ItemGroup>
 </Project>

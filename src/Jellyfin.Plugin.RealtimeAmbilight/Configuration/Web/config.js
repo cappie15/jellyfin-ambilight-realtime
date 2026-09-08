@@ -704,6 +704,12 @@ export default function (view) {
                 byId("autoDetectLedGamma").checked = config.AutoDetectLedGamma !== false;
                 byId("allowWledControl").checked = config.AllowWledControl === true;
                 byId("sendWhiteChannel").checked = config.SendWhiteChannel === true;
+                byId("hueEnabled").checked = config.HueEnabled === true;
+                byId("hueBrightnessPercent").value = config.HueBrightnessPercent || 100;
+                byId("hueEndBehaviour").value = String(config.HueEndBehaviour ?? 0);
+                if (config.HueEntertainmentConfigurationId && config.HueEntertainmentConfigurationId !== "00000000-0000-0000-0000-000000000000") {
+                    show("hueSelectionSection", true);
+                }
                 byId("allowWledControlSummary").textContent = config.AllowWledControl === true
                     ? "This plugin may fix WLED settings for you."
                     : "This plugin only reads WLED until you turn this on.";
@@ -732,7 +738,7 @@ export default function (view) {
                 return loadDevices(config.TargetDeviceId || "");
             })
             .then(findWled)
-            .then(() => Promise.all([checkControllerSettings(), checkControllerStatus(), loadWizardState()]))
+            .then(() => Promise.all([checkControllerSettings(), checkControllerStatus(), loadWizardState(), loadHueStatus()]))
             .finally(() => Dashboard.hideLoadingMsg());
     }
 
@@ -772,6 +778,190 @@ export default function (view) {
         window.ApiClient.updatePluginConfiguration(pluginId, config)
             .then(Dashboard.processPluginConfigurationUpdateResult)
             .finally(() => Dashboard.hideLoadingMsg());
+    }
+
+    // --- Hue Entertainment (optional, off by default) ---------------------
+    // A deliberately separate save path from the main form: pairing and
+    // selection each take effect immediately server-side (the controller
+    // saves PluginConfiguration itself), so there is nothing to lose by
+    // switching tabs before clicking the main Save button.
+    let hueSelectedBridgeHost = "";
+
+    function describeHueState(state, issue) {
+        const known = {
+            Unpaired: "Not paired.",
+            Ready: "Paired and ready. Starts automatically when the bound TV plays.",
+            Connecting: "Connecting…",
+            Streaming: "● Synchronising.",
+            Paused: "● Synchronised, playback paused.",
+            Recovering: "Reconnecting…",
+            Stopping: "Stopping…",
+            RelinkRequired: "Needs pairing again.",
+        };
+        const issueText = {
+            TemporarilyUnreachable: " (bridge temporarily unreachable)",
+            CredentialsRevoked: " (credentials were revoked on the bridge)",
+            EntertainmentConfigurationMissing: " (the selected entertainment area no longer exists)",
+            StreamOwnershipLost: " (another application is currently streaming to this bridge)",
+        };
+        return (known[state] || state) + (issueText[issue] || "");
+    }
+
+    function loadHueStatus() {
+        return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Hue/Status"))
+            .then(status => {
+                const state = status.State ?? status.state;
+                const issue = status.Issue ?? status.issue;
+                const paired = status.Paired ?? status.paired;
+                byId("hueStatusLine").textContent = paired
+                    ? describeHueState(state, issue)
+                    : "Not paired. Scan for a bridge below to get started.";
+                show("hueSelectionSection", paired);
+                if (paired && !hueSelectedBridgeHost) {
+                    hueSelectedBridgeHost = status.BridgeHost ?? status.bridgeHost ?? "";
+                }
+            })
+            .catch(() => { byId("hueStatusLine").textContent = ""; });
+    }
+
+    function hueCurrentBridgeHost() {
+        return (byId("hueBridgeCandidatesContainer").style.display !== "none"
+            ? byId("hueBridgeCandidates").value
+            : byId("hueManualBridgeHost").value.trim()) || hueSelectedBridgeHost;
+    }
+
+    function scanHueBridges() {
+        byId("hueScanBridges").disabled = true;
+        byId("hueFinderStatus").textContent = "Scanning the local network…";
+        return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Hue/Bridges"))
+            .then(candidates => {
+                const select = byId("hueBridgeCandidates");
+                select.textContent = "";
+                candidates.forEach(candidate => {
+                    const host = candidate.Host ?? candidate.host;
+                    const bridgeId = candidate.BridgeId ?? candidate.bridgeId;
+                    select.add(new Option(`${host} — ${bridgeId}`, host));
+                });
+                if (candidates.length > 0) {
+                    hueSelectedBridgeHost = candidates[0].Host ?? candidates[0].host;
+                    show("hueBridgeCandidatesContainer", true);
+                    show("hueManualBridgeContainer", false);
+                    byId("hueFinderStatus").textContent = `Found ${candidates.length} bridge(s).`;
+                } else {
+                    show("hueBridgeCandidatesContainer", false);
+                    show("hueManualBridgeContainer", true);
+                    byId("hueFinderStatus").textContent = "No bridge found. Enter its address below.";
+                }
+            })
+            .catch(() => {
+                show("hueBridgeCandidatesContainer", false);
+                show("hueManualBridgeContainer", true);
+                byId("hueFinderStatus").textContent = "The finder is unreachable. Enter the address yourself below.";
+            })
+            .finally(() => { byId("hueScanBridges").disabled = false; });
+    }
+
+    // Polls one press-link attempt every 2 s for up to 30 s, matching how
+    // long an operator realistically has to walk to the bridge and press it.
+    function startHuePairing() {
+        const host = hueCurrentBridgeHost();
+        if (!host) {
+            byId("huePairingStatus").textContent = "Scan for a bridge or enter its address first.";
+            return;
+        }
+
+        byId("hueStartPairing").disabled = true;
+        let attemptsLeft = 15;
+        byId("huePairingStatus").textContent = "Press the link button on the bridge now…";
+
+        const attempt = () => window.ApiClient.ajax({
+            type: "POST",
+            url: window.ApiClient.getUrl("RealtimeAmbilight/Hue/Pair", { host }),
+            dataType: "json",
+        }).then(result => {
+            const success = result.Success ?? result.success;
+            if (success) {
+                byId("huePairingStatus").textContent = "Paired.";
+                byId("hueStartPairing").disabled = false;
+                return Promise.all([loadHueStatus(), refreshHueEntertainmentConfigs()]);
+            }
+
+            attemptsLeft--;
+            const reason = result.FailureReason ?? result.failureReason ?? "";
+            if (attemptsLeft <= 0) {
+                byId("huePairingStatus").textContent = `Gave up: ${reason || "the bridge did not respond in time"}.`;
+                byId("hueStartPairing").disabled = false;
+                return null;
+            }
+
+            byId("huePairingStatus").textContent = reason || "Waiting for the link button…";
+            return new Promise(resolve => setTimeout(resolve, 2000)).then(attempt);
+        }).catch(() => {
+            byId("huePairingStatus").textContent = "The bridge could not be reached.";
+            byId("hueStartPairing").disabled = false;
+        });
+
+        return attempt();
+    }
+
+    function refreshHueEntertainmentConfigs() {
+        return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Hue/EntertainmentConfigurations"))
+            .then(configs => {
+                const select = byId("hueEntertainmentConfig");
+                const previousValue = select.value;
+                select.textContent = "";
+                configs.forEach(config => {
+                    const id = config.Id ?? config.id;
+                    const name = config.Name ?? config.name;
+                    const channelCount = (config.Channels ?? config.channels ?? []).length;
+                    select.add(new Option(`${name} (${channelCount} channel${channelCount === 1 ? "" : "s"})`, id));
+                });
+                if (previousValue) {
+                    select.value = previousValue;
+                }
+
+                show("hueSelectionSection", true);
+            })
+            .catch(() => {});
+    }
+
+    function saveHueSelection() {
+        const select = byId("hueEntertainmentConfig");
+        const selectedOption = select.selectedOptions[0];
+        byId("hueSaveStatus").textContent = "Saving…";
+        return window.ApiClient.ajax({
+            type: "POST",
+            url: window.ApiClient.getUrl("RealtimeAmbilight/Hue/Select"),
+            data: JSON.stringify({
+                Enabled: byId("hueEnabled").checked,
+                EntertainmentConfigurationId: select.value || "00000000-0000-0000-0000-000000000000",
+                EntertainmentConfigurationName: selectedOption ? selectedOption.textContent : "",
+                BrightnessPercent: Number(byId("hueBrightnessPercent").value),
+                EndBehaviour: Number(byId("hueEndBehaviour").value),
+            }),
+            contentType: "application/json",
+        }).then(() => {
+            byId("hueSaveStatus").textContent = "Saved.";
+            return loadHueStatus();
+        }).catch(() => { byId("hueSaveStatus").textContent = "Could not save."; });
+    }
+
+    function unlinkHue() {
+        if (!window.confirm("Forget the stored Hue credentials? This does not change anything on the bridge itself.")) {
+            return Promise.resolve();
+        }
+
+        return window.ApiClient.ajax({
+            type: "POST",
+            url: window.ApiClient.getUrl("RealtimeAmbilight/Hue/Unlink"),
+        }).then(() => {
+            show("hueSelectionSection", false);
+            return loadHueStatus();
+        });
+    }
+
+    function setHueBrightnessLabel() {
+        byId("hueBrightnessValue").textContent = `${byId("hueBrightnessPercent").value}%`;
     }
 
     populateWallColourPresets();
@@ -833,4 +1023,10 @@ export default function (view) {
             : "This plugin only reads WLED until you turn this on.";
     });
     byId("fixForceMaxBrightness").addEventListener("click", fixForceMaxBrightness);
+    byId("hueScanBridges").addEventListener("click", scanHueBridges);
+    byId("hueStartPairing").addEventListener("click", startHuePairing);
+    byId("hueRefreshConfigs").addEventListener("click", refreshHueEntertainmentConfigs);
+    byId("hueSaveSelection").addEventListener("click", saveHueSelection);
+    byId("hueUnlink").addEventListener("click", unlinkHue);
+    byId("hueBrightnessPercent").addEventListener("input", setHueBrightnessLabel);
 }

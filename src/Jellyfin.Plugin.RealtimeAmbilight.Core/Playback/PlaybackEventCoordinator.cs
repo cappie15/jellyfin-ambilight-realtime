@@ -40,12 +40,16 @@ public sealed class PlaybackEventCoordinator : IAsyncDisposable
         _options.Validate();
         _clock = new PlaybackClock(monotonicTime ?? throw new ArgumentNullException(nameof(monotonicTime)));
         _timeProvider = timeProvider ?? TimeProvider.System;
-        LatestFrames = new LatestFrameBuffer<AnalysisFrame>();
+        LatestFrames = new FanOutFrameBuffer<AnalysisFrame>();
         _eventLoop = Task.Run(EventLoopAsync);
     }
 
-    /// <summary>Frames published by the worker; an output scheduler takes only the newest.</summary>
-    public LatestFrameBuffer<AnalysisFrame> LatestFrames { get; }
+    /// <summary>
+    /// Frames published by the worker. Each output path (WLED, Hue, ...)
+    /// calls <see cref="FanOutFrameBuffer{TFrame}.Subscribe"/> for its own
+    /// independent latest-frame slot rather than reading this directly.
+    /// </summary>
+    public FanOutFrameBuffer<AnalysisFrame> LatestFrames { get; }
 
     public string? ActiveSessionId
     {

@@ -14,7 +14,6 @@ cd "$repository_root"
 metadata="plugin-package/meta.json"
 artifacts="artifacts"
 plugin_project="src/Jellyfin.Plugin.RealtimeAmbilight"
-output="$plugin_project/bin/Release/net9.0"
 
 read_metadata() {
     python3 -c "import json,sys; print(json.load(open('$metadata'))['$1'])"
@@ -39,19 +38,37 @@ echo "==> Building $name $version"
 # were measured to still differ in 72 bytes -- the PE timestamp, MVID and PDB
 # signature, all derived from a content hash. Treat the CI artifact as the
 # canonical package rather than expecting a local rebuild to match its checksum.
-dotnet build Jellyfin.RealtimeAmbilight.sln --configuration Release \
+#
+# Published (not merely built): the Hue integration pulls in HueApi.Entertainment,
+# HueApi, HueApi.ColorConverters and BouncyCastle.Crypto as real runtime
+# dependencies. `dotnet build`'s own output directory does not copy a class
+# library's transitive package references -- verified by inspecting it directly,
+# not assumed -- so a package staged from `bin/` would install two assemblies
+# that load, then fail at first Hue use with a MissingMethodException/
+# FileNotFoundException indistinguishable from the old stale-Core-DLL defect
+# this project has already been burned by once. `dotnet publish` (still
+# framework-dependent, --no-self-contained: Jellyfin.Controller/Jellyfin.Model
+# stay excluded via ExcludeAssets=runtime, and Microsoft.AspNetCore.App is a
+# shared framework Jellyfin itself already provides) is what actually gathers
+# every runtime dependency this plugin needs into one directory.
+rm -rf "$artifacts"
+publish_dir="$artifacts/publish"
+dotnet publish "$plugin_project/Jellyfin.Plugin.RealtimeAmbilight.csproj" --configuration Release \
+    --no-self-contained \
+    -o "$publish_dir" \
     -p:ContinuousIntegrationBuild=true \
     -p:PathMap="$repository_root=/src"
 
 echo "==> Staging"
-rm -rf "$artifacts"
 staging="$artifacts/$name"
 mkdir -p "$staging"
 
-# Both assemblies must ship together: deploying the plugin against a stale Core
-# assembly fails at runtime with MissingMethodException.
-cp "$output/Jellyfin.Plugin.RealtimeAmbilight.dll" "$staging/"
-cp "$output/Jellyfin.Plugin.RealtimeAmbilight.Core.dll" "$staging/"
+# Every .dll dotnet publish placed alongside the plugin -- both plugin
+# assemblies (deploying one against a stale copy of the other fails at
+# runtime with MissingMethodException) plus whatever runtime dependencies a
+# feature like Hue pulls in. Nothing here duplicates a Jellyfin-provided
+# assembly: those are excluded from the publish output already.
+cp "$publish_dir"/*.dll "$staging/"
 cp "$metadata" "$staging/meta.json"
 
 archive_name="realtime-ambilight_$version.zip"

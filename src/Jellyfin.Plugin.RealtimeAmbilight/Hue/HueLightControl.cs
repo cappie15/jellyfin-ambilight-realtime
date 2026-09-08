@@ -1,0 +1,152 @@
+#pragma warning disable CA1848, CA1873
+using System.Text;
+using System.Text.Json;
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue;
+using Microsoft.Extensions.Logging;
+
+namespace Jellyfin.Plugin.RealtimeAmbilight.Hue;
+
+/// <summary>
+/// The plain (non-Entertainment) CLIP v2 <c>light</c> resource calls needed
+/// for the end-of-session behaviour: reading each light's state once before
+/// a session starts, and writing the warm-white-dim or restore payload once
+/// it ends. Ordinary REST PUTs, not part of the realtime DTLS path.
+/// </summary>
+public sealed class HueLightControl
+{
+    private const int Port = 443;
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>2700 K design target, this project's documented warm-white default.</summary>
+    private const int WarmWhiteMirek = 370; // 1,000,000 / 2700 K, rounded.
+
+    private readonly ILogger _logger;
+
+    public HueLightControl(ILogger logger)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    public async Task<HueLightSnapshotEntry?> ReadStateAsync(
+        string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken)
+    {
+        using var client = CreateClient(host, certificateThumbprint, applicationKey);
+        try
+        {
+            using var response = await client
+                .GetAsync(new Uri($"https://{host}:{Port}/clip/v2/resource/light/{lightId}"), cancellationToken)
+                .ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            using var document = await JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!document.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array || data.GetArrayLength() == 0)
+            {
+                return null;
+            }
+
+            var light = data[0];
+            var on = light.TryGetProperty("on", out var onElement) && onElement.TryGetProperty("on", out var onValue) && onValue.ValueKind == JsonValueKind.True;
+            double? brightness = light.TryGetProperty("dimming", out var dimming) && dimming.TryGetProperty("brightness", out var brightnessValue) && brightnessValue.TryGetDouble(out var parsedBrightness)
+                ? parsedBrightness
+                : null;
+            var colorMode = light.TryGetProperty("color_mode", out var modeElement) && modeElement.ValueKind == JsonValueKind.String
+                ? modeElement.GetString()
+                : null;
+            (double X, double Y)? xy = light.TryGetProperty("color", out var color) && color.TryGetProperty("xy", out var xyElement)
+                && xyElement.TryGetProperty("x", out var xValue) && xyElement.TryGetProperty("y", out var yValue)
+                && xValue.TryGetDouble(out var x) && yValue.TryGetDouble(out var y)
+                ? (x, y)
+                : null;
+            int? mirek = light.TryGetProperty("color_temperature", out var ct) && ct.TryGetProperty("mirek", out var mirekValue) && mirekValue.TryGetInt32(out var parsedMirek)
+                ? parsedMirek
+                : null;
+
+            return new HueLightSnapshotEntry(lightId, on, brightness, colorMode, xy, mirek, null);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException
+            || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            _logger.LogWarning(exception, "Could not read the pre-session state of Hue light {LightId}.", lightId);
+            return null;
+        }
+    }
+
+    public Task ApplyWarmWhiteDimAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken)
+        => PutAsync(
+            host,
+            certificateThumbprint,
+            applicationKey,
+            lightId,
+            "{\"on\":{\"on\":true},\"dimming\":{\"brightness\":15},\"color_temperature\":{\"mirek\":" + WarmWhiteMirek.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}}",
+            cancellationToken);
+
+    public Task RestoreAsync(string host, string certificateThumbprint, string applicationKey, HueLightSnapshotEntry entry, CancellationToken cancellationToken)
+    {
+        if (!entry.On)
+        {
+            return PutAsync(host, certificateThumbprint, applicationKey, entry.LightId, """{"on":{"on":false}}""", cancellationToken);
+        }
+
+        var payload = new Dictionary<string, object>
+        {
+            ["on"] = new Dictionary<string, object> { ["on"] = true },
+        };
+
+        if (entry.BrightnessPercent is { } brightness)
+        {
+            payload["dimming"] = new Dictionary<string, object> { ["brightness"] = brightness };
+        }
+
+        if (entry.XyColor is { } xy)
+        {
+            payload["color"] = new Dictionary<string, object>
+            {
+                ["xy"] = new Dictionary<string, object> { ["x"] = xy.X, ["y"] = xy.Y },
+            };
+        }
+        else if (entry.ColorTemperatureMirek is { } mirek)
+        {
+            payload["color_temperature"] = new Dictionary<string, object> { ["mirek"] = mirek };
+        }
+
+        return PutAsync(host, certificateThumbprint, applicationKey, entry.LightId, JsonSerializer.Serialize(payload), cancellationToken);
+    }
+
+    private async Task PutAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, string json, CancellationToken cancellationToken)
+    {
+        using var client = CreateClient(host, certificateThumbprint, applicationKey);
+        try
+        {
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
+            using var response = await client
+                .PutAsync(new Uri($"https://{host}:{Port}/clip/v2/resource/light/{lightId}"), content, cancellationToken)
+                .ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Hue bridge {Host} rejected the end-of-session update for light {LightId}: {StatusCode}.", host, lightId, response.StatusCode);
+            }
+        }
+        catch (Exception exception) when (exception is HttpRequestException
+            || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            _logger.LogWarning(exception, "Could not send the end-of-session update to Hue light {LightId}.", lightId);
+        }
+    }
+
+    private static HttpClient CreateClient(string host, string certificateThumbprint, string applicationKey)
+    {
+        var handler = new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
+                certificate is not null && string.Equals(HueBridgeClient.Thumbprint(certificate), certificateThumbprint, StringComparison.OrdinalIgnoreCase),
+        };
+        var client = new HttpClient(handler) { Timeout = RequestTimeout };
+        client.DefaultRequestHeaders.Add("hue-application-key", applicationKey);
+        return client;
+    }
+}

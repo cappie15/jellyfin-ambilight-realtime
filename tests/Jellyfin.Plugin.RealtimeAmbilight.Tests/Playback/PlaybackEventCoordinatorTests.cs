@@ -115,7 +115,7 @@ public class PlaybackEventCoordinatorTests
 
         public int MaximumConcurrentRuns => Volatile.Read(ref _maximumConcurrentRuns);
 
-        public async Task RunAsync(PlaybackWorkerRequest request, LatestFrameBuffer<AnalysisFrame> latestFrames, CancellationToken cancellationToken)
+        public async Task RunAsync(PlaybackWorkerRequest request, FanOutFrameBuffer<AnalysisFrame> latestFrames, CancellationToken cancellationToken)
         {
             _requests.Enqueue(request);
             var active = Interlocked.Increment(ref _concurrentRuns);

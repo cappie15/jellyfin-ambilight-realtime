@@ -38,7 +38,7 @@ public interface IPlaybackAnalysisWorker
 {
     Task RunAsync(
         PlaybackWorkerRequest request,
-        LatestFrameBuffer<AnalysisFrame> latestFrames,
+        FanOutFrameBuffer<AnalysisFrame> latestFrames,
         CancellationToken cancellationToken);
 }
 

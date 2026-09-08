@@ -209,4 +209,43 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// hardware fact about the strip, not a live-tunable preference.
     /// </summary>
     public bool SendWhiteChannel { get; set; }
+
+    /// <summary>
+    /// Master switch for the Hue Entertainment integration. Off by default
+    /// and harmless when off: no discovery, no bridge connection, no
+    /// Entertainment takeover, and WLED behaves exactly as before this
+    /// existed. Turning this on alone does nothing until a bridge is paired
+    /// and an entertainment configuration is selected below.
+    /// </summary>
+    public bool HueEnabled { get; set; }
+
+    /// <summary>The paired bridge's LAN address, set once during pairing.</summary>
+    public string HueBridgeHost { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The paired bridge's own id (from <c>/api/config</c>'s <c>bridgeid</c>),
+    /// used to re-identify a bridge that has moved to a new address rather
+    /// than trusting whatever now answers at the last-known one.
+    /// </summary>
+    public string HueBridgeId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The selected entertainment configuration's id. Chosen from the
+    /// bridge's own existing entertainment areas during pairing; this plugin
+    /// never creates or edits one itself.
+    /// </summary>
+    public Guid HueEntertainmentConfigurationId { get; set; }
+
+    /// <summary>Display name of the selected entertainment configuration, shown on the settings page.</summary>
+    public string HueEntertainmentConfigurationName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Overall Hue brightness as a percentage, 1-100. The only colour-adjacent
+    /// control this integration exposes to the operator; the natural-light
+    /// filter's own smoothing parameters are internal and not user-facing.
+    /// </summary>
+    public int HueBrightnessPercent { get; set; } = 100;
+
+    /// <summary>What the paired lights do once a synchronised session ends.</summary>
+    public Core.Hue.HueEndBehaviour HueEndBehaviour { get; set; } = Core.Hue.HueEndBehaviour.WarmWhiteDim;
 }

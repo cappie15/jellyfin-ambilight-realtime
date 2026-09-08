@@ -122,7 +122,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             configuration.RealtimeProtocol,
             new UdpDatagramSender(),
             _bytesPerLed);
-        _scheduler = new LatestFrameOutputScheduler(_coordinator.LatestFrames, processor, _output);
+        _scheduler = new LatestFrameOutputScheduler(_coordinator.LatestFrames.Subscribe(), processor, _output);
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
