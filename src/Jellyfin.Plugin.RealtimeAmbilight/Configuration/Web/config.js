@@ -783,9 +783,23 @@ export default function (view) {
     // --- Hue Entertainment (optional, off by default) ---------------------
     // A deliberately separate save path from the main form: pairing and
     // selection each take effect immediately server-side (the controller
-    // saves PluginConfiguration itself), so there is nothing to lose by
-    // switching tabs before clicking the main Save button.
+    // saves PluginConfiguration itself). That immediacy has a sharp edge,
+    // though -- the main form's own save() still spreads {...loadedConfig},
+    // a snapshot taken once at page load, so afterwards clicking the main
+    // Save button silently overwrites whatever pairing/selection/unlink just
+    // wrote server-side (HueBridgeHost included) back to its stale, pre-Hue
+    // value. Confirmed live: a bridge paired and enabled this way, followed
+    // by the main Save button, left the server with HueEnabled=true but an
+    // empty HueBridgeHost, which threw a UriFormatException the moment
+    // playback tried to connect. refreshLoadedConfig() re-syncs the cached
+    // copy after every Hue action that changes server state, so a later
+    // main-form save carries the current values forward instead of
+    // reverting them.
     let hueSelectedBridgeHost = "";
+
+    function refreshLoadedConfig() {
+        return window.ApiClient.getPluginConfiguration(pluginId).then(config => { loadedConfig = config; });
+    }
 
     function describeHueState(state, issue) {
         const known = {
@@ -883,7 +897,7 @@ export default function (view) {
             if (success) {
                 byId("huePairingStatus").textContent = "Paired.";
                 byId("hueStartPairing").disabled = false;
-                return Promise.all([loadHueStatus(), refreshHueEntertainmentConfigs()]);
+                return Promise.all([refreshLoadedConfig(), loadHueStatus(), refreshHueEntertainmentConfigs()]);
             }
 
             attemptsLeft--;
@@ -942,7 +956,7 @@ export default function (view) {
             contentType: "application/json",
         }).then(() => {
             byId("hueSaveStatus").textContent = "Saved.";
-            return loadHueStatus();
+            return Promise.all([refreshLoadedConfig(), loadHueStatus()]);
         }).catch(() => { byId("hueSaveStatus").textContent = "Could not save."; });
     }
 
@@ -956,7 +970,7 @@ export default function (view) {
             url: window.ApiClient.getUrl("RealtimeAmbilight/Hue/Unlink"),
         }).then(() => {
             show("hueSelectionSection", false);
-            return loadHueStatus();
+            return Promise.all([refreshLoadedConfig(), loadHueStatus()]);
         });
     }
 
