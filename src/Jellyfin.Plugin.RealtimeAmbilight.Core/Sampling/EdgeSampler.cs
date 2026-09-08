@@ -240,7 +240,37 @@ public static class EdgeSampler
         return 1.0 - (towardInner * (1.0 - EdgeWeightFloor));
     }
 
-    private static double Bt709LimitedToLinear(byte codeValue)
+    /// <summary>
+    /// Every one of the 256 possible <see cref="Bt709LimitedToLinear"/>
+    /// results, precomputed once. The edge-sampling hot loop calls this once
+    /// per channel per pixel in the sampled band -- for the default 10% depth
+    /// at 160x90, on the order of several thousand calls every single
+    /// analysed frame, 30 times a second -- and every input is already one of
+    /// only 256 byte values, so recomputing the same <see cref="Math.Pow"/>
+    /// result for the same byte, frame after frame, bought nothing a lookup
+    /// does not already buy for free. Values are identical to calling the
+    /// formula directly (this table *is* that formula, evaluated once) --
+    /// the test project checks all 256 entries against it directly, not
+    /// just spot values.
+    /// </summary>
+    private static readonly double[] Bt709LimitedToLinearTable = BuildTable(ComputeBt709LimitedToLinear);
+
+    private static readonly double[] SrgbToLinearTable = BuildTable(ComputeSrgbToLinear);
+
+    private static double[] BuildTable(Func<byte, double> compute)
+    {
+        var table = new double[256];
+        for (var value = 0; value < 256; value++)
+        {
+            table[value] = compute((byte)value);
+        }
+
+        return table;
+    }
+
+    private static double Bt709LimitedToLinear(byte codeValue) => Bt709LimitedToLinearTable[codeValue];
+
+    private static double ComputeBt709LimitedToLinear(byte codeValue)
     {
         var nonlinear = (codeValue - 16d) / 219d;
         return nonlinear < 0.081d
@@ -280,7 +310,9 @@ public static class EdgeSampler
         return samples;
     }
 
-    private static double SrgbToLinear(byte codeValue)
+    private static double SrgbToLinear(byte codeValue) => SrgbToLinearTable[codeValue];
+
+    private static double ComputeSrgbToLinear(byte codeValue)
     {
         var encoded = codeValue / 255d;
         return encoded <= 0.04045d
