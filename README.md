@@ -4,18 +4,32 @@
 
 *AI-generated concept illustration; actual output depends on your screen, LEDs and room.*
 
-Server-side realtime Ambilight for Jellyfin, driving a [WLED](https://kno.wled.ge)
-controller over DDP or Hyperion Raw RGB.
+**Turn the wall behind your TV into part of the picture, on hardware you already
+own.** Point an LED strip or a set of Philips Hue lights at your Jellyfin library
+and the colour on screen spreads onto the room in real time — matched to the
+exact frame playing, not a webcam or HDMI capture guessing a few hundred
+milliseconds behind.
 
-The plugin analyses the **original media stream on the server**, in a decode pass
-of its own. It never captures a client display, never re-encodes the video the
-client is watching, and does not intentionally delay playback. When playback stops it simply
-stops transmitting, and WLED returns to whatever it was doing before.
+- **Built for your room, not a demo reel.** A guided calibration wizard walks
+  your actual strip through six colour anchors and a white-balance pass, so the
+  wall matches the screen on *your* hardware — not a generic factory profile.
+- **Two independent outputs, at once if you want.** Drive a [WLED](https://kno.wled.ge)
+  LED strip, a Philips Hue Entertainment area, or both together, each tuned
+  and calibrated on its own.
+- **Never touches your stream.** Runs its own, independent decode on the
+  server purely to sample colour — the client's actual playback is never
+  captured, delayed or re-encoded because of this plugin.
+- **HDR handled on the GPU**, not guessed at: hardware tone-mapping brings
+  HDR10/Dolby Vision content down to LED-friendly colour without crushing
+  highlights or blowing out whites.
+- **Free, open source, self-hosted.** Nothing leaves your server; no cloud
+  account, subscription or companion app required.
 
 > **Status: pre-alpha.** The live pipeline works end to end on the developer's
-> host, but this has been verified on exactly one Jellyfin server and one WLED
-> controller. Build and packaging scripts are available — see [Installing](#installing).
-> Compatibility beyond this setup is not established.
+> host, but this has been verified on exactly one Jellyfin server, one WLED
+> controller and one Hue bridge. Build and packaging scripts are available —
+> see [Installing](#installing). Compatibility beyond this setup is not
+> established; read on before you commit an evening to it.
 
 ## Vibe coding disclosure
 
