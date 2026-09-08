@@ -22,5 +22,15 @@ public interface IDitheredChannelEncoder
     /// balance is. See <see cref="DitheredRgbw32Encoder"/> for why this
     /// exists.
     /// </param>
-    byte[] Encode(ReadOnlySpan<LinearRgb> linearFrame, Rgb24Encoding encoding, float whiteExtractionFactor = 1f);
+    /// <param name="whiteChannelCeiling">
+    /// RGBW32-only: the largest share of a pixel's shared grey (0-1) allowed
+    /// onto the physical white LED at all, regardless of
+    /// <paramref name="whiteExtractionFactor"/> -- a single white die simply
+    /// cannot reach the combined peak output of red, green and blue lit
+    /// together, so a bright/near-white pixel above this ceiling keeps the
+    /// rest of its grey on the colour LEDs instead of losing it. Defaults to
+    /// 1 (no ceiling, today's behaviour) and RGB24 ignores this entirely.
+    /// See <see cref="DitheredRgbw32Encoder"/> for the measurement behind it.
+    /// </param>
+    byte[] Encode(ReadOnlySpan<LinearRgb> linearFrame, Rgb24Encoding encoding, float whiteExtractionFactor = 1f, float whiteChannelCeiling = 1f);
 }

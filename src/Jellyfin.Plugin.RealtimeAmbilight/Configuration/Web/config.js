@@ -102,6 +102,8 @@ export default function (view) {
 
     function setColourLabels() {
         byId("brightnessValue").textContent = `${byId("brightnessPercent").value}%`;
+        byId("whiteChannelStrengthValue").textContent = `${byId("whiteChannelStrengthPercent").value}%`;
+        show("whiteChannelStrengthContainer", byId("sendWhiteChannel").checked);
         const saturation = Number(byId("saturationPercent").value);
         byId("saturationValue").textContent = saturation === 100 ? "100% (faithful)" : `${saturation}%`;
         ["red", "green", "blue"].forEach(channel => {
@@ -873,6 +875,7 @@ export default function (view) {
                 byId("autoDetectLedGamma").checked = config.AutoDetectLedGamma !== false;
                 byId("allowWledControl").checked = config.AllowWledControl === true;
                 byId("sendWhiteChannel").checked = config.SendWhiteChannel === true;
+                byId("whiteChannelStrengthPercent").value = config.WhiteChannelStrengthPercent ?? 50;
                 byId("hueEnabled").checked = config.HueEnabled === true;
                 byId("hueBrightnessPercent").value = config.HueBrightnessPercent || 100;
                 byId("hueResponsePercent").value = config.HueResponsePercent ?? 50;
@@ -950,6 +953,7 @@ export default function (view) {
             AutoDetectLedGamma: byId("autoDetectLedGamma").checked,
             AllowWledControl: byId("allowWledControl").checked,
             SendWhiteChannel: byId("sendWhiteChannel").checked,
+            WhiteChannelStrengthPercent: Number(byId("whiteChannelStrengthPercent").value),
             TargetDeviceId: byId("targetDeviceId").value,
             TargetDeviceName: targetDeviceName(),
             WledHost: hostName,
@@ -1260,6 +1264,8 @@ export default function (view) {
         }
         retune();
     });
+    byId("whiteChannelStrengthPercent").addEventListener("input", setColourLabels);
+    byId("sendWhiteChannel").addEventListener("change", setColourLabels);
     byId("allowWledControl").addEventListener("change", () => {
         byId("allowWledControlSummary").textContent = byId("allowWledControl").checked
             ? "This plugin may fix WLED settings for you. Save to keep it that way."

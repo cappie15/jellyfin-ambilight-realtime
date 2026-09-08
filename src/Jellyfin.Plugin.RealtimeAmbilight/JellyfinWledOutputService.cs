@@ -569,6 +569,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             configuration.BlueHueShiftDegrees, configuration.BlueBrightnessPercent, configuration.BlueIntensityPercent,
             configuration.YellowHueShiftDegrees, configuration.YellowBrightnessPercent, configuration.YellowIntensityPercent,
             configuration.CyanHueShiftDegrees, configuration.CyanBrightnessPercent, configuration.CyanIntensityPercent,
-            configuration.MagentaHueShiftDegrees, configuration.MagentaBrightnessPercent, configuration.MagentaIntensityPercent);
+            configuration.MagentaHueShiftDegrees, configuration.MagentaBrightnessPercent, configuration.MagentaIntensityPercent,
+            configuration.WhiteChannelStrengthPercent);
     }
 }

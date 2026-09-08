@@ -85,6 +85,15 @@
                     <div id="rgbwSuggestion" class="fieldDescription" style="display:none;border-left:3px solid currentColor;padding-left:.8em;margin-top:1em">
                         WLED reports a white LED on this strip. Turning the checkbox above on will use it for a truer white.
                     </div>
+                    <div id="whiteChannelStrengthContainer" class="inputContainer" style="margin-top:1em">
+                        <input is="emby-input" id="whiteChannelStrengthPercent" type="range" min="20" max="100" step="1" label="White LED strength" />
+                        <div class="fieldDescription">
+                            Now: <strong id="whiteChannelStrengthValue"></strong>. A single white LED cannot reach the
+                            combined brightness of red, green and blue lit together, so a bright/near-white scene can
+                            look dimmer than it should if everything is pushed onto it. Lower this if white still looks
+                            dim; the colour LEDs pick up whatever the white LED cannot. <strong>Default: 50%.</strong>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="verticalSection">

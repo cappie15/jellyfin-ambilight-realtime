@@ -14,7 +14,8 @@ public readonly record struct PerimeterColourAdjustment(
     ColourAdjustment Bottom,
     ColourAdjustment Left,
     float BlackLevelFloor = 0f,
-    HueCorrectionCurve? Curve = null)
+    HueCorrectionCurve? Curve = null,
+    float WhiteChannelCeiling = 1f)
 {
     public static PerimeterColourAdjustment None => new(
         ColourAdjustment.None,
@@ -23,10 +24,11 @@ public readonly record struct PerimeterColourAdjustment(
         ColourAdjustment.None,
         ColourAdjustment.None,
         0f,
-        null);
+        null,
+        1f);
 
     public bool IsIdentity => Global.IsIdentity && Top.IsIdentity && Right.IsIdentity && Bottom.IsIdentity && Left.IsIdentity
-        && BlackLevelFloor <= 0f && (Curve is null || Curve.IsIdentity);
+        && BlackLevelFloor <= 0f && (Curve is null || Curve.IsIdentity) && WhiteChannelCeiling >= 1f;
 
     /// <summary>
     /// How much of an RGBW strip's shared grey should still go to the

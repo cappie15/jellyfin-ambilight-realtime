@@ -57,7 +57,8 @@ public readonly record struct PerimeterColourTuning(
     int CyanIntensityPercent = 100,
     int MagentaHueShiftDegrees = 0,
     int MagentaBrightnessPercent = 100,
-    int MagentaIntensityPercent = 100)
+    int MagentaIntensityPercent = 100,
+    int WhiteChannelStrengthPercent = 100)
 {
     public static PerimeterColourTuning Default => new(
         100, 100, 100, 100, 100, 0, "#ffffff", 100,
@@ -89,7 +90,8 @@ public readonly record struct PerimeterColourTuning(
             Side(BottomBrightnessPercent, BottomRedGainPercent, BottomGreenGainPercent, BottomBlueGainPercent),
             Side(LeftBrightnessPercent, LeftRedGainPercent, LeftGreenGainPercent, LeftBlueGainPercent),
             Math.Clamp(BlackLevelFloorPercent, 0, 20) / 100f,
-            BuildCurve());
+            BuildCurve(),
+            Percent(WhiteChannelStrengthPercent, 20, 100));
     }
 
     private HueCorrectionCurve BuildCurve()

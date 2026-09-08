@@ -150,6 +150,50 @@ public sealed class DitheredRgbw32EncoderTests
         }
     }
 
+    [Fact]
+    public void WhiteChannelCeilingLeavesTheRestOfABrightGreyOnTheColourResidual()
+    {
+        // A near-white pixel above the ceiling: only the ceiling's worth
+        // goes to white, the rest stays on red/green/blue rather than being
+        // subtracted out and lost -- the whole point of the ceiling.
+        var colour = new LinearRgb(0.9f, 0.9f, 0.9f);
+
+        var uncapped = new DitheredRgbw32Encoder().Encode([colour], Rgb24Encoding.Linear, whiteExtractionFactor: 1f, whiteChannelCeiling: 1f);
+        var capped = new DitheredRgbw32Encoder().Encode([colour], Rgb24Encoding.Linear, whiteExtractionFactor: 1f, whiteChannelCeiling: 0.5f);
+
+        Assert.Equal(0, uncapped[0]); // fully extracted today: colour channels hollowed out
+        Assert.Equal((byte)Math.Round(0.5f * 255f), capped[3]); // white pinned at the ceiling
+        Assert.True(capped[0] > uncapped[0], $"expected the capped run to leave more on red: capped={capped[0]}, uncapped={uncapped[0]}");
+    }
+
+    [Fact]
+    public void WhiteChannelCeilingDoesNothingBelowItself()
+    {
+        // A dim grey never reaches the ceiling in the first place, so
+        // behaviour must be byte-identical to today's uncapped default --
+        // the ceiling only ever matters for bright/near-white content.
+        var colour = new LinearRgb(0.3f, 0.3f, 0.3f);
+
+        var uncapped = new DitheredRgbw32Encoder().Encode([colour], Rgb24Encoding.Linear, whiteExtractionFactor: 1f, whiteChannelCeiling: 1f);
+        var capped = new DitheredRgbw32Encoder().Encode([colour], Rgb24Encoding.Linear, whiteExtractionFactor: 1f, whiteChannelCeiling: 0.5f);
+
+        Assert.Equal(uncapped, capped);
+    }
+
+    [Fact]
+    public void WhiteChannelCeilingRaisesTotalCombinedOutputForABrightGreyInsteadOfSuppressingIt()
+    {
+        // Unlike the colour-temperature compensation above, the ceiling must
+        // NOT be rescaled back down -- red/green/blue keeping more of their
+        // own value is the fix, so total output for a bright pixel should
+        // rise compared to full (uncapped) extraction, not stay pinned.
+        var colour = new LinearRgb(0.9f, 0.9f, 0.9f);
+        var fullTotal = SumRgbw(new DitheredRgbw32Encoder().Encode([colour], Rgb24Encoding.Linear, whiteExtractionFactor: 1f, whiteChannelCeiling: 1f));
+        var cappedTotal = SumRgbw(new DitheredRgbw32Encoder().Encode([colour], Rgb24Encoding.Linear, whiteExtractionFactor: 1f, whiteChannelCeiling: 0.5f));
+
+        Assert.True(cappedTotal > fullTotal, $"expected the capped total ({cappedTotal}) to exceed the uncapped total ({fullTotal})");
+    }
+
     private static int SumRgbw(byte[] frame) => frame[0] + frame[1] + frame[2] + frame[3];
 
     private static int CountFlips(IEnumerable<byte> sequence)

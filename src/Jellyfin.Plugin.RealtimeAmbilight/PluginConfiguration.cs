@@ -265,6 +265,29 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public bool SendWhiteChannel { get; set; }
 
     /// <summary>
+    /// How much of a bright/near-white pixel's shared grey is allowed onto
+    /// the physical white LED before the rest is left on red, green and
+    /// blue instead, 1-100%. Exists because a single white die has nowhere
+    /// near the peak output of red, green and blue lit together: measured
+    /// live via flicker photometry (alternating the same LEDs between a
+    /// mixed-RGB white and the white channel alone, which cancels the two's
+    /// considerable difference in colour temperature and isolates a genuine
+    /// brightness gap) -- the gap did not shrink at all between white=100
+    /// and white=230 out of 255, meaning no amount of drive current makes
+    /// the one die reach what three combined can, and pushing the value
+    /// higher cannot fix it. Below this ceiling (dim greys, where the die's
+    /// own peak was never the limiting factor) behaviour is unchanged from
+    /// full extraction; only pixels bright enough to hit the ceiling keep a
+    /// growing share of their own grey on red, green and blue, which -- being
+    /// three simultaneously lit dies -- can actually reach full brightness
+    /// where the white die alone cannot. Default 50% is a reasoned starting
+    /// point from where that test left off (the gap held at all tested
+    /// levels up to 230/255 without narrowing); re-check while watching a
+    /// bright scene, not a synthetic swatch, and adjust from there.
+    /// </summary>
+    public int WhiteChannelStrengthPercent { get; set; } = 50;
+
+    /// <summary>
     /// Master switch for the Hue Entertainment integration. Off by default
     /// and harmless when off: no discovery, no bridge connection, no
     /// Entertainment takeover, and WLED behaves exactly as before this

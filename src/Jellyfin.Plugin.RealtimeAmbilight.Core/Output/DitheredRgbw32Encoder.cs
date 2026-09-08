@@ -78,7 +78,26 @@ public sealed class DitheredRgbw32Encoder : IDitheredChannelEncoder
     /// way changes which channels carry the light, not how much of it there
     /// is in total.
     /// </remarks>
-    public byte[] Encode(ReadOnlySpan<LinearRgb> linearFrame, Rgb24Encoding encoding, float whiteExtractionFactor = 1f)
+    /// <remarks>
+    /// <paramref name="whiteChannelCeiling"/> exists because "full
+    /// extraction" itself was never actually total-preserving for a bright
+    /// pixel -- it assumed one white die puts out as much light as red,
+    /// green and blue lit together, which live flicker-photometry testing
+    /// (alternating the same LEDs between a mixed-RGB white and the white
+    /// channel alone, which cancels their considerable difference in colour
+    /// temperature and isolates a genuine brightness gap) disproved: the gap
+    /// held completely flat from white=100 through white=230 of 255, so no
+    /// drive value closes it. Below the ceiling this changes nothing --
+    /// those pixels were never bright enough for the die's own peak to be
+    /// the limit. Above it, only the ceiling's worth is extracted and the
+    /// rest of the shared grey is simply left on red, green and blue rather
+    /// than being pulled onto a die that cannot reproduce it: unlike the
+    /// colour-temperature compensation above, this deliberately does not
+    /// rescale anything back up, since red, green and blue retaining more of
+    /// their own original value is exactly the fix, not something to
+    /// counteract.
+    /// </remarks>
+    public byte[] Encode(ReadOnlySpan<LinearRgb> linearFrame, Rgb24Encoding encoding, float whiteExtractionFactor = 1f, float whiteChannelCeiling = 1f)
     {
         if (linearFrame.IsEmpty)
         {
@@ -94,19 +113,22 @@ public sealed class DitheredRgbw32Encoder : IDitheredChannelEncoder
         }
 
         var extractionFactor = Math.Clamp(whiteExtractionFactor, 0f, 1f);
+        var ceiling = Math.Clamp(whiteChannelCeiling, 0f, 1f);
 
         var rgbw32 = new byte[linearFrame.Length * 4];
         for (var index = 0; index < linearFrame.Length; index++)
         {
             var colour = linearFrame[index];
             var minComponent = MathF.Min(colour.Red, MathF.Min(colour.Green, colour.Blue));
-            var white = extractionFactor * minComponent;
+            var desiredWhite = extractionFactor * minComponent;
+            var white = MathF.Min(desiredWhite, ceiling);
 
             var compensation = 1f;
             if (extractionFactor < 1f)
             {
                 var sum = colour.Red + colour.Green + colour.Blue;
-                var totalAtFullExtraction = sum - (2f * minComponent);
+                var fullExtractionWhite = MathF.Min(minComponent, ceiling);
+                var totalAtFullExtraction = sum - (2f * fullExtractionWhite);
                 var totalAtCurrentExtraction = sum - (2f * white);
                 if (totalAtCurrentExtraction > 1e-6f)
                 {
