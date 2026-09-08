@@ -738,7 +738,16 @@ export default function (view) {
                 return loadDevices(config.TargetDeviceId || "");
             })
             .then(findWled)
-            .then(() => Promise.all([checkControllerSettings(), checkControllerStatus(), loadWizardState(), loadHueStatus()]))
+            .then(() => Promise.all([
+                checkControllerSettings(),
+                checkControllerStatus(),
+                loadWizardState(),
+                // On a normal page load (not right after an interactive
+                // pairing), nothing else ever populates the entertainment-area
+                // dropdown -- do it here too whenever a bridge is already
+                // paired, or the saved selection has nothing to bind to.
+                loadHueStatus().then(paired => paired ? refreshHueEntertainmentConfigs() : null)
+            ]))
             .finally(() => Dashboard.hideLoadingMsg());
     }
 
@@ -768,7 +777,16 @@ export default function (view) {
             WledHost: hostName,
             AnalysisWidth: Number(byId("analysisWidth").value),
             AnalysisHeight: analysisHeight(),
-            WallColourHex: byId("wallColourHex").value
+            WallColourHex: byId("wallColourHex").value,
+            // Hue has no field-by-field save button of its own -- pairing and
+            // unlinking take effect immediately (they need the bridge itself),
+            // but everything else here is a plain preference saved the same
+            // way as every other tab, through this one button.
+            HueEnabled: byId("hueEnabled").checked,
+            HueEntertainmentConfigurationId: byId("hueEntertainmentConfig").value || "00000000-0000-0000-0000-000000000000",
+            HueEntertainmentConfigurationName: byId("hueEntertainmentConfig").selectedOptions[0]?.textContent || "",
+            HueBrightnessPercent: Number(byId("hueBrightnessPercent").value),
+            HueEndBehaviour: Number(byId("hueEndBehaviour").value)
         };
         numericFields.forEach(field => { config[fieldKey(field)] = Number(byId(field).value); });
         if (hostPort) {
@@ -776,7 +794,10 @@ export default function (view) {
         }
 
         window.ApiClient.updatePluginConfiguration(pluginId, config)
-            .then(Dashboard.processPluginConfigurationUpdateResult)
+            .then(result => {
+                loadedConfig = config;
+                return Dashboard.processPluginConfigurationUpdateResult(result);
+            })
             .finally(() => Dashboard.hideLoadingMsg());
     }
 
@@ -831,11 +852,14 @@ export default function (view) {
                     ? describeHueState(state, issue)
                     : "Not paired. Scan for a bridge below to get started.";
                 show("hueSelectionSection", paired);
+                byId("hueStartPairing").textContent = paired ? "Bridge paired" : "Pair with this bridge";
                 if (paired && !hueSelectedBridgeHost) {
                     hueSelectedBridgeHost = status.BridgeHost ?? status.bridgeHost ?? "";
                 }
+
+                return paired;
             })
-            .catch(() => { byId("hueStatusLine").textContent = ""; });
+            .catch(() => { byId("hueStatusLine").textContent = ""; return false; });
     }
 
     function hueCurrentBridgeHost() {
@@ -884,9 +908,15 @@ export default function (view) {
             return;
         }
 
-        byId("hueStartPairing").disabled = true;
+        const button = byId("hueStartPairing");
+        button.disabled = true;
         let attemptsLeft = 15;
-        byId("huePairingStatus").textContent = "Press the link button on the bridge now…";
+        // The button's own label carries the primary state -- "press the
+        // button now", then "bridge paired" -- since that is what is actually
+        // being asked of the operator at each step; the line underneath is
+        // only ever supplementary detail (a countdown, a failure reason).
+        button.textContent = "Press the button on the bridge now…";
+        byId("huePairingStatus").textContent = "";
 
         const attempt = () => window.ApiClient.ajax({
             type: "POST",
@@ -895,34 +925,45 @@ export default function (view) {
         }).then(result => {
             const success = result.Success ?? result.success;
             if (success) {
-                byId("huePairingStatus").textContent = "Paired.";
-                byId("hueStartPairing").disabled = false;
+                button.textContent = "Bridge paired";
+                button.disabled = false;
+                byId("huePairingStatus").textContent = "";
                 return Promise.all([refreshLoadedConfig(), loadHueStatus(), refreshHueEntertainmentConfigs()]);
             }
 
             attemptsLeft--;
             const reason = result.FailureReason ?? result.failureReason ?? "";
             if (attemptsLeft <= 0) {
+                button.textContent = "Pair with this bridge";
                 byId("huePairingStatus").textContent = `Gave up: ${reason || "the bridge did not respond in time"}.`;
-                byId("hueStartPairing").disabled = false;
+                button.disabled = false;
                 return null;
             }
 
             byId("huePairingStatus").textContent = reason || "Waiting for the link button…";
             return new Promise(resolve => setTimeout(resolve, 2000)).then(attempt);
         }).catch(() => {
+            button.textContent = "Pair with this bridge";
             byId("huePairingStatus").textContent = "The bridge could not be reached.";
-            byId("hueStartPairing").disabled = false;
+            button.disabled = false;
         });
 
         return attempt();
     }
 
+    // Populates the dropdown from the bridge's own areas, then restores
+    // whichever selection is currently saved -- either the DOM's own prior
+    // value (right after a fresh pairing/manual refresh) or, on a normal page
+    // load where a bridge was already paired earlier, the id saved in
+    // PluginConfiguration. Without the latter, a plain page load always
+    // rendered this dropdown empty (nothing calls this except pairing), so
+    // clicking Save without ever touching the dropdown would submit an empty
+    // selection and silently clear an already-configured entertainment area.
     function refreshHueEntertainmentConfigs() {
         return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Hue/EntertainmentConfigurations"))
             .then(configs => {
                 const select = byId("hueEntertainmentConfig");
-                const previousValue = select.value;
+                const previousValue = select.value || loadedConfig?.HueEntertainmentConfigurationId;
                 select.textContent = "";
                 configs.forEach(config => {
                     const id = config.Id ?? config.id;
@@ -937,27 +978,6 @@ export default function (view) {
                 show("hueSelectionSection", true);
             })
             .catch(() => {});
-    }
-
-    function saveHueSelection() {
-        const select = byId("hueEntertainmentConfig");
-        const selectedOption = select.selectedOptions[0];
-        byId("hueSaveStatus").textContent = "Saving…";
-        return window.ApiClient.ajax({
-            type: "POST",
-            url: window.ApiClient.getUrl("RealtimeAmbilight/Hue/Select"),
-            data: JSON.stringify({
-                Enabled: byId("hueEnabled").checked,
-                EntertainmentConfigurationId: select.value || "00000000-0000-0000-0000-000000000000",
-                EntertainmentConfigurationName: selectedOption ? selectedOption.textContent : "",
-                BrightnessPercent: Number(byId("hueBrightnessPercent").value),
-                EndBehaviour: Number(byId("hueEndBehaviour").value),
-            }),
-            contentType: "application/json",
-        }).then(() => {
-            byId("hueSaveStatus").textContent = "Saved.";
-            return Promise.all([refreshLoadedConfig(), loadHueStatus()]);
-        }).catch(() => { byId("hueSaveStatus").textContent = "Could not save."; });
     }
 
     function unlinkHue() {
@@ -1040,7 +1060,6 @@ export default function (view) {
     byId("hueScanBridges").addEventListener("click", scanHueBridges);
     byId("hueStartPairing").addEventListener("click", startHuePairing);
     byId("hueRefreshConfigs").addEventListener("click", refreshHueEntertainmentConfigs);
-    byId("hueSaveSelection").addEventListener("click", saveHueSelection);
     byId("hueUnlink").addEventListener("click", unlinkHue);
     byId("hueBrightnessPercent").addEventListener("input", setHueBrightnessLabel);
 }
