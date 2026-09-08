@@ -476,8 +476,22 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                     ? Plugin.Instance?.Configuration.HoldWhilePaused ?? true
                     : DateTimeOffset.UtcNow - lastFrameSent < OutputGapHold;
 
+                // Deliberately NOT gated on pendingFrames.Count == 0. It used
+                // to be: the decoder runs ahead of playback by design (see
+                // the scheduling above), so frames sit queued for a future
+                // dueAt for as long as that lead lasts -- which, right at
+                // the start of playback (or after any resync), can already
+                // exceed WLED's own realtime timeout (~2.3 s, per ADR-004)
+                // before the first frame actually becomes due. With this
+                // guard, that entire window sent nothing at all: WLED
+                // reclaimed the strip and showed its own configured default
+                // preset -- reported live as "film aan -> donker -> 2
+                // seconden later: warmwit -> seconde later: correcte
+                // ambilight". A keepalive firing while frames are merely
+                // queued-but-not-yet-due is at worst one redundant resend of
+                // the already-correct last frame right before a real one
+                // arrives anyway; the previous silence was actively harmful.
                 if (mayHold
-                    && pendingFrames.Count == 0
                     && currentSession is not null
                     && DateTimeOffset.UtcNow - lastSend >= PauseKeepAliveInterval)
                 {

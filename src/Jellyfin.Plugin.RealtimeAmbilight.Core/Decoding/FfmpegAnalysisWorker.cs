@@ -53,7 +53,7 @@ public sealed class FfmpegAnalysisWorker : IPlaybackAnalysisWorker
         var startPosition = TimeSpan.FromTicks(request.PositionTicks) + DecoderLead;
         var startInfo = source.VideoProfile is { } profile
             ? CreateHdrStartInfo(source, startPosition, profile)
-            : FfmpegAnalysisCommandBuilder.CreateSdrStartInfo(source, startPosition);
+            : CreateSdrStartInfo(source, startPosition);
         using var process = new Process { StartInfo = startInfo };
         if (!process.Start())
         {
@@ -97,6 +97,40 @@ public sealed class FfmpegAnalysisWorker : IPlaybackAnalysisWorker
             await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             await standardError.ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Decodes on the GPU (<see cref="FfmpegAnalysisCommandBuilder.BuildVaapiSdrArguments"/>)
+    /// when the configured VAAPI device actually exists on disk, exactly the
+    /// same device the HDR graph already unconditionally assumes is present
+    /// (<see cref="CreateHdrStartInfo"/> has never had a software fallback of
+    /// its own). This one cheap existence check exists purely to keep an
+    /// installation with no GPU device node at all -- the single most common
+    /// way this can differ from the reference host -- on the always-worked
+    /// software path instead of failing every single analysis attempt; it is
+    /// not a guarantee the device is actually usable (wrong driver, missing
+    /// permissions), matching the same risk already accepted for HDR.
+    /// </summary>
+    private static ProcessStartInfo CreateSdrStartInfo(FfmpegAnalysisSource source, TimeSpan startPosition)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = source.EncoderPath,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+
+        var arguments = File.Exists(source.HardwareDevicePath)
+            ? FfmpegAnalysisCommandBuilder.BuildVaapiSdrArguments(source, startPosition, source.HardwareDevicePath)
+            : FfmpegAnalysisCommandBuilder.BuildSdrArguments(source, startPosition);
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        return startInfo;
     }
 
     private static ProcessStartInfo CreateHdrStartInfo(

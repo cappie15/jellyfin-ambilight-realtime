@@ -79,6 +79,42 @@ public class FfmpegAnalysisCommandBuilderTests
         Assert.Equal("bgra", arguments[arguments.IndexOf("-pix_fmt") + 1]);
     }
 
+    [Fact]
+    public void VaapiSdrArgumentsDecodeOnTheGpuInsteadOfTheCpu()
+    {
+        var source = new FfmpegAnalysisSource(
+            "/usr/lib/jellyfin-ffmpeg/ffmpeg",
+            "/media/film.mkv",
+            new AnalysisFrameOptions { Width = 320, Height = 180, FramesPerSecond = 30 });
+
+        var arguments = FfmpegAnalysisCommandBuilder.BuildVaapiSdrArguments(source, TimeSpan.FromSeconds(3), "/dev/dri/renderD128").ToArray();
+
+        Assert.Equal("-hwaccel", arguments[Array.IndexOf(arguments, "-ss") + 2]);
+        Assert.Equal("vaapi", arguments[Array.IndexOf(arguments, "-hwaccel") + 1]);
+        Assert.Equal("/dev/dri/renderD128", arguments[Array.IndexOf(arguments, "-hwaccel_device") + 1]);
+        Assert.Equal("vaapi", arguments[Array.IndexOf(arguments, "-hwaccel_output_format") + 1]);
+        Assert.True(Array.IndexOf(arguments, "-hwaccel") < Array.IndexOf(arguments, "-i"));
+
+        var filter = arguments[Array.IndexOf(arguments, "-vf") + 1];
+        Assert.StartsWith("fps=30,", filter, StringComparison.Ordinal);
+        Assert.Contains("scale_vaapi=w=320:h=180", filter);
+        Assert.Contains("hwdownload", filter);
+        Assert.EndsWith("format=bgra", filter, StringComparison.Ordinal);
+        Assert.Equal("bgra", arguments[arguments.IndexOf("-pix_fmt") + 1]);
+    }
+
+    [Fact]
+    public void VaapiSdrArgumentsRejectARelativeDevicePath()
+    {
+        Assert.Throws<ArgumentException>(() => FfmpegAnalysisCommandBuilder.BuildVaapiSdrArguments(CreateSource(), TimeSpan.Zero, "renderD128"));
+    }
+
+    [Fact]
+    public void VaapiSdrArgumentsRejectANegativeSeek()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => FfmpegAnalysisCommandBuilder.BuildVaapiSdrArguments(CreateSource(), TimeSpan.FromTicks(-1), "/dev/dri/renderD128"));
+    }
+
     [Theory]
     [InlineData(-1)]
     [InlineData(61)]
