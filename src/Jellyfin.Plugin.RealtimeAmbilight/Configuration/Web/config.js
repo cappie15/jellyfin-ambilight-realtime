@@ -6,6 +6,51 @@ export default function (view) {
         "brightnessPercent", "saturationPercent", "redGainPercent", "greenGainPercent", "blueGainPercent",
         "blackLevelFloorPercent", "wallColourCorrectionPercent", ...sideTuningFields
     ];
+    // The colour-tuning wizard's six primary/secondary anchors (hue shift +
+    // brightness + intensity each) that build HueCorrectionCurve server-side.
+    // Deliberately not wired through byId()/colourTuningFields like the flat
+    // gains above: there is no matching Advanced-tab raw slider for these --
+    // only the wizard's own three-slider-per-colour controls set them -- so
+    // they live in their own small state object instead of needing 18 hidden
+    // DOM inputs just to have somewhere to read a .value from.
+    const hueAnchorColours = ["Red", "Green", "Blue", "Yellow", "Cyan", "Magenta"];
+    const hueAnchorFieldsFor = colour => [`${colour}HueShiftDegrees`, `${colour}BrightnessPercent`, `${colour}IntensityPercent`];
+    const hueAnchorFields = hueAnchorColours.flatMap(hueAnchorFieldsFor);
+    let hueAnchors = {};
+    function resetHueAnchors(source) {
+        hueAnchors = {};
+        hueAnchorColours.forEach(colour => {
+            hueAnchors[`${colour}HueShiftDegrees`] = Number(source?.[`${colour}HueShiftDegrees`] ?? 0);
+            hueAnchors[`${colour}BrightnessPercent`] = Number(source?.[`${colour}BrightnessPercent`] ?? 100);
+            hueAnchors[`${colour}IntensityPercent`] = Number(source?.[`${colour}IntensityPercent`] ?? 100);
+        });
+    }
+    resetHueAnchors(null);
+
+    // Direction each colour's hue-shift slider actually rotates the wheel:
+    // +1 means "positive slider value = toward the next (higher-hue)
+    // neighbour", -1 means "toward the previous (lower-hue) neighbour".
+    // Red/Blue/Yellow/Cyan's second-named descriptor sits at the higher-hue
+    // neighbour; Green's and Magenta's sit at the lower-hue one instead --
+    // this is what makes each pair of labels below correct instead of
+    // swapped, deliberately not the same sign for every colour.
+    const hueStepSpecs = {
+        Red: { lowLabel: "Pinker", highLabel: "Oranger", sign: 1 },
+        Green: { lowLabel: "Bluer", highLabel: "Yellower", sign: -1 },
+        Blue: { lowLabel: "Greener", highLabel: "Pinker", sign: 1 },
+        Yellow: { lowLabel: "Oranger", highLabel: "Greener", sign: 1 },
+        Cyan: { lowLabel: "Greener", highLabel: "Bluer", sign: 1 },
+        Magenta: { lowLabel: "Redder", highLabel: "Bluer", sign: -1 }
+    };
+
+    // Which two anchors each real two-colour finetuning photo actually shows
+    // and should offer sliders for -- mirrors CalibrationWizard.FinetuningColourPairs.
+    const finetuningColourPairs = {
+        "Blue-Green": ["Blue", "Green"],
+        "Orange-Red": ["Red", "Yellow"],
+        "Purple-Teal": ["Blue", "Cyan"],
+        "Yellow-Pink": ["Yellow", "Magenta"]
+    };
     const numericFields = [
         "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond", "stopFadeMilliseconds",
         "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisFramesPerSecond", "samplingDepthPercent",
@@ -207,9 +252,9 @@ export default function (view) {
     }
 
     // Mirrors CalibrationWizard.ColourOrder server-side: 7 tuning steps (white,
-    // then every RGB primary and secondary) followed by confirmation steps.
+    // then every RGB primary and secondary) followed by 4 finetuning steps.
     // Only used as a fallback bound before the server's own StepCount is known.
-    const wizardStepCountFallback = 12;
+    const wizardStepCountFallback = 11;
     const wizardTuningStepCount = 7;
     let wizardStepIndex = 0;
     let wizardPhotoIndex = 0;
@@ -219,64 +264,174 @@ export default function (view) {
     function currentTuningPayload() {
         const tuning = {};
         colourTuningFields.forEach(field => { tuning[fieldKey(field)] = Number(byId(field).value); });
+        hueAnchorFields.forEach(field => { tuning[field] = hueAnchors[field]; });
         return { WallColourHex: byId("wallColourHex").value, Tuning: tuning };
     }
 
-    // Per-step "what matters right now" controls, following ordinary display
-    // calibration convention: a colour-temperature (warm/cool) control for
-    // white balance rather than raw gains, one gain for a primary's own
-    // strength, and a two-primary balance for a secondary -- "more red" at
-    // Magenta and "more/less green" at Yellow are exactly this axis. Every
-    // one of these ultimately just moves the same RedGainPercent /
-    // GreenGainPercent / BlueGainPercent fields the advanced panel shows.
-    const wizardStepControlSpecs = {
-        White: { kind: "balance", a: "redGainPercent", b: "blueGainPercent", label: "Colour temperature", lowLabel: "Cooler", highLabel: "Warmer" },
-        Red: { kind: "single", field: "redGainPercent", label: "Red intensity" },
-        Green: { kind: "single", field: "greenGainPercent", label: "Green intensity" },
-        Blue: { kind: "single", field: "blueGainPercent", label: "Blue intensity" },
-        Yellow: { kind: "balance", a: "redGainPercent", b: "greenGainPercent", label: "Yellow balance", lowLabel: "More green", highLabel: "More red" },
-        Cyan: { kind: "balance", a: "greenGainPercent", b: "blueGainPercent", label: "Cyan balance", lowLabel: "More blue", highLabel: "More green" },
-        Magenta: { kind: "balance", a: "redGainPercent", b: "blueGainPercent", label: "Magenta balance", lowLabel: "More blue", highLabel: "More red" }
-    };
+    // White keeps its original mechanic (a plain red/blue gain push-pull,
+    // now ±60 instead of ±50 -- 20% more range, on request); each of the six
+    // primary/secondary steps instead shows that one colour's own three
+    // anchor sliders (hue/brightness/intensity, see hueStepSpecs); each
+    // finetuning step shows two colours' worth of those same three-slider
+    // groups side by side, refining the same anchors with real-photo context.
+    const wizardWhiteRange = 60;
+
+    function anchorControlHtml(colourName, idPrefix) {
+        const spec = hueStepSpecs[colourName];
+        return `<div style="border-left:3px solid currentColor;padding-left:.8em;margin-bottom:1em">
+            <strong>${colourName}</strong>
+            <div class="inputContainer">
+                <input is="emby-input" id="${idPrefix}Hue" type="range" min="-30" max="30" step="1" label="Hue" />
+                <div class="fieldDescription">${spec.lowLabel} &harr; <strong id="${idPrefix}HueValue"></strong> &harr; ${spec.highLabel}</div>
+            </div>
+            <div class="inputContainer">
+                <input is="emby-input" id="${idPrefix}Brightness" type="range" min="50" max="150" step="1" label="Brightness" />
+                <div class="fieldDescription">Now: <strong id="${idPrefix}BrightnessValue"></strong></div>
+            </div>
+            <div class="inputContainer">
+                <input is="emby-input" id="${idPrefix}Intensity" type="range" min="50" max="150" step="1" label="Intensity" />
+                <div class="fieldDescription">Now: <strong id="${idPrefix}IntensityValue"></strong></div>
+            </div>
+        </div>`;
+    }
+
+    function wireAnchorControl(colourName, idPrefix) {
+        const spec = hueStepSpecs[colourName];
+        const hueField = `${colourName}HueShiftDegrees`;
+        const brightnessField = `${colourName}BrightnessPercent`;
+        const intensityField = `${colourName}IntensityPercent`;
+
+        const hueInput = byId(`${idPrefix}Hue`);
+        const brightnessInput = byId(`${idPrefix}Brightness`);
+        const intensityInput = byId(`${idPrefix}Intensity`);
+
+        // The stored value is the true physical hue-shift direction; the
+        // slider the operator sees always runs low-label..high-label as
+        // worded, which for Green and Magenta is the opposite physical
+        // direction (see hueStepSpecs) -- sign flips it back for display,
+        // and flips it again when reading the slider back out below.
+        hueInput.value = hueAnchors[hueField] * spec.sign;
+        brightnessInput.value = hueAnchors[brightnessField];
+        intensityInput.value = hueAnchors[intensityField];
+
+        const updateHueLabel = () => {
+            const value = Number(hueInput.value);
+            byId(`${idPrefix}HueValue`).textContent = value === 0 ? "centred" : (value > 0 ? `${spec.highLabel} (${value})` : `${spec.lowLabel} (${-value})`);
+        };
+        updateHueLabel();
+        hueInput.addEventListener("input", () => {
+            hueAnchors[hueField] = Number(hueInput.value) * spec.sign;
+            updateHueLabel();
+            retune();
+        });
+
+        const updateBrightnessLabel = () => { byId(`${idPrefix}BrightnessValue`).textContent = `${brightnessInput.value}%`; };
+        updateBrightnessLabel();
+        brightnessInput.addEventListener("input", () => {
+            hueAnchors[brightnessField] = Number(brightnessInput.value);
+            updateBrightnessLabel();
+            retune();
+        });
+
+        const updateIntensityLabel = () => { byId(`${idPrefix}IntensityValue`).textContent = `${intensityInput.value}%`; };
+        updateIntensityLabel();
+        intensityInput.addEventListener("input", () => {
+            hueAnchors[intensityField] = Number(intensityInput.value);
+            updateIntensityLabel();
+            retune();
+        });
+
+        addStepButtons(hueInput);
+        addStepButtons(brightnessInput);
+        addStepButtons(intensityInput);
+    }
 
     function renderStepControls(colourName) {
         const container = byId("wizardStepControls");
-        const spec = wizardStepControlSpecs[colourName];
-        if (!spec) {
-            container.innerHTML = "";
-            return;
-        }
 
-        if (spec.kind === "single") {
-            container.innerHTML = `<div class="inputContainer"><input is="emby-input" id="wizardQuickField" type="range" min="50" max="150" step="1" label="${spec.label}" /><div class="fieldDescription">Now: <strong id="wizardQuickValue"></strong></div></div>`;
+        if (colourName === "White") {
+            container.innerHTML = `<div class="inputContainer"><input is="emby-input" id="wizardQuickField" type="range" min="-${wizardWhiteRange}" max="${wizardWhiteRange}" step="1" label="Colour temperature" /><div class="fieldDescription">Cooler &harr; <strong id="wizardQuickValue"></strong> &harr; Warmer</div></div>`;
             const quick = byId("wizardQuickField");
-            quick.value = byId(spec.field).value;
-            const updateLabel = () => { byId("wizardQuickValue").textContent = `${quick.value}%`; };
-            updateLabel();
-            quick.addEventListener("input", () => {
-                byId(spec.field).value = quick.value;
-                updateLabel();
-                retune();
-            });
-        } else {
-            container.innerHTML = `<div class="inputContainer"><input is="emby-input" id="wizardQuickField" type="range" min="-50" max="50" step="1" label="${spec.label}" /><div class="fieldDescription">${spec.lowLabel} &harr; <strong id="wizardQuickValue"></strong> &harr; ${spec.highLabel}</div></div>`;
-            const quick = byId("wizardQuickField");
-            quick.value = Math.round((Number(byId(spec.a).value) - Number(byId(spec.b).value)) / 2);
+            quick.value = Math.round((Number(byId("redGainPercent").value) - Number(byId("blueGainPercent").value)) / 2);
             const updateLabel = () => {
                 const value = Number(quick.value);
-                byId("wizardQuickValue").textContent = value === 0 ? "centred" : (value > 0 ? `${spec.highLabel} (${value})` : `${spec.lowLabel} (${-value})`);
+                byId("wizardQuickValue").textContent = value === 0 ? "centred" : (value > 0 ? `Warmer (${value})` : `Cooler (${-value})`);
             };
             updateLabel();
             quick.addEventListener("input", () => {
                 const delta = Number(quick.value);
-                byId(spec.a).value = Math.min(150, Math.max(50, 100 + delta));
-                byId(spec.b).value = Math.min(150, Math.max(50, 100 - delta));
+                byId("redGainPercent").value = Math.min(100 + wizardWhiteRange, Math.max(100 - wizardWhiteRange, 100 + delta));
+                byId("blueGainPercent").value = Math.min(100 + wizardWhiteRange, Math.max(100 - wizardWhiteRange, 100 - delta));
                 updateLabel();
                 retune();
             });
+            addStepButtons(quick);
+            return;
         }
 
-        addStepButtons(byId("wizardQuickField"));
+        if (hueStepSpecs[colourName]) {
+            container.innerHTML = anchorControlHtml(colourName, "wizardAnchor");
+            wireAnchorControl(colourName, "wizardAnchor");
+            return;
+        }
+
+        const pair = finetuningColourPairs[colourName];
+        if (pair) {
+            container.innerHTML = pair.map((colour, index) => anchorControlHtml(colour, `wizardAnchor${index}`)).join("");
+            pair.forEach((colour, index) => wireAnchorControl(colour, `wizardAnchor${index}`));
+            return;
+        }
+
+        container.innerHTML = "";
+    }
+
+    // A compact, read-only visualisation of the calibrated curve: the six
+    // anchors plotted on the colour wheel at their own (possibly shifted)
+    // angle, with distance from centre standing in for that anchor's own
+    // brightness multiplier. Viewable any time via "Show my colour
+    // calibration", not only right after finishing the wizard.
+    function renderCurveChart() {
+        const container = byId("wizardCurveChart");
+        if (!container) {
+            return;
+        }
+
+        const size = 260;
+        const center = size / 2;
+        const wheelRadius = 90;
+        const wedgeColours = { Red: "#e6483c", Yellow: "#d6c22e", Green: "#4caf50", Cyan: "#26a69a", Blue: "#4a6fd6", Magenta: "#c04fb0" };
+        const anchorAngle = { Red: 0, Yellow: 60, Green: 120, Cyan: 180, Blue: 240, Magenta: 300 };
+        const toXY = (angleDegrees, radius) => {
+            const rad = ((angleDegrees - 90) * Math.PI) / 180;
+            return [center + (radius * Math.cos(rad)), center + (radius * Math.sin(rad))];
+        };
+
+        let svg = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="max-width:100%;height:auto">`;
+        hueAnchorColours.forEach(colour => {
+            const startAngle = anchorAngle[colour] - 30;
+            const endAngle = anchorAngle[colour] + 30;
+            const [x1, y1] = toXY(startAngle, wheelRadius);
+            const [x2, y2] = toXY(endAngle, wheelRadius);
+            svg += `<path d="M${center},${center} L${x1.toFixed(1)},${y1.toFixed(1)} A${wheelRadius},${wheelRadius} 0 0 1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${wedgeColours[colour]}" opacity="0.2" />`;
+        });
+        hueAnchorColours.forEach(colour => {
+            const hueShift = hueAnchors[`${colour}HueShiftDegrees`] || 0;
+            const brightness = (hueAnchors[`${colour}BrightnessPercent`] ?? 100) / 100;
+            const angle = anchorAngle[colour] + hueShift;
+            const radius = wheelRadius * Math.max(0.35, Math.min(1.3, brightness));
+            const [x, y] = toXY(angle, radius);
+            const [lx, ly] = toXY(anchorAngle[colour], wheelRadius + 24);
+            svg += `<line x1="${center}" y1="${center}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${wedgeColours[colour]}" stroke-width="1.5" opacity="0.55" />`;
+            svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6" fill="${wedgeColours[colour]}" stroke="currentColor" stroke-width="1" />`;
+            svg += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="11" text-anchor="middle" fill="currentColor">${colour}</text>`;
+        });
+        svg += "</svg>";
+        container.innerHTML = svg;
+    }
+
+    function toggleCurveChart() {
+        renderCurveChart();
+        byId("wizardCurveChartContainer").hidden = !byId("wizardCurveChartContainer").hidden;
     }
 
     function describeStatus(state) {
@@ -313,6 +468,10 @@ export default function (view) {
         show("wizardAnotherPhoto", photoCount > 1);
         byId("finishCalibrationWizard").textContent = isLastStep ? "✓ Done — finish calibration" : "Stop & release LEDs";
         byId("calibrationPreviewStatus").textContent = describeStatus(state);
+        if (isLastStep) {
+            renderCurveChart();
+            byId("wizardCurveChartContainer").hidden = false;
+        }
     }
 
     function showWizardStarted(started) {
@@ -697,6 +856,7 @@ export default function (view) {
         return window.ApiClient.getPluginConfiguration(pluginId)
             .then(config => {
                 loadedConfig = config;
+                resetHueAnchors(config);
                 byId("enabled").checked = config.Enabled !== false;
                 byId("holdWhilePaused").checked = config.HoldWhilePaused !== false;
                 byId("ignoreBlackBorders").checked = config.IgnoreBlackBorders !== false;
@@ -791,6 +951,7 @@ export default function (view) {
             HueEndBehaviour: Number(byId("hueEndBehaviour").value)
         };
         numericFields.forEach(field => { config[fieldKey(field)] = Number(byId(field).value); });
+        hueAnchorFields.forEach(field => { config[field] = hueAnchors[field]; });
         if (hostPort) {
             config.WledHttpPort = Number(hostPort);
         }
@@ -1070,6 +1231,7 @@ export default function (view) {
         }
     });
     byId("finishCalibrationWizard").addEventListener("click", finishWizard);
+    byId("showCurveChart").addEventListener("click", toggleCurveChart);
     byId("wallColourPreset").addEventListener("change", () => {
         const value = byId("wallColourPreset").value;
         if (value === "custom") {

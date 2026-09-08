@@ -254,12 +254,23 @@ public sealed class CalibrationController : ControllerBase
         return Content(html, "text/html; charset=utf-8");
     }
 
+    /// <summary>1080p16:9, matching the operator's own curated photos.</summary>
+    private const int SwatchWidth = 1920;
+    private const int SwatchHeight = 1080;
+
+    /// <summary>Rendered swatches are as cheap to keep hot as the real photos are, and there are only six of them.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> SwatchCache = new();
+
     /// <summary>
-    /// Serves one of the operator's own calibration photos, embedded in the
-    /// plugin so there is no external fetch, no attribution and no load time
-    /// beyond what is already on disk. Same-origin also matters mechanically:
-    /// the TV's canvas can only read pixels from a same-origin image. 404
-    /// while no session is armed, like the rest of this anonymous surface.
+    /// Serves either one of the operator's own calibration photos or, for the
+    /// six primary/secondary steps, a rendered flat swatch at that colour's
+    /// canonical hue (see <see cref="CalibrationWizard.SwatchColours"/>) --
+    /// same-origin either way, sampled by the TV page's own canvas exactly
+    /// like a photo would be, so the calibration measures precisely what the
+    /// real edge-sampling pipeline sees. Embedded photos ship in the plugin
+    /// so there is no external fetch, no attribution and no load time beyond
+    /// what is already on disk. 404 while no session is armed, like the rest
+    /// of this anonymous surface.
     /// </summary>
     [AllowAnonymous]
     [HttpGet("Photo/{colour}/{index:int}")]
@@ -268,6 +279,14 @@ public sealed class CalibrationController : ControllerBase
         if (!_outputService.Wizard.IsArmed)
         {
             return NotFound();
+        }
+
+        if (CalibrationWizard.SwatchColours.TryGetValue(colour, out var swatch))
+        {
+            var png = SwatchCache.GetOrAdd(
+                colour,
+                _ => Core.Color.SolidColourImage.CreateFlatPng(swatch.Red, swatch.Green, swatch.Blue, SwatchWidth, SwatchHeight));
+            return File(png, "image/png");
         }
 
         var fileName = CalibrationWizard.PhotoAt(colour, index);
@@ -393,9 +412,16 @@ public sealed class CalibrationController : ControllerBase
     {
         var wizard = _outputService.Wizard;
         var colourName = wizard.ColourName;
+        var isSwatch = CalibrationWizard.SwatchColours.ContainsKey(colourName);
         var photo = CalibrationWizard.PhotoAt(colourName, wizard.PhotoIndex);
-        var photoCount = CalibrationWizard.Photos.TryGetValue(colourName, out var photos) ? photos.Count : 0;
-        var proxiedPhotoUrl = photo is null ? null : $"/RealtimeAmbilight/Calibration/Photo/{colourName}/{wizard.PhotoIndex}";
+        // A swatch always has exactly one "photo" (itself) and nothing to
+        // cycle through -- there is only one canonical hue for a colour.
+        var photoCount = isSwatch
+            ? 1
+            : CalibrationWizard.Photos.TryGetValue(colourName, out var photos) ? photos.Count : 0;
+        var proxiedPhotoUrl = isSwatch || photo is not null
+            ? $"/RealtimeAmbilight/Calibration/Photo/{colourName}/{wizard.PhotoIndex}"
+            : null;
 
         return new CalibrationWizardStateResponse(
             wizard.StepIndex,
@@ -444,7 +470,13 @@ public sealed class CalibrationWizardMoveRequest
             Value("TopBrightnessPercent"), Value("TopRedGainPercent"), Value("TopGreenGainPercent"), Value("TopBlueGainPercent"),
             Value("RightBrightnessPercent"), Value("RightRedGainPercent"), Value("RightGreenGainPercent"), Value("RightBlueGainPercent"),
             Value("BottomBrightnessPercent"), Value("BottomRedGainPercent"), Value("BottomGreenGainPercent"), Value("BottomBlueGainPercent"),
-            Value("LeftBrightnessPercent"), Value("LeftRedGainPercent"), Value("LeftGreenGainPercent"), Value("LeftBlueGainPercent"));
+            Value("LeftBrightnessPercent"), Value("LeftRedGainPercent"), Value("LeftGreenGainPercent"), Value("LeftBlueGainPercent"),
+            Value("RedHueShiftDegrees", 0), Value("RedBrightnessPercent"), Value("RedIntensityPercent"),
+            Value("GreenHueShiftDegrees", 0), Value("GreenBrightnessPercent"), Value("GreenIntensityPercent"),
+            Value("BlueHueShiftDegrees", 0), Value("BlueBrightnessPercent"), Value("BlueIntensityPercent"),
+            Value("YellowHueShiftDegrees", 0), Value("YellowBrightnessPercent"), Value("YellowIntensityPercent"),
+            Value("CyanHueShiftDegrees", 0), Value("CyanBrightnessPercent"), Value("CyanIntensityPercent"),
+            Value("MagentaHueShiftDegrees", 0), Value("MagentaBrightnessPercent"), Value("MagentaIntensityPercent"));
     }
 }
 

@@ -1,20 +1,34 @@
 namespace Jellyfin.Plugin.RealtimeAmbilight;
 
 /// <summary>
-/// The settings page's colour-tuning wizard: a fixed, logical order of steps
-/// and the operator's own curated photography for each. Every step -- White
-/// included -- is a real photo whose own sampled edges drive the LEDs through
-/// the ordinary Ambilight pipeline; there is no synthetic reference colour.
+/// The settings page's colour-tuning wizard: a fixed, logical order of steps.
+/// Every step's edges are sampled through the ordinary Ambilight pipeline,
+/// same as real video -- White from the operator's own photos, the six
+/// primary/secondary steps from a rendered flat-colour swatch (see
+/// <see cref="SwatchColours"/>), and the finetuning steps from the
+/// operator's own two-colour photos.
 /// </summary>
 /// <remarks>
-/// Two phases, one continuous sequence. The first seven ("tuning") cover
-/// white plus every RGB primary and secondary in turn -- red, green, blue,
-/// yellow, cyan, magenta -- one photo each except White, which offers three
-/// to flip between via "try another photo". The remaining ten ("confirmation")
-/// are varied, colour-rich real-world scenes with no single dominant hue,
-/// meant to be walked through at the end so the operator can see the whole
-/// result rather than trusting seven isolated steps to compose correctly;
-/// the sliders stay live throughout both phases.
+/// <para>
+/// Three phases, one continuous sequence. The first ("tuning", White plus
+/// every RGB primary and secondary) builds the six-anchor
+/// <see cref="Core.Color.HueCorrectionCurve"/> from a synthetic swatch at
+/// each colour's own canonical hue -- not a photo, so nothing about the
+/// photo's own white balance or exposure can bias the reading -- while White
+/// keeps its own three real photos, cycled via "try another photo", exactly
+/// as before. The second ("finetuning") walks the same six anchors again
+/// through the operator's real two-colour photos, offering both colours'
+/// sliders together so the anchors can be refined with real-photo context
+/// instead of an isolated swatch, per <see cref="FinetuningColourPairs"/>.
+/// </para>
+/// <para>
+/// <c>s3_finaltest.jpg</c> was dropped rather than kept as a seventh
+/// finetuning step: it is a genuinely multi-hue sunset/mountain scene (pink
+/// sky, blue haze, green ridge) with no clean two-colour pair to attach
+/// sliders to, and every other step here exists specifically to refine one
+/// pair of the six anchors -- a step that cannot name which two would not
+/// have added anything to the calibration itself.
+/// </para>
 /// </remarks>
 public static class CalibrationWizard
 {
@@ -22,32 +36,56 @@ public static class CalibrationWizard
         ["White", "Red", "Green", "Blue", "Yellow", "Cyan", "Magenta"];
 
     /// <summary>
-    /// A deliberately short pass, not all ten originally curated: enough to
-    /// see the whole result in varied, colour-rich real scenes without the
-    /// operator having to click through more confirmation steps than there
-    /// were tuning steps in the first place.
+    /// Two-colour real photos, each refining one specific pair of the six
+    /// anchors built during tuning. Chosen from the operator's own existing
+    /// photo set by what each photo actually, visibly contains -- not by
+    /// filename alone.
     /// </summary>
     public static readonly IReadOnlyList<string> ConfirmationOrder =
-        ["Blue-Green", "Final test", "Orange-Red", "Purple-Teal", "Yellow-Pink"];
+        ["Blue-Green", "Orange-Red", "Purple-Teal", "Yellow-Pink"];
 
     public static readonly IReadOnlyList<string> ColourOrder = [.. TuningOrder, .. ConfirmationOrder];
 
-    /// <summary>Embedded JPEG file names (under <c>Configuration/CalibrationPhotos</c>) for each step.</summary>
+    /// <summary>Embedded JPEG file names (under <c>Configuration/CalibrationPhotos</c>) for each step that uses one.</summary>
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> Photos =
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
             ["White"] = ["s0_whitelevel1.jpg", "s0_whitelevel2.jpg", "s0_whitelevel3.jpg"],
-            ["Red"] = ["s1_red.jpg"],
-            ["Green"] = ["s1_green.jpg"],
-            ["Blue"] = ["s1_blue.jpg"],
-            ["Yellow"] = ["s2_yellow.jpg"],
-            ["Cyan"] = ["s2_cyan.jpg"],
-            ["Magenta"] = ["s2_magenta.jpg"],
             ["Blue-Green"] = ["s3_blue_green.jpg"],
-            ["Final test"] = ["s3_finaltest.jpg"],
             ["Orange-Red"] = ["s3_orange_red.jpg"],
             ["Purple-Teal"] = ["s3_purple_teal.jpg"],
             ["Yellow-Pink"] = ["s4_yellow_pink.jpg"],
+        };
+
+    /// <summary>
+    /// Canonical sRGB byte triple for each swatch step's own hue at full
+    /// saturation and value (red 0°, yellow 60°, green 120°, cyan 180°, blue
+    /// 240°, magenta 300° -- the same six angles <c>HueCorrectionCurve</c>
+    /// anchors on), rendered flat and sampled through the real edge-sampling
+    /// pipeline exactly as a photo would be.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, (byte Red, byte Green, byte Blue)> SwatchColours =
+        new Dictionary<string, (byte, byte, byte)>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Red"] = (255, 0, 0),
+            ["Yellow"] = (255, 255, 0),
+            ["Green"] = (0, 255, 0),
+            ["Cyan"] = (0, 255, 255),
+            ["Blue"] = (0, 0, 255),
+            ["Magenta"] = (255, 0, 255),
+        };
+
+    /// <summary>
+    /// The two anchor colour names each finetuning step's photo actually
+    /// shows and should offer sliders for.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, (string First, string Second)> FinetuningColourPairs =
+        new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Blue-Green"] = ("Blue", "Green"),
+            ["Orange-Red"] = ("Red", "Yellow"),
+            ["Purple-Teal"] = ("Blue", "Cyan"),
+            ["Yellow-Pink"] = ("Yellow", "Magenta"),
         };
 
     public static bool IsConfirmationStep(int stepIndex) => stepIndex >= TuningOrder.Count;

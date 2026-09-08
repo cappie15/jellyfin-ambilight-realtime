@@ -69,6 +69,44 @@ public sealed class PerimeterColourTuningTests
     }
 
     [Fact]
+    public void DefaultTuningBuildsAnIdentityCurve()
+    {
+        var adjustment = PerimeterColourTuning.Default.ToAdjustment();
+
+        Assert.True(adjustment.IsIdentity);
+    }
+
+    [Fact]
+    public void OneAnchorsBrightnessChangeAffectsOnlyThatColourNotTheWholeWheel()
+    {
+        var tuning = PerimeterColourTuning.Default with { RedBrightnessPercent = 60 };
+        var adjustment = tuning.ToAdjustment();
+        var layout = new LedLayout(1, 1, 1, 1);
+
+        var red = adjustment.Apply(new LinearRgb(1f, 0f, 0f), 0, layout);
+        var green = adjustment.Apply(new LinearRgb(0f, 1f, 0f), 0, layout);
+
+        Assert.True(red.Red < 0.9f, $"expected red dimmed by its own anchor, got {red.Red}");
+        Assert.Equal(1f, green.Green, 3);
+    }
+
+    [Fact]
+    public void RedAndBlueGainClampWidensTo40To160PercentForWhiteWhileGreenStaysAt50To150()
+    {
+        var wideRed = PerimeterColourTuning.Default with { RedGainPercent = 160 };
+        var wideBlue = PerimeterColourTuning.Default with { BlueGainPercent = 40 };
+        var narrowGreen = PerimeterColourTuning.Default with { GreenGainPercent = 160 };
+        var layout = new LedLayout(1, 1, 1, 1);
+        var source = new LinearRgb(0.5f, 0.5f, 0.5f);
+
+        Assert.Equal(0.8f, wideRed.ToAdjustment().Apply(source, 0, layout).Red, 3);
+        Assert.Equal(0.2f, wideBlue.ToAdjustment().Apply(source, 0, layout).Blue, 3);
+        // Green's clamp was not part of this round's 20%-wider request and
+        // stays capped at 150%, i.e. a requested 160% clamps down to 150%.
+        Assert.Equal(0.75f, narrowGreen.ToAdjustment().Apply(source, 0, layout).Green, 3);
+    }
+
+    [Fact]
     public void SideTrimOnlyChangesItsOwnPhysicalRun()
     {
         var tuning = PerimeterColourTuning.Default with { RightBlueGainPercent = 125 };

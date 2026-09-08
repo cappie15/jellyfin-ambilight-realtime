@@ -103,15 +103,52 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public int SaturationPercent { get; set; } = 100;
 
     /// <summary>
-    /// Per-channel gains as percentages, used to match the LEDs to the room and
-    /// to the strip's own colour balance. LED white is rarely the same white a
-    /// television shows, and no realtime path in the controller corrects it.
+    /// Per-channel gains as percentages. Used today only by the wizard's
+    /// White step (a red/blue push-pull for colour temperature) and kept for
+    /// backward compatibility with an existing saved configuration; the
+    /// wizard's Red/Green/Blue/Yellow/Cyan/Magenta steps drive the six
+    /// <c>Hue*</c>/<c>...Brightness*</c>/<c>...Intensity*</c> properties
+    /// below instead -- see <see cref="Core.Color.PerimeterColourTuning"/>.
     /// </summary>
     public int RedGainPercent { get; set; } = 100;
 
     public int GreenGainPercent { get; set; } = 100;
 
     public int BlueGainPercent { get; set; } = 100;
+
+    /// <summary>
+    /// The colour-tuning wizard's six primary/secondary anchors: how far to
+    /// rotate that colour's own hue (degrees, clamped to ±30 -- half the 60°
+    /// spacing between anchors, so one colour's correction cannot cross into
+    /// its neighbour's), and that colour's own brightness/intensity
+    /// (saturation) multipliers. All default to the identity (0°, 100%,
+    /// 100%); together they build the <see cref="Core.Color.HueCorrectionCurve"/>
+    /// that is now WLED's general colour correction, applied before
+    /// brightness/saturation/wall-colour/per-side trims, which are unchanged.
+    /// </summary>
+    public int RedHueShiftDegrees { get; set; }
+    public int RedBrightnessPercent { get; set; } = 100;
+    public int RedIntensityPercent { get; set; } = 100;
+
+    public int GreenHueShiftDegrees { get; set; }
+    public int GreenBrightnessPercent { get; set; } = 100;
+    public int GreenIntensityPercent { get; set; } = 100;
+
+    public int BlueHueShiftDegrees { get; set; }
+    public int BlueBrightnessPercent { get; set; } = 100;
+    public int BlueIntensityPercent { get; set; } = 100;
+
+    public int YellowHueShiftDegrees { get; set; }
+    public int YellowBrightnessPercent { get; set; } = 100;
+    public int YellowIntensityPercent { get; set; } = 100;
+
+    public int CyanHueShiftDegrees { get; set; }
+    public int CyanBrightnessPercent { get; set; } = 100;
+    public int CyanIntensityPercent { get; set; } = 100;
+
+    public int MagentaHueShiftDegrees { get; set; }
+    public int MagentaBrightnessPercent { get; set; } = 100;
+    public int MagentaIntensityPercent { get; set; } = 100;
 
     /// <summary>
     /// Below this fraction of picture-edge luminance, a physical LED is driven

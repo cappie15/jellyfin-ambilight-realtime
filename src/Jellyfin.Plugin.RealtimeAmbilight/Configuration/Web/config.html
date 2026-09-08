@@ -177,7 +177,12 @@
                             </div>
                             <div id="calibrationPreviewStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em">Waiting for the TV to open the link above…</div>
                         </div>
+                        <div id="wizardCurveChartContainer" style="margin-top:1em" hidden>
+                            <div class="fieldDescription">Your calibrated colour correction, over the full colour wheel:</div>
+                            <div id="wizardCurveChart"></div>
+                        </div>
                     </div>
+                    <button is="emby-button" type="button" id="showCurveChart" class="raised" style="margin-top:.7em">Show my colour calibration</button>
 
                     <div class="inputContainer" style="margin-top:1.2em">
                         <input is="emby-input" id="brightnessPercent" type="range" min="1" max="100" step="1" label="LED brightness" />

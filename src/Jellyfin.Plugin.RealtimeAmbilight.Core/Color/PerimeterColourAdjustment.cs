@@ -13,7 +13,8 @@ public readonly record struct PerimeterColourAdjustment(
     ColourAdjustment Right,
     ColourAdjustment Bottom,
     ColourAdjustment Left,
-    float BlackLevelFloor = 0f)
+    float BlackLevelFloor = 0f,
+    HueCorrectionCurve? Curve = null)
 {
     public static PerimeterColourAdjustment None => new(
         ColourAdjustment.None,
@@ -21,16 +22,26 @@ public readonly record struct PerimeterColourAdjustment(
         ColourAdjustment.None,
         ColourAdjustment.None,
         ColourAdjustment.None,
-        0f);
+        0f,
+        null);
 
     public bool IsIdentity => Global.IsIdentity && Top.IsIdentity && Right.IsIdentity && Bottom.IsIdentity && Left.IsIdentity
-        && BlackLevelFloor <= 0f;
+        && BlackLevelFloor <= 0f && (Curve is null || Curve.IsIdentity);
 
+    /// <remarks>
+    /// The hue-correction curve (from the colour-tuning wizard's Red/Green/
+    /// Blue/Yellow/Cyan/Magenta steps) runs between the black-level floor and
+    /// the shared per-installation adjustment (brightness/saturation/white
+    /// balance/wall-colour correction), which stays exactly where it always
+    /// was: those remain general multipliers applied around the curve, not
+    /// replaced by it.
+    /// </remarks>
     public LinearRgb Apply(LinearRgb colour, int physicalLedIndex, LedLayout layout)
     {
         ArgumentNullException.ThrowIfNull(layout);
         var gated = BlackLevelFloor > 0f ? ApplyBlackLevelFloor(colour, BlackLevelFloor) : colour;
-        var shared = Global.Apply(gated);
+        var curved = Curve is { IsIdentity: false } curve ? curve.Apply(gated) : gated;
+        var shared = Global.Apply(curved);
         var side = physicalLedIndex < layout.TopLedCount
             ? Top
             : physicalLedIndex < layout.TopLedCount + layout.RightLedCount
