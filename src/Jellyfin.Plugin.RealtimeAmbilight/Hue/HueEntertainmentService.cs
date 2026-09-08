@@ -303,6 +303,27 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                 _snapshot = await CaptureSnapshotAsync(configuration, credentials, selected, sessionId).ConfigureAwait(false);
             }
 
+            // Entertainment streaming changes a light's colour, never its
+            // power state -- a light the snapshot found off would otherwise
+            // stay dark for the whole session regardless of what is streamed
+            // to it. Restoring "off" afterward is already handled by
+            // RestoreAsync from this same snapshot; this is only ever turning
+            // back on what that will turn back off.
+            var offLightIds = ResolveLightIds(selected.Channels)
+                .Where(id => _snapshot?.Lights.FirstOrDefault(l => l.LightId == id)?.On == false)
+                .ToArray();
+            if (offLightIds.Length > 0)
+            {
+                _logger.LogInformation("Hue Entertainment turning on {Count} light(s) that were off before streaming.", offLightIds.Length);
+            }
+
+            foreach (var lightId in offLightIds)
+            {
+                await _lightControl
+                    .TurnOnAsync(configuration.HueBridgeHost, credentials.CertificateThumbprintSha256, credentials.ApplicationKey, lightId, _shutdown.Token)
+                    .ConfigureAwait(false);
+            }
+
             var channel = new HueDtlsChannel(configuration.HueBridgeHost, credentials.ApplicationKey, credentials.ClientKey);
             var connected = await channel.TryConnectAsync(selected.Id, ConnectTimeout, _shutdown.Token).ConfigureAwait(false);
             if (!connected)

@@ -134,6 +134,32 @@ public sealed class PerimeterColourTuningTests
     }
 
     [Fact]
+    public void BrightnessAbove100PercentBoostsAScenePastTheSourcesOwnValue()
+    {
+        // The picture's own pixel value is the ceiling everywhere else in
+        // this pipeline; a physical LED strip next to a bright HDR screen
+        // still reads as dim next to it, so this is the one place an
+        // operator can push already-dim content brighter than the source.
+        var tuning = PerimeterColourTuning.Default with { BrightnessPercent = 150 };
+        var layout = new LedLayout(1, 1, 1, 1);
+
+        var boosted = tuning.ToAdjustment().Apply(new LinearRgb(0.4f, 0.4f, 0.4f), 0, layout);
+
+        Assert.Equal(0.6f, boosted.Red, 3);
+    }
+
+    [Fact]
+    public void SideTrimBrightnessAlsoBoostsAbove100Percent()
+    {
+        var tuning = PerimeterColourTuning.Default with { TopBrightnessPercent = 150 };
+        var layout = new LedLayout(1, 1, 1, 1);
+
+        var boosted = tuning.ToAdjustment().Apply(new LinearRgb(0.4f, 0.4f, 0.4f), 0, layout);
+
+        Assert.Equal(0.6f, boosted.Red, 3);
+    }
+
+    [Fact]
     public void SideTrimOnlyChangesItsOwnPhysicalRun()
     {
         var tuning = PerimeterColourTuning.Default with { RightBlueGainPercent = 125 };

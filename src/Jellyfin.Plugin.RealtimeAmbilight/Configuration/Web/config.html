@@ -185,8 +185,8 @@
                     <button is="emby-button" type="button" id="showCurveChart" class="raised" style="margin-top:.7em">Show my colour calibration</button>
 
                     <div class="inputContainer" style="margin-top:1.2em">
-                        <input is="emby-input" id="brightnessPercent" type="range" min="1" max="100" step="1" label="LED brightness" />
-                        <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. <strong>Default: 100%.</strong></div>
+                        <input is="emby-input" id="brightnessPercent" type="range" min="1" max="200" step="1" label="LED brightness" />
+                        <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. Above 100% pushes already-dim scenes brighter than the source picture -- physical LEDs next to a bright HDR screen otherwise always read as dim. <strong>Default: 100%.</strong></div>
                     </div>
 
                     <div style="margin-top:1em">

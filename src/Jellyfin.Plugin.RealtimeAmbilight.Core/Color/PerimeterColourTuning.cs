@@ -70,7 +70,7 @@ public readonly record struct PerimeterColourTuning(
     {
         var wall = WallColourCorrection.FromHtmlColour(WallColourHex, WallColourCorrectionPercent);
         var global = new ColourAdjustment(
-            Percent(BrightnessPercent, 1, 100),
+            Percent(BrightnessPercent, 1, 200),
             Percent(SaturationPercent, 50, 200),
             // 40-160%, not the 50-150% every other gain here uses: the
             // White step's colour-temperature slider was widened by 20%
@@ -117,7 +117,7 @@ public readonly record struct PerimeterColourTuning(
 
     private static ColourAdjustment Side(int brightness, int red, int green, int blue)
         => new(
-            Percent(brightness, 1, 100),
+            Percent(brightness, 1, 200),
             1f,
             Percent(red, 50, 150),
             Percent(green, 50, 150),

@@ -96,6 +96,20 @@ public sealed class HueLightControl
         }
     }
 
+    /// <summary>
+    /// Turns a light on with no other change to its colour or brightness.
+    /// Entertainment streaming updates a light's colour but never its power
+    /// state -- confirmed against Philips's own Entertainment API guidance
+    /// and live behaviour here: a light that is off when the DTLS stream
+    /// starts stays dark for the whole session no matter what colours are
+    /// sent to it. Called once per session, only for lights the pre-session
+    /// snapshot found off, so <see cref="RestoreAsync"/> turning them back
+    /// off afterward (it already does, from that same snapshot) is undoing
+    /// exactly this and nothing else.
+    /// </summary>
+    public Task TurnOnAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken)
+        => PutAsync(host, certificateThumbprint, applicationKey, lightId, """{"on":{"on":true}}""", cancellationToken);
+
     public Task ApplyWarmWhiteDimAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken)
         => PutAsync(
             host,

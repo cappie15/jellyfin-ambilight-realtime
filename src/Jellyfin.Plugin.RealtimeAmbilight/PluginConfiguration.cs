@@ -89,10 +89,13 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// realtime is enabled on the controller itself.
     /// </summary>
     /// <summary>
-    /// Overall LED brightness as a percentage of the picture's own brightness.
-    /// WLED's realtime path bypasses its master brightness when "force max
-    /// brightness" is enabled, which is its default, so without this an
-    /// installation has no way to dim the Ambilight on its own.
+    /// Overall LED brightness as a percentage of the picture's own brightness,
+    /// 1-200. WLED's realtime path bypasses its master brightness when "force
+    /// max brightness" is enabled, which is its default, so without this an
+    /// installation has no way to dim the Ambilight on its own. Above 100%
+    /// boosts it past the source picture's own value -- physical LEDs next to
+    /// a bright HDR screen otherwise always read as dim, since nothing else
+    /// in the pipeline can push a pixel brighter than it already is.
     /// </summary>
     public int BrightnessPercent { get; set; } = 100;
 
