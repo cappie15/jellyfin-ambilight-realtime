@@ -51,18 +51,38 @@ public sealed class HueLightControl
 
             var light = data[0];
             var on = light.TryGetProperty("on", out var onElement) && onElement.TryGetProperty("on", out var onValue) && onValue.ValueKind == JsonValueKind.True;
-            double? brightness = light.TryGetProperty("dimming", out var dimming) && dimming.TryGetProperty("brightness", out var brightnessValue) && brightnessValue.TryGetDouble(out var parsedBrightness)
+            // CLIP v2 legitimately reports several of these as JSON null --
+            // color_temperature.mirek is null whenever the light is not
+            // currently in colour-temperature mode (it is in xy mode
+            // instead), for example. JsonElement.TryGetDouble/TryGetInt32
+            // throw InvalidOperationException on a Null-kind element rather
+            // than returning false, unlike TryGetProperty's own existence
+            // check -- confirmed live, this crashed every single connect
+            // attempt once a light's state could actually be read at all
+            // (previously masked by the wrong-light-id 404 bug never letting
+            // this code run this far). Every numeric read here must check
+            // ValueKind first.
+            double? brightness = light.TryGetProperty("dimming", out var dimming)
+                && dimming.TryGetProperty("brightness", out var brightnessValue)
+                && brightnessValue.ValueKind == JsonValueKind.Number
+                && brightnessValue.TryGetDouble(out var parsedBrightness)
                 ? parsedBrightness
                 : null;
             var colorMode = light.TryGetProperty("color_mode", out var modeElement) && modeElement.ValueKind == JsonValueKind.String
                 ? modeElement.GetString()
                 : null;
-            (double X, double Y)? xy = light.TryGetProperty("color", out var color) && color.TryGetProperty("xy", out var xyElement)
-                && xyElement.TryGetProperty("x", out var xValue) && xyElement.TryGetProperty("y", out var yValue)
+            (double X, double Y)? xy = light.TryGetProperty("color", out var color)
+                && color.TryGetProperty("xy", out var xyElement)
+                && xyElement.ValueKind == JsonValueKind.Object
+                && xyElement.TryGetProperty("x", out var xValue) && xValue.ValueKind == JsonValueKind.Number
+                && xyElement.TryGetProperty("y", out var yValue) && yValue.ValueKind == JsonValueKind.Number
                 && xValue.TryGetDouble(out var x) && yValue.TryGetDouble(out var y)
                 ? (x, y)
                 : null;
-            int? mirek = light.TryGetProperty("color_temperature", out var ct) && ct.TryGetProperty("mirek", out var mirekValue) && mirekValue.TryGetInt32(out var parsedMirek)
+            int? mirek = light.TryGetProperty("color_temperature", out var ct)
+                && ct.TryGetProperty("mirek", out var mirekValue)
+                && mirekValue.ValueKind == JsonValueKind.Number
+                && mirekValue.TryGetInt32(out var parsedMirek)
                 ? parsedMirek
                 : null;
 

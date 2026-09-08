@@ -101,11 +101,19 @@ public readonly record struct PerimeterColourTuning(
             Anchor(BlueHueShiftDegrees, BlueBrightnessPercent, BlueIntensityPercent),
             Anchor(MagentaHueShiftDegrees, MagentaBrightnessPercent, MagentaIntensityPercent));
 
+    /// <summary>
+    /// Hue-shift clamped to +-21 degrees (70% of the previous +-30, per the
+    /// operator's own hands-on finding: the extreme +-30 was never actually
+    /// the correct colour, only ever too far off). Brightness/intensity
+    /// clamped to 50-100%: a boost above the calibration photo's own value
+    /// was never meaningful ("de uiterste waarden kunnen nooit de correcte
+    /// kleur zijn"), only dimming down from it is.
+    /// </summary>
     private static HueAnchor Anchor(int hueShiftDegrees, int brightnessPercent, int intensityPercent)
         => new(
-            Math.Clamp(hueShiftDegrees, -30, 30),
-            Percent(brightnessPercent, 50, 150),
-            Percent(intensityPercent, 50, 150));
+            Math.Clamp(hueShiftDegrees, -21, 21),
+            Percent(brightnessPercent, 50, 100),
+            Percent(intensityPercent, 50, 100));
 
     private static ColourAdjustment Side(int brightness, int red, int green, int blue)
         => new(

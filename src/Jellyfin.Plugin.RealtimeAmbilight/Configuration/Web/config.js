@@ -281,15 +281,15 @@ export default function (view) {
         return `<div style="border-left:3px solid currentColor;padding-left:.8em;margin-bottom:1em">
             <strong>${colourName}</strong>
             <div class="inputContainer">
-                <input is="emby-input" id="${idPrefix}Hue" type="range" min="-30" max="30" step="1" label="Hue" />
+                <input is="emby-input" id="${idPrefix}Hue" type="range" min="-21" max="21" step="1" label="Hue" />
                 <div class="fieldDescription">${spec.lowLabel} &harr; <strong id="${idPrefix}HueValue"></strong> &harr; ${spec.highLabel}</div>
             </div>
             <div class="inputContainer">
-                <input is="emby-input" id="${idPrefix}Brightness" type="range" min="50" max="150" step="1" label="Brightness" />
+                <input is="emby-input" id="${idPrefix}Brightness" type="range" min="50" max="100" step="1" label="Brightness" />
                 <div class="fieldDescription">Now: <strong id="${idPrefix}BrightnessValue"></strong></div>
             </div>
             <div class="inputContainer">
-                <input is="emby-input" id="${idPrefix}Intensity" type="range" min="50" max="150" step="1" label="Intensity" />
+                <input is="emby-input" id="${idPrefix}Intensity" type="range" min="50" max="100" step="1" label="Intensity" />
                 <div class="fieldDescription">Now: <strong id="${idPrefix}IntensityValue"></strong></div>
             </div>
         </div>`;
