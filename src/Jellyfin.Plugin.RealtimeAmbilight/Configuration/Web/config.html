@@ -4,6 +4,36 @@
         #realtimeAmbilightConfigurationPage .raTab { padding: .6em 1.3em; border-radius: 1.7em; border: 1px solid rgba(127, 127, 127, .5); background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
         #realtimeAmbilightConfigurationPage .raTab[aria-selected="true"] { background: rgba(127, 127, 127, .22); border-color: currentColor; }
         #realtimeAmbilightConfigurationPage .raTabPanel[hidden] { display: none; }
+
+        /* ---- overview cards ---- */
+        #realtimeAmbilightConfigurationPage .raOverviewGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15em, 1fr)); gap: 1em; margin: 0 0 1.6em; }
+        #realtimeAmbilightConfigurationPage .raCard { text-align: left; border: 1px solid rgba(127, 127, 127, .35); border-radius: .9em; padding: 1.1em 1.2em; background: rgba(127, 127, 127, .05); cursor: pointer; font: inherit; color: inherit; display: flex; flex-direction: column; gap: .5em; }
+        #realtimeAmbilightConfigurationPage .raCard:hover, #realtimeAmbilightConfigurationPage .raCard:focus-visible { border-color: currentColor; background: rgba(127, 127, 127, .12); }
+        #realtimeAmbilightConfigurationPage .raCardTitle { font-weight: 700; font-size: 1.05em; display: flex; align-items: center; justify-content: space-between; gap: .6em; }
+        #realtimeAmbilightConfigurationPage .raCardMeta { font-size: .85em; opacity: .8; }
+        #realtimeAmbilightConfigurationPage .raPill { display: inline-flex; align-items: center; gap: .4em; padding: .2em .65em; border-radius: 999px; font-size: .75em; font-weight: 700; white-space: nowrap; border: 1px solid currentColor; }
+        #realtimeAmbilightConfigurationPage .raPill.raOn { color: #2fae4e; }
+        #realtimeAmbilightConfigurationPage .raPill.raOff { color: #9a9a9a; }
+        #realtimeAmbilightConfigurationPage .raPill.raWarn { color: #d18e1c; }
+        #realtimeAmbilightConfigurationPage .raBackLink { display: inline-flex; align-items: center; gap: .4em; background: none; border: none; cursor: pointer; color: inherit; opacity: .8; font: inherit; padding: .3em 0; margin-bottom: .6em; }
+        #realtimeAmbilightConfigurationPage .raBackLink:hover { opacity: 1; }
+
+        /* ---- per-section summary / edit toggle ---- */
+        #realtimeAmbilightConfigurationPage .raSummary[hidden], #realtimeAmbilightConfigurationPage .raEdit[hidden] { display: none; }
+        #realtimeAmbilightConfigurationPage .raSummary { border: 1px solid rgba(127, 127, 127, .35); border-radius: .7em; padding: 1em 1.2em; margin-bottom: 1.3em; }
+        #realtimeAmbilightConfigurationPage .raSummaryRow { display: flex; justify-content: space-between; gap: 1.5em; padding: .35em 0; border-top: 1px solid rgba(127, 127, 127, .18); font-size: .92em; }
+        #realtimeAmbilightConfigurationPage .raSummaryRow:first-child { border-top: none; padding-top: 0; }
+        #realtimeAmbilightConfigurationPage .raSummaryRow .raK { opacity: .75; }
+        #realtimeAmbilightConfigurationPage .raSummaryRow .raV { font-weight: 600; text-align: right; }
+        #realtimeAmbilightConfigurationPage .raEditToggle { margin-top: .8em; }
+
+        /* ---- FPS chain ---- */
+        #realtimeAmbilightConfigurationPage .raFpsChain { display: flex; align-items: center; gap: .5em; flex-wrap: wrap; font-size: .88em; margin: .6em 0; }
+        #realtimeAmbilightConfigurationPage .raFpsStage { border: 1px solid rgba(127, 127, 127, .35); border-radius: .6em; padding: .5em .8em; min-width: 8em; }
+        #realtimeAmbilightConfigurationPage .raFpsStage .raFpsLabel { opacity: .7; font-size: .85em; }
+        #realtimeAmbilightConfigurationPage .raFpsStage .raFpsValue { font-weight: 700; font-size: 1.1em; }
+        #realtimeAmbilightConfigurationPage .raFpsArrow { opacity: .5; }
+        #realtimeAmbilightConfigurationPage .raOverviewGrid[hidden] { display: none; }
     </style>
     <div class="content-primary">
         <div class="verticalSection">
@@ -11,7 +41,30 @@
             <p>Matches WLED to the picture while Jellyfin plays. WLED regains control when playback ends.</p>
         </div>
 
-        <div class="raTabBar" id="raTabBar" role="tablist">
+        <div class="raOverviewGrid" id="raOverviewGrid">
+            <button type="button" class="raCard" data-open-tab="tv">
+                <div class="raCardTitle"><span>TV</span><span class="raPill" id="raCardTvPill">&nbsp;</span></div>
+                <div class="raCardMeta" id="raCardTvMeta">&nbsp;</div>
+            </button>
+            <button type="button" class="raCard" data-open-tab="wled">
+                <div class="raCardTitle"><span>WLED</span><span class="raPill" id="raCardWledPill">&nbsp;</span></div>
+                <div class="raCardMeta" id="raCardWledMeta">&nbsp;</div>
+            </button>
+            <button type="button" class="raCard" data-open-tab="ambilight">
+                <div class="raCardTitle"><span>Ambilight</span><span class="raPill" id="raCardAmbilightPill">&nbsp;</span></div>
+                <div class="raCardMeta" id="raCardAmbilightMeta">&nbsp;</div>
+            </button>
+            <button type="button" class="raCard" data-open-tab="advanced">
+                <div class="raCardTitle"><span>Advanced</span></div>
+                <div class="raCardMeta" id="raCardAdvancedMeta">&nbsp;</div>
+            </button>
+            <button type="button" class="raCard" data-open-tab="hue">
+                <div class="raCardTitle"><span>Hue</span><span class="raPill" id="raCardHuePill">&nbsp;</span></div>
+                <div class="raCardMeta" id="raCardHueMeta">&nbsp;</div>
+            </button>
+        </div>
+
+        <div class="raTabBar" id="raTabBar" role="tablist" hidden>
             <button type="button" class="raTab" data-tab="tv" role="tab">TV</button>
             <button type="button" class="raTab" data-tab="wled" role="tab">WLED</button>
             <button type="button" class="raTab" data-tab="ambilight" role="tab">Ambilight</button>
@@ -21,7 +74,14 @@
 
         <form id="realtimeAmbilightConfigurationForm">
 
-            <div class="raTabPanel" data-tab-panel="tv">
+            <div class="raTabPanel" data-tab-panel="tv" hidden>
+                <button type="button" class="raBackLink" data-open-overview="1">&#9664; Overview</button>
+                <div class="raSummary" id="tvSummary">
+                    <div class="raSummaryRow"><span class="raK">Playback device</span><span class="raV" id="tvSummaryDevice">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Ambilight</span><span class="raV" id="tvSummaryEnabled">&nbsp;</span></div>
+                    <button type="button" class="raised raEditToggle" data-edit-toggle="tv">Edit</button>
+                </div>
+                <div class="raEdit" id="tvEdit" hidden>
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Which TV do these LEDs belong to?</h3>
                     <div class="selectContainer">
@@ -40,9 +100,26 @@
                     </label>
                     <div class="fieldDescription">Turns output off without losing settings. <strong>Default: on.</strong></div>
                 </div>
+                </div>
             </div>
 
             <div class="raTabPanel" data-tab-panel="wled" hidden>
+                <button type="button" class="raBackLink" data-open-overview="1">&#9664; Overview</button>
+                <div class="raSummary" id="wledSummary">
+                    <div class="raSummaryRow"><span class="raK">Controller</span><span class="raV" id="wledSummaryHost">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">LEDs around the TV</span><span class="raV" id="wledSummaryLeds">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">White signal (RGBW)</span><span class="raV" id="wledSummaryRgbw">&nbsp;</span></div>
+                    <div class="raFpsChain" id="wledFpsChain">
+                        <div class="raFpsStage"><div class="raFpsLabel">Analysis decode</div><div class="raFpsValue" id="fpsAnalyse">–</div></div>
+                        <span class="raFpsArrow">&#8594;</span>
+                        <div class="raFpsStage"><div class="raFpsLabel">Sampling</div><div class="raFpsValue" id="fpsSample">–</div></div>
+                        <span class="raFpsArrow">&#8594;</span>
+                        <div class="raFpsStage"><div class="raFpsLabel">Sent to WLED</div><div class="raFpsValue" id="fpsWled">–</div></div>
+                    </div>
+                    <div class="fieldDescription" id="fpsHint">Live only while something is playing on the bound device.</div>
+                    <button type="button" class="raised raEditToggle" data-edit-toggle="wled">Edit</button>
+                </div>
+                <div class="raEdit" id="wledEdit" hidden>
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Which WLED controller?</h3>
                     <p class="fieldDescription">Finds WLED controllers on your network.</p>
@@ -66,6 +143,15 @@
                     <div id="wledFinderStatus" class="fieldDescription" aria-live="polite"></div>
                     <div id="wledLiveStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em"></div>
                     <div id="wledAblStatus" class="fieldDescription"></div>
+                    <div id="wledFpsCapStatus" class="fieldDescription"></div>
+                    <div id="wledTimeoutStatus" class="fieldDescription"></div>
+                    <div id="wledRgbwModeWarning" class="fieldDescription" style="display:none;border-left:3px solid currentColor;padding-left:.8em;margin-top:1em">
+                        <strong>WLED's RGBW mode is not Manual.</strong> This plugin already computes the white channel itself; WLED deriving or subtracting its own white value on top double-processes it and breaks the white channel this plugin sends.
+                        <div style="margin-top:.6em">
+                            <button is="emby-button" type="button" id="fixRgbwMode" class="raised">Set to Manual in WLED</button>
+                            <span id="fixRgbwModeStatus" class="fieldDescription" aria-live="polite"></span>
+                        </div>
+                    </div>
                     <button is="emby-button" type="button" id="refreshWledStatus" class="raised">Refresh controller status</button>
                 </div>
 
@@ -156,9 +242,18 @@
                     </div>
                     </details>
                 </div>
+                </div>
             </div>
 
             <div class="raTabPanel" data-tab-panel="ambilight" hidden>
+                <button type="button" class="raBackLink" data-open-overview="1">&#9664; Overview</button>
+                <div class="raSummary" id="ambilightSummary">
+                    <div class="raSummaryRow"><span class="raK">Calibration</span><span class="raV" id="ambilightSummaryCalibrated">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Brightness</span><span class="raV" id="ambilightSummaryBrightness">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Colour intensity</span><span class="raV" id="ambilightSummarySaturation">&nbsp;</span></div>
+                    <button type="button" class="raised raEditToggle" data-edit-toggle="ambilight">Edit</button>
+                </div>
+                <div class="raEdit" id="ambilightEdit" hidden>
                 <div class="verticalSection" id="calibrationSection">
                     <h3 class="sectionTitle">Color calibration</h3>
                     <p class="fieldDescription">Start with the picture as recorded, then adjust only what this room needs. One continuous strip usually runs the whole way round the TV, so the wizard below tunes all four sides together, not one at a time.</p>
@@ -253,9 +348,17 @@
                     </details>
                     </div>
                 </div>
+                </div>
             </div>
 
             <div class="raTabPanel" data-tab-panel="advanced" hidden>
+                <button type="button" class="raBackLink" data-open-overview="1">&#9664; Overview</button>
+                <div class="raSummary" id="advancedSummary">
+                    <div class="raSummaryRow"><span class="raK">Sampling</span><span class="raV" id="advancedSummarySampling">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Smoothing</span><span class="raV" id="advancedSummarySmoothing">&nbsp;</span></div>
+                    <button type="button" class="raised raEditToggle" data-edit-toggle="advanced">Edit</button>
+                </div>
+                <div class="raEdit" id="advancedEdit" hidden>
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Keeping the picture and the LEDs in step</h3>
 
@@ -355,9 +458,18 @@
                     </label>
                     <div class="fieldDescription">Prevents wide-screen black bars from turning the LEDs off. <strong>Default: on.</strong></div>
                 </div>
+                </div>
             </div>
 
             <div class="raTabPanel" data-tab-panel="hue" hidden>
+                <button type="button" class="raBackLink" data-open-overview="1">&#9664; Overview</button>
+                <div class="raSummary" id="hueSummary">
+                    <div class="raSummaryRow"><span class="raK">Bridge</span><span class="raV" id="hueSummaryBridge">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Entertainment area</span><span class="raV" id="hueSummaryArea">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Brightness / response</span><span class="raV" id="hueSummaryTuning">&nbsp;</span></div>
+                    <button type="button" class="raised raEditToggle" data-edit-toggle="hue">Edit</button>
+                </div>
+                <div class="raEdit" id="hueEdit" hidden>
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Philips Hue Entertainment (optional)</h3>
                     <p class="fieldDescription">
@@ -425,6 +537,7 @@
                         <span>Enable Hue Entertainment</span>
                     </label>
                     <div class="fieldDescription">Starts automatically when the bound TV plays, same as WLED. <strong>Default: off.</strong> Saved together with the rest of this page -- use the <strong>Save</strong> button at the very bottom.</div>
+                </div>
                 </div>
             </div>
 

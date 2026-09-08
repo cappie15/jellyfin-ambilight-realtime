@@ -132,6 +132,15 @@ export default function (view) {
         }).join("");
     }
 
+    // Card overview is the landing page; opening a card reveals that one
+    // section (a "detail view"), each showing a read-only summary of what
+    // is already configured by default, with an "Edit" button that reveals
+    // the actual controls -- already pre-filled with the current values,
+    // since nothing in the edit markup is ever cleared or rebuilt when
+    // toggled, only shown or hidden. A section with nothing configured yet
+    // opens straight into Edit instead (see each summarise* function).
+    const sectionSummarisers = {};
+
     function switchTab(tab) {
         view.querySelectorAll(".raTab").forEach(button => {
             button.setAttribute("aria-selected", String(button.dataset.tab === tab));
@@ -139,23 +148,121 @@ export default function (view) {
         view.querySelectorAll(".raTabPanel").forEach(panel => {
             panel.hidden = panel.dataset.tabPanel !== tab;
         });
-        try {
-            window.localStorage.setItem("realtimeAmbilight.activeTab", tab);
-        } catch {
-            // Private browsing or disabled storage: the tab still switches, it
-            // just will not be remembered for next time.
-        }
+        byId("raOverviewGrid").hidden = true;
+        sectionSummarisers[tab]?.();
+        window.scrollTo({ top: 0, behavior: "instant" });
     }
 
-    function restoreLastTab() {
-        let saved = null;
-        try {
-            saved = window.localStorage.getItem("realtimeAmbilight.activeTab");
-        } catch {
-            saved = null;
-        }
-        const valid = [...view.querySelectorAll(".raTab")].some(button => button.dataset.tab === saved);
-        switchTab(valid ? saved : "tv");
+    function showOverview() {
+        view.querySelectorAll(".raTabPanel").forEach(panel => { panel.hidden = true; });
+        byId("raOverviewGrid").hidden = false;
+        window.scrollTo({ top: 0, behavior: "instant" });
+    }
+
+    function showSectionSummary(section) {
+        show(`${section}Summary`, true);
+        show(`${section}Edit`, false);
+    }
+
+    function showSectionEdit(section) {
+        show(`${section}Summary`, false);
+        show(`${section}Edit`, true);
+    }
+
+    function isAmbilightCalibrated() {
+        return hueAnchorColours.some(colour => hueAnchors[`${colour}HueShiftDegrees`] !== 0)
+            || Number(byId("brightnessPercent").value) !== 100;
+    }
+
+    sectionSummarisers.tv = function summariseTv() {
+        const deviceLabel = targetDeviceName() || byId("targetDeviceId").selectedOptions[0]?.textContent || "";
+        byId("tvSummaryDevice").textContent = deviceLabel || "No device bound yet";
+        byId("tvSummaryEnabled").textContent = byId("enabled").checked ? "On" : "Off";
+        byId("targetDeviceId").value ? showSectionSummary("tv") : showSectionEdit("tv");
+    };
+
+    sectionSummarisers.wled = function summariseWled() {
+        const host = byId("wledHost").value.trim() || loadedConfig?.WledHost || "";
+        byId("wledSummaryHost").textContent = host || "Not set up yet";
+        const counts = ledCountFields.map(field => Number(byId(field).value) || 0);
+        byId("wledSummaryLeds").textContent = `${counts.reduce((a, b) => a + b, 0)} (${counts.join("/")})`;
+        byId("wledSummaryRgbw").textContent = byId("sendWhiteChannel").checked
+            ? `On, strength ${byId("whiteChannelStrengthPercent").value}%`
+            : "Off";
+        host ? showSectionSummary("wled") : showSectionEdit("wled");
+        refreshFpsChain();
+    };
+
+    sectionSummarisers.ambilight = function summariseAmbilight() {
+        const calibrated = isAmbilightCalibrated();
+        byId("ambilightSummaryCalibrated").textContent = calibrated ? "Calibrated" : "Using the picture as recorded";
+        byId("ambilightSummaryBrightness").textContent = `${byId("brightnessPercent").value}%`;
+        byId("ambilightSummarySaturation").textContent = `${byId("saturationPercent").value}%`;
+        calibrated ? showSectionSummary("ambilight") : showSectionEdit("ambilight");
+    };
+
+    sectionSummarisers.advanced = function summariseAdvanced() {
+        byId("advancedSummarySampling").textContent = `${byId("analysisWidth").value}×${analysisHeight()} @ ${byId("analysisFramesPerSecond").value} fps`;
+        const smoothingMs = Number(byId("wledSmoothingMilliseconds").value) || 0;
+        byId("advancedSummarySmoothing").textContent = smoothingMs === 0 ? "Off (fully reactive)" : `${smoothingMs} ms`;
+        showSectionSummary("advanced");
+    };
+
+    sectionSummarisers.hue = function summariseHue() {
+        const bridgeHost = loadedConfig?.HueBridgeHost || "";
+        byId("hueSummaryBridge").textContent = bridgeHost || "Not paired yet";
+        byId("hueSummaryArea").textContent = byId("hueEntertainmentConfig").selectedOptions[0]?.textContent
+            || loadedConfig?.HueEntertainmentConfigurationName
+            || "Not selected";
+        byId("hueSummaryTuning").textContent = `${byId("hueBrightnessPercent").value}% brightness, response ${byId("hueResponsePercent").value}`;
+        bridgeHost && byId("hueEnabled").checked ? showSectionSummary("hue") : showSectionEdit("hue");
+    };
+
+    // Cheap: reads three already-maintained counters, no measuring work of
+    // its own on the server. Polled at a modest interval regardless of
+    // which section is open, so the overview card's own pill/meta text
+    // stays current without needing its own separate refresh path.
+    function refreshFpsChain() {
+        return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Performance"))
+            .then(perf => {
+                const analyse = perf?.AnalyseFps ?? perf?.analyseFps;
+                const sample = perf?.SampleFps ?? perf?.sampleFps;
+                const wled = perf?.WledRenderFps ?? perf?.wledRenderFps;
+                const format = value => value === null || value === undefined ? "–" : `${Number(value).toFixed(1)}`;
+                byId("fpsAnalyse").textContent = format(analyse);
+                byId("fpsSample").textContent = format(sample);
+                byId("fpsWled").textContent = format(wled);
+                byId("fpsHint").textContent = analyse === null || analyse === undefined
+                    ? "Live only while something is playing on the bound device."
+                    : "";
+            })
+            .catch(() => {});
+    }
+
+    function refreshOverviewCards() {
+        const enabled = byId("enabled").checked;
+        byId("raCardTvPill").textContent = enabled ? "On" : "Off";
+        byId("raCardTvPill").className = `raPill ${enabled ? "raOn" : "raOff"}`;
+        byId("raCardTvMeta").textContent = targetDeviceName() || byId("targetDeviceId").selectedOptions[0]?.textContent || "No device bound yet";
+
+        const wledHost = byId("wledHost").value.trim() || loadedConfig?.WledHost || "";
+        byId("raCardWledPill").textContent = wledHost ? "Set up" : "Not set up";
+        byId("raCardWledPill").className = `raPill ${wledHost ? "raOn" : "raOff"}`;
+        byId("raCardWledMeta").textContent = wledHost || "Scan or enter a controller address";
+
+        const calibrated = isAmbilightCalibrated();
+        byId("raCardAmbilightPill").textContent = calibrated ? "Calibrated" : "Default";
+        byId("raCardAmbilightPill").className = `raPill ${calibrated ? "raOn" : "raOff"}`;
+        byId("raCardAmbilightMeta").textContent = calibrated ? "Custom colour calibration" : "Using the picture as recorded";
+
+        byId("raCardAdvancedMeta").textContent = `${byId("analysisWidth").value}×${analysisHeight()} sampling`;
+
+        const hueEnabled = byId("hueEnabled").checked;
+        byId("raCardHuePill").textContent = hueEnabled ? "On" : "Off";
+        byId("raCardHuePill").className = `raPill ${hueEnabled ? "raOn" : "raOff"}`;
+        byId("raCardHueMeta").textContent = hueEnabled
+            ? (loadedConfig?.HueEntertainmentConfigurationName || "Paired")
+            : "Off";
     }
 
     function populateWallColourPresets() {
@@ -772,8 +879,13 @@ export default function (view) {
     function checkControllerSettings() {
         const connection = currentWledConnection();
         const abl = byId("wledAblStatus");
+        const fpsCap = byId("wledFpsCapStatus");
+        const timeoutStatus = byId("wledTimeoutStatus");
         if (!connection) {
             abl.textContent = "";
+            fpsCap.textContent = "";
+            timeoutStatus.textContent = "";
+            show("wledRgbwModeWarning", false);
             return Promise.resolve();
         }
 
@@ -790,12 +902,57 @@ export default function (view) {
                 // off) always wins on every later load.
                 const hasWhiteChannel = Boolean(settings && (settings.HasWhiteChannelHardware ?? settings.hasWhiteChannelHardware));
                 show("rgbwSuggestion", hasWhiteChannel && !byId("sendWhiteChannel").checked);
+
+                const ledFps = settings?.LedFramesPerSecond ?? settings?.ledFramesPerSecond;
+                const outputFps = Number(byId("outputFramesPerSecond").value) || 30;
+                fpsCap.textContent = ledFps
+                    ? outputFps > ledFps
+                        ? `WLED's own refresh cap: ${ledFps} fps — lower than the ${outputFps} fps this plugin is sending; raising "LED updates per second" further will not help.`
+                        : `WLED's own refresh cap: ${ledFps} fps.`
+                    : "";
+
+                const timeoutMs = settings?.RealtimeTimeoutMilliseconds ?? settings?.realtimeTimeoutMilliseconds;
+                timeoutStatus.textContent = timeoutMs
+                    ? `WLED reclaims the strip after ${(timeoutMs / 1000).toFixed(1)} s without new data.`
+                    : "";
+
+                const rgbwMisconfigured = Boolean(settings && (settings.RgbwModeIsMisconfigured ?? settings.rgbwModeIsMisconfigured));
+                show("wledRgbwModeWarning", rgbwMisconfigured);
             })
             .catch(() => {
                 show("maxBrightnessWarning", false);
                 show("rgbwSuggestion", false);
+                show("wledRgbwModeWarning", false);
                 abl.textContent = "";
+                fpsCap.textContent = "";
+                timeoutStatus.textContent = "";
             });
+    }
+
+    function fixRgbwMode() {
+        const connection = currentWledConnection();
+        const status = byId("fixRgbwModeStatus");
+        if (!connection) {
+            return Promise.resolve();
+        }
+
+        byId("fixRgbwMode").disabled = true;
+        status.textContent = "Setting to Manual…";
+        return window.ApiClient.ajax({
+            type: "POST",
+            url: window.ApiClient.getUrl("RealtimeAmbilight/Discovery/FixRgbwMode", connection)
+        }).then(() => {
+            status.textContent = "Done. Checking WLED again…";
+            return checkControllerSettings();
+        }).then(() => {
+            status.textContent = byId("wledRgbwModeWarning").style.display !== "none"
+                ? "WLED still reports a different mode; you may need to change it in WLED directly."
+                : "Fixed.";
+        }).catch(error => {
+            status.textContent = error?.status === 403
+                ? "Turn on \"Allow this plugin to fix WLED settings\" above, save, and try again."
+                : (error?.responseText || "WLED did not accept the change.");
+        }).finally(() => { byId("fixRgbwMode").disabled = false; });
     }
 
     function fixForceMaxBrightness() {
@@ -929,6 +1086,10 @@ export default function (view) {
                 // paired, or the saved selection has nothing to bind to.
                 loadHueStatus().then(paired => paired ? refreshHueEntertainmentConfigs() : null)
             ]))
+            .then(() => {
+                refreshOverviewCards();
+                showOverview();
+            })
             .finally(() => Dashboard.hideLoadingMsg());
     }
 
@@ -980,6 +1141,7 @@ export default function (view) {
         window.ApiClient.updatePluginConfiguration(pluginId, config)
             .then(result => {
                 loadedConfig = config;
+                refreshOverviewCards();
                 return Dashboard.processPluginConfigurationUpdateResult(result);
             })
             .finally(() => Dashboard.hideLoadingMsg());
@@ -1213,8 +1375,11 @@ export default function (view) {
     createSideTuningCards();
     addRangeScales();
     addStepButtonsToSection();
-    restoreLastTab();
     view.querySelectorAll(".raTab").forEach(button => button.addEventListener("click", () => switchTab(button.dataset.tab)));
+    view.querySelectorAll("[data-open-tab]").forEach(card => card.addEventListener("click", () => switchTab(card.dataset.openTab)));
+    view.querySelectorAll("[data-open-overview]").forEach(link => link.addEventListener("click", showOverview));
+    view.querySelectorAll("[data-edit-toggle]").forEach(button => button.addEventListener("click", () => showSectionEdit(button.dataset.editToggle)));
+    setInterval(refreshFpsChain, 2000);
     view.addEventListener("viewshow", load);
     byId("realtimeAmbilightConfigurationForm").addEventListener("submit", save);
     byId("outputDelayMilliseconds").addEventListener("input", setDelayLabel);
@@ -1272,6 +1437,7 @@ export default function (view) {
             : "This plugin only reads WLED until you turn this on.";
     });
     byId("fixForceMaxBrightness").addEventListener("click", fixForceMaxBrightness);
+    byId("fixRgbwMode").addEventListener("click", fixRgbwMode);
     byId("hueScanBridges").addEventListener("click", scanHueBridges);
     byId("hueStartPairing").addEventListener("click", startHuePairing);
     byId("hueRefreshConfigs").addEventListener("click", refreshHueEntertainmentConfigs);
