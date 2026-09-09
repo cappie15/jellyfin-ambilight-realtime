@@ -250,7 +250,10 @@ public sealed class WledDiscoveryService
                 var root = document.RootElement;
                 var realtimeActive = root.TryGetProperty("live", out var live)
                     && live.ValueKind == JsonValueKind.True;
-                return new WledControllerStatus(true, realtimeActive);
+                var name = root.TryGetProperty("name", out var nameElement) && nameElement.ValueKind == JsonValueKind.String
+                    ? nameElement.GetString()
+                    : null;
+                return new WledControllerStatus(true, realtimeActive, name);
             }
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException or UriFormatException
@@ -524,9 +527,9 @@ public sealed record WledRealtimeSettings(
     bool RgbwModeIsMisconfigured);
 
 /// <summary>Reachability and temporary realtime ownership reported by WLED.</summary>
-public sealed record WledControllerStatus(bool IsOnline, bool IsRealtimeActive)
+public sealed record WledControllerStatus(bool IsOnline, bool IsRealtimeActive, string? Name = null)
 {
-    public static WledControllerStatus Offline { get; } = new(false, false);
+    public static WledControllerStatus Offline { get; } = new(false, false, null);
 }
 
 /// <summary>Read-only WLED discovery data shown on the settings page.</summary>

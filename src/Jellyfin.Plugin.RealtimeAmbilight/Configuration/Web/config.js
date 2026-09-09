@@ -91,6 +91,11 @@ export default function (view) {
     let loadedConfig = null;
     let discoveredControllers = [];
     let knownDevices = [];
+    // Latest live signals, refreshed by their own periodic polls, read by
+    // the pill/summary rendering rather than each fetching their own copy.
+    let latestPerformance = null;
+    let latestWledStatus = null;
+    let latestHueStatus = null;
     const byId = id => view.querySelector(`#${id}`);
     const fieldKey = field => field[0].toUpperCase() + field.slice(1);
     const show = (id, visible) => { byId(id).style.display = visible ? "block" : "none"; };
@@ -141,21 +146,23 @@ export default function (view) {
     // opens straight into Edit instead (see each summarise* function).
     const sectionSummarisers = {};
 
+    // The overview cards are always on screen, above whichever detail panel
+    // (if any) is open below them -- they are never hidden by opening a
+    // section, only the reverse.
     function switchTab(tab) {
-        view.querySelectorAll(".raTab").forEach(button => {
-            button.setAttribute("aria-selected", String(button.dataset.tab === tab));
-        });
         view.querySelectorAll(".raTabPanel").forEach(panel => {
             panel.hidden = panel.dataset.tabPanel !== tab;
         });
-        byId("raOverviewGrid").hidden = true;
+        view.querySelectorAll(".raCard").forEach(card => {
+            card.classList.toggle("raCardActive", card.dataset.openTab === tab);
+        });
         sectionSummarisers[tab]?.();
-        window.scrollTo({ top: 0, behavior: "instant" });
+        view.querySelector(`[data-tab-panel="${tab}"]`)?.scrollIntoView({ behavior: "instant", block: "start" });
     }
 
     function showOverview() {
         view.querySelectorAll(".raTabPanel").forEach(panel => { panel.hidden = true; });
-        byId("raOverviewGrid").hidden = false;
+        view.querySelectorAll(".raCard").forEach(card => card.classList.remove("raCardActive"));
         window.scrollTo({ top: 0, behavior: "instant" });
     }
 
@@ -174,47 +181,108 @@ export default function (view) {
             || Number(byId("brightnessPercent").value) !== 100;
     }
 
+    // "Off" = disabled/unconfigured. "Ready" = configured and idle -- today's
+    // outline-only look. "Streaming" = actually sending frames right now, a
+    // deliberately different (filled) look: "On" was reported as misleading
+    // because it read as "currently streaming" when it only ever meant
+    // "enabled", so the two are now visually distinct states, not one pill
+    // with two different real meanings.
+    function setPill(id, state) {
+        const el = byId(id);
+        if (!el) {
+            return;
+        }
+
+        el.textContent = state === "streaming" ? "Streaming" : state === "ready" ? "Ready" : state === "warn" ? "Check" : "Off";
+        el.className = `raPill ra${state[0].toUpperCase()}${state.slice(1)}`;
+    }
+
+    function isWledStreaming() {
+        const fps = latestPerformance?.WledRenderFps ?? latestPerformance?.wledRenderFps;
+        return fps !== null && fps !== undefined;
+    }
+
+    function isHueStreaming() {
+        const state = latestHueStatus?.State ?? latestHueStatus?.state;
+        return state === "Streaming";
+    }
+
     sectionSummarisers.tv = function summariseTv() {
-        const deviceLabel = targetDeviceName() || byId("targetDeviceId").selectedOptions[0]?.textContent || "";
-        byId("tvSummaryDevice").textContent = deviceLabel || "No device bound yet";
+        byId("tvSummaryDevice").textContent = deviceLabelWithIp();
         byId("tvSummaryEnabled").textContent = byId("enabled").checked ? "On" : "Off";
+        byId("tvSummarySampling").textContent = `${byId("analysisWidth").value}×${analysisHeight()} @ ${byId("analysisFramesPerSecond").value} fps`;
         byId("targetDeviceId").value ? showSectionSummary("tv") : showSectionEdit("tv");
     };
 
     sectionSummarisers.wled = function summariseWled() {
         const host = byId("wledHost").value.trim() || loadedConfig?.WledHost || "";
-        byId("wledSummaryHost").textContent = host || "Not set up yet";
+        const wledName = latestWledStatus?.Name ?? latestWledStatus?.name;
+        byId("wledSummaryHost").textContent = host ? (wledName ? `${wledName} (${host})` : host) : "Not set up yet";
         const counts = ledCountFields.map(field => Number(byId(field).value) || 0);
         byId("wledSummaryLeds").textContent = `${counts.reduce((a, b) => a + b, 0)} (${counts.join("/")})`;
         byId("wledSummaryRgbw").textContent = byId("sendWhiteChannel").checked
             ? `On, strength ${byId("whiteChannelStrengthPercent").value}%`
             : "Off";
+        const delay = Number(byId("outputDelayMilliseconds").value) || 0;
+        byId("wledSummaryTiming").textContent = `${byId("outputFramesPerSecond").value} fps, ${delay === 0 ? "no delay" : `${delay} ms delay`}`;
         host ? showSectionSummary("wled") : showSectionEdit("wled");
         refreshFpsChain();
     };
 
+    // One row per anchor with a real deviation (hue shift, or brightness/
+    // intensity pulled down from 100%) -- omits an anchor sitting exactly at
+    // its default, so this list is only ever the colours actually touched,
+    // not all six every time.
+    function renderColourDeviation() {
+        // Clamped to match PerimeterColourTuning.Anchor()'s own server-side
+        // range (hue +-21 deg, brightness/intensity 50-100%) -- a value
+        // saved outside that range by an older build would otherwise show a
+        // number here that is not actually what gets applied.
+        const rows = hueAnchorColours
+            .map(colour => ({
+                colour,
+                hue: Math.max(-21, Math.min(21, hueAnchors[`${colour}HueShiftDegrees`] || 0)),
+                brightness: Math.max(50, Math.min(100, hueAnchors[`${colour}BrightnessPercent`] ?? 100)),
+                intensity: Math.max(50, Math.min(100, hueAnchors[`${colour}IntensityPercent`] ?? 100))
+            }))
+            .filter(a => a.hue !== 0 || a.brightness !== 100 || a.intensity !== 100)
+            .map(a => {
+                const parts = [];
+                if (a.hue !== 0) {
+                    parts.push(`${a.hue > 0 ? "+" : ""}${a.hue}°`);
+                }
+                if (a.brightness !== 100) {
+                    parts.push(`${a.brightness}% bright`);
+                }
+                if (a.intensity !== 100) {
+                    parts.push(`${a.intensity}% intensity`);
+                }
+                return `<div>${a.colour}: ${parts.join(", ")}</div>`;
+            });
+        byId("ambilightSummaryDeviation").innerHTML = rows.length ? rows.join("") : "None (default curve)";
+    }
+
     sectionSummarisers.ambilight = function summariseAmbilight() {
         const calibrated = isAmbilightCalibrated();
-        byId("ambilightSummaryCalibrated").textContent = calibrated ? "Calibrated" : "Using the picture as recorded";
+        setPill("ambilightSummaryCalibrated", calibrated ? "ready" : "off");
+        byId("ambilightSummaryCalibrated").textContent = calibrated ? "Calibrated" : "Default";
         byId("ambilightSummaryBrightness").textContent = `${byId("brightnessPercent").value}%`;
         byId("ambilightSummarySaturation").textContent = `${byId("saturationPercent").value}%`;
-        calibrated ? showSectionSummary("ambilight") : showSectionEdit("ambilight");
-    };
-
-    sectionSummarisers.advanced = function summariseAdvanced() {
-        byId("advancedSummarySampling").textContent = `${byId("analysisWidth").value}×${analysisHeight()} @ ${byId("analysisFramesPerSecond").value} fps`;
         const smoothingMs = Number(byId("wledSmoothingMilliseconds").value) || 0;
-        byId("advancedSummarySmoothing").textContent = smoothingMs === 0 ? "Off (fully reactive)" : `${smoothingMs} ms`;
-        showSectionSummary("advanced");
+        byId("ambilightSummarySmoothing").textContent = smoothingMs === 0 ? "Off (fully reactive)" : `${smoothingMs} ms`;
+        renderColourDeviation();
+        calibrated ? showSectionSummary("ambilight") : showSectionEdit("ambilight");
     };
 
     sectionSummarisers.hue = function summariseHue() {
         const bridgeHost = loadedConfig?.HueBridgeHost || "";
-        byId("hueSummaryBridge").textContent = bridgeHost || "Not paired yet";
+        byId("hueSummaryBridge").textContent = bridgeHost ? `Hue Bridge (${bridgeHost})` : "Not paired yet";
         byId("hueSummaryArea").textContent = byId("hueEntertainmentConfig").selectedOptions[0]?.textContent
             || loadedConfig?.HueEntertainmentConfigurationName
             || "Not selected";
-        byId("hueSummaryTuning").textContent = `${byId("hueBrightnessPercent").value}% brightness, response ${byId("hueResponsePercent").value}`;
+        byId("hueSummaryBrightness").textContent = `${byId("hueBrightnessPercent").value}%`;
+        const response = byId("hueResponsePercent").value;
+        byId("hueSummaryResponsivity").textContent = `${response} (0-100)`;
         bridgeHost && byId("hueEnabled").checked ? showSectionSummary("hue") : showSectionEdit("hue");
     };
 
@@ -225,44 +293,52 @@ export default function (view) {
     function refreshFpsChain() {
         return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Performance"))
             .then(perf => {
+                latestPerformance = perf;
                 const analyse = perf?.AnalyseFps ?? perf?.analyseFps;
                 const sample = perf?.SampleFps ?? perf?.sampleFps;
                 const wled = perf?.WledRenderFps ?? perf?.wledRenderFps;
-                const format = value => value === null || value === undefined ? "–" : `${Number(value).toFixed(1)}`;
-                byId("fpsAnalyse").textContent = format(analyse);
-                byId("fpsSample").textContent = format(sample);
-                byId("fpsWled").textContent = format(wled);
-                byId("fpsHint").textContent = analyse === null || analyse === undefined
-                    ? "Live only while something is playing on the bound device."
-                    : "";
+                const active = analyse !== null && analyse !== undefined;
+                const format = value => value === null || value === undefined ? "" : `${Number(value).toFixed(1)} fps`;
+                byId("fpsAnalyse").textContent = active ? format(analyse) : "Ready";
+                byId("fpsSample").textContent = active ? format(sample) : "Ready";
+                byId("fpsWled").textContent = active ? format(wled) : "Ready";
+                view.querySelectorAll("#wledFpsChain .raFpsStage .raFpsValue").forEach(el => {
+                    el.style.color = active ? "" : "#2fae4e";
+                });
+                byId("fpsHint").innerHTML = active
+                    ? ""
+                    : `Live only while something is playing on the bound device (${deviceLabelWithIp()}). <button type="button" class="raLink" data-open-tab="tv">Open TV settings</button>`;
+                refreshOverviewCards();
             })
             .catch(() => {});
     }
 
     function refreshOverviewCards() {
         const enabled = byId("enabled").checked;
-        byId("raCardTvPill").textContent = enabled ? "On" : "Off";
-        byId("raCardTvPill").className = `raPill ${enabled ? "raOn" : "raOff"}`;
-        byId("raCardTvMeta").textContent = targetDeviceName() || byId("targetDeviceId").selectedOptions[0]?.textContent || "No device bound yet";
+        const boundDevice = Boolean(byId("targetDeviceId").value);
+        const streaming = isWledStreaming();
+        setPill("raCardTvPill", !enabled ? "off" : streaming ? "streaming" : "ready");
+        byId("raCardTvMeta").innerHTML = `<div>${deviceLabelWithIp()}</div><div>Ambilight ${enabled ? "on" : "off"}</div>`;
 
         const wledHost = byId("wledHost").value.trim() || loadedConfig?.WledHost || "";
-        byId("raCardWledPill").textContent = wledHost ? "Set up" : "Not set up";
-        byId("raCardWledPill").className = `raPill ${wledHost ? "raOn" : "raOff"}`;
-        byId("raCardWledMeta").textContent = wledHost || "Scan or enter a controller address";
+        const wledName = latestWledStatus?.Name ?? latestWledStatus?.name;
+        setPill("raCardWledPill", !wledHost ? "off" : streaming ? "streaming" : "ready");
+        byId("raCardWledMeta").innerHTML = wledHost
+            ? `<div>${wledName ? `${wledName} (${wledHost})` : wledHost}</div><div>${ledCountFields.map(f => Number(byId(f).value) || 0).reduce((a, b) => a + b, 0)} LEDs${byId("sendWhiteChannel").checked ? ", RGBW" : ""}</div>`
+            : "Scan or enter a controller address";
 
         const calibrated = isAmbilightCalibrated();
+        setPill("raCardAmbilightPill", calibrated ? "ready" : "off");
         byId("raCardAmbilightPill").textContent = calibrated ? "Calibrated" : "Default";
-        byId("raCardAmbilightPill").className = `raPill ${calibrated ? "raOn" : "raOff"}`;
-        byId("raCardAmbilightMeta").textContent = calibrated ? "Custom colour calibration" : "Using the picture as recorded";
-
-        byId("raCardAdvancedMeta").textContent = `${byId("analysisWidth").value}×${analysisHeight()} sampling`;
+        byId("raCardAmbilightMeta").innerHTML = `<div>${calibrated ? "Custom colour calibration" : "Using the picture as recorded"}</div><div>Brightness ${byId("brightnessPercent").value}% · intensity ${byId("saturationPercent").value}%</div>`;
 
         const hueEnabled = byId("hueEnabled").checked;
-        byId("raCardHuePill").textContent = hueEnabled ? "On" : "Off";
-        byId("raCardHuePill").className = `raPill ${hueEnabled ? "raOn" : "raOff"}`;
-        byId("raCardHueMeta").textContent = hueEnabled
-            ? (loadedConfig?.HueEntertainmentConfigurationName || "Paired")
-            : "Off";
+        const huePaired = Boolean(loadedConfig?.HueBridgeHost);
+        const hueStreaming = isHueStreaming();
+        setPill("raCardHuePill", !hueEnabled || !huePaired ? "off" : hueStreaming ? "streaming" : "ready");
+        byId("raCardHueMeta").innerHTML = hueEnabled && huePaired
+            ? `<div>${loadedConfig?.HueEntertainmentConfigurationName || "Paired"}</div><div>Brightness ${byId("hueBrightnessPercent").value}%</div>`
+            : huePaired ? "Paired, currently off" : "Not paired yet";
     }
 
     function populateWallColourPresets() {
@@ -723,6 +799,25 @@ export default function (view) {
             || "";
     }
 
+    // Only known while the device is (or recently was) an active session --
+    // Jellyfin's plain device registry has no address of its own, only a
+    // session's RemoteEndPoint does. Absent for a device that has not
+    // connected since this page loaded its device list.
+    function targetDeviceIp() {
+        const select = byId("targetDeviceId");
+        return select.value ? (knownDevices.find(device => device.id === select.value)?.ip || "") : "";
+    }
+
+    function deviceLabelWithIp() {
+        const name = targetDeviceName();
+        if (!name) {
+            return "No device bound yet";
+        }
+
+        const ip = targetDeviceIp();
+        return ip ? `${name} (${ip})` : name;
+    }
+
     function setLedTotal() {
         const total = ledCountFields.reduce((sum, field) => sum + (Number(byId(field).value) || 0), 0);
         byId("ledTotalValue").textContent = `${total} LEDs`;
@@ -777,12 +872,16 @@ export default function (view) {
         }));
         sessions.filter(session => session.DeviceId).forEach(session => {
             const existing = merged.get(session.DeviceId);
+            // RemoteEndPoint is "ip:port" for most clients; only the host
+            // part is meaningful to show next to a device's name.
+            const ip = (session.RemoteEndPoint || "").split(":")[0] || existing?.ip || "";
             merged.set(session.DeviceId, {
                 id: session.DeviceId,
                 name: session.DeviceName || existing?.name || "Unnamed device",
                 app: session.Client || existing?.app || "",
                 lastUsed: session.LastActivityDate || existing?.lastUsed || "",
-                connected: true
+                connected: true,
+                ip
             });
         });
         return [...merged.values()].sort((left, right) =>
@@ -995,6 +1094,7 @@ export default function (view) {
         return window.ApiClient
             .getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Status", connection))
             .then(result => {
+                latestWledStatus = result;
                 const online = result?.IsOnline ?? result?.isOnline;
                 const realtime = result?.IsRealtimeActive ?? result?.isRealtimeActive;
                 status.textContent = online
@@ -1002,8 +1102,12 @@ export default function (view) {
                         ? "● Online — realtime Ambilight is active."
                         : "● Online — WLED is ready."
                     : "● Not reachable — check address, port and network.";
+                refreshOverviewCards();
             })
-            .catch(() => { status.textContent = "● Not reachable — check address, port and network."; });
+            .catch(() => {
+                latestWledStatus = null;
+                status.textContent = "● Not reachable — check address, port and network.";
+            });
     }
 
     function findWled() {
@@ -1191,6 +1295,7 @@ export default function (view) {
     function loadHueStatus() {
         return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Hue/Status"))
             .then(status => {
+                latestHueStatus = status;
                 const state = status.State ?? status.state;
                 const issue = status.Issue ?? status.issue;
                 const paired = status.Paired ?? status.paired;
@@ -1213,7 +1318,7 @@ export default function (view) {
 
                 return paired;
             })
-            .catch(() => { byId("hueStatusLine").textContent = ""; return false; });
+            .catch(() => { latestHueStatus = null; byId("hueStatusLine").textContent = ""; return false; });
     }
 
     function hueCurrentBridgeHost() {
@@ -1334,7 +1439,7 @@ export default function (view) {
                     const id = config.Id ?? config.id;
                     const name = config.Name ?? config.name;
                     const channelCount = (config.Channels ?? config.channels ?? []).length;
-                    select.add(new Option(`${name} (${channelCount} channel${channelCount === 1 ? "" : "s"})`, id));
+                    select.add(new Option(`${name} (${channelCount} light${channelCount === 1 ? "" : "s"})`, id));
                 });
                 if (previousValue) {
                     select.value = previousValue;
@@ -1375,11 +1480,23 @@ export default function (view) {
     createSideTuningCards();
     addRangeScales();
     addStepButtonsToSection();
-    view.querySelectorAll(".raTab").forEach(button => button.addEventListener("click", () => switchTab(button.dataset.tab)));
-    view.querySelectorAll("[data-open-tab]").forEach(card => card.addEventListener("click", () => switchTab(card.dataset.openTab)));
+    // Delegated, not a per-element listener: some [data-open-tab] elements
+    // (e.g. the "Open TV settings" link inside the FPS chain hint) are
+    // (re)created after this point by innerHTML writes, so binding once at
+    // init would silently miss them.
+    view.addEventListener("click", event => {
+        const opener = event.target.closest("[data-open-tab]");
+        if (opener) {
+            switchTab(opener.dataset.openTab);
+        }
+    });
     view.querySelectorAll("[data-open-overview]").forEach(link => link.addEventListener("click", showOverview));
     view.querySelectorAll("[data-edit-toggle]").forEach(button => button.addEventListener("click", () => showSectionEdit(button.dataset.editToggle)));
     setInterval(refreshFpsChain, 2000);
+    // Slower: these each make a real network call to WLED/Hue, not just a
+    // cheap in-process counter read like refreshFpsChain -- only needed
+    // often enough for the overview pills to feel live, not every tick.
+    setInterval(() => { checkControllerStatus(); loadHueStatus().then(refreshOverviewCards); }, 8000);
     view.addEventListener("viewshow", load);
     byId("realtimeAmbilightConfigurationForm").addEventListener("submit", save);
     byId("outputDelayMilliseconds").addEventListener("input", setDelayLabel);

@@ -1,22 +1,23 @@
 <div data-role="page" id="realtimeAmbilightConfigurationPage" class="page type-interior pluginConfigurationPage" data-controller="__plugin/RealtimeAmbilight.js">
     <style>
-        #realtimeAmbilightConfigurationPage .raTabBar { display: flex; gap: .5em; flex-wrap: wrap; margin: 0 0 1.3em; }
-        #realtimeAmbilightConfigurationPage .raTab { padding: .6em 1.3em; border-radius: 1.7em; border: 1px solid rgba(127, 127, 127, .5); background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
-        #realtimeAmbilightConfigurationPage .raTab[aria-selected="true"] { background: rgba(127, 127, 127, .22); border-color: currentColor; }
         #realtimeAmbilightConfigurationPage .raTabPanel[hidden] { display: none; }
 
         /* ---- overview cards ---- */
-        #realtimeAmbilightConfigurationPage .raOverviewGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15em, 1fr)); gap: 1em; margin: 0 0 1.6em; }
-        #realtimeAmbilightConfigurationPage .raCard { text-align: left; border: 1px solid rgba(127, 127, 127, .35); border-radius: .9em; padding: 1.1em 1.2em; background: rgba(127, 127, 127, .05); cursor: pointer; font: inherit; color: inherit; display: flex; flex-direction: column; gap: .5em; }
-        #realtimeAmbilightConfigurationPage .raCard:hover, #realtimeAmbilightConfigurationPage .raCard:focus-visible { border-color: currentColor; background: rgba(127, 127, 127, .12); }
-        #realtimeAmbilightConfigurationPage .raCardTitle { font-weight: 700; font-size: 1.05em; display: flex; align-items: center; justify-content: space-between; gap: .6em; }
-        #realtimeAmbilightConfigurationPage .raCardMeta { font-size: .85em; opacity: .8; }
-        #realtimeAmbilightConfigurationPage .raPill { display: inline-flex; align-items: center; gap: .4em; padding: .2em .65em; border-radius: 999px; font-size: .75em; font-weight: 700; white-space: nowrap; border: 1px solid currentColor; }
-        #realtimeAmbilightConfigurationPage .raPill.raOn { color: #2fae4e; }
+        #realtimeAmbilightConfigurationPage .raOverviewGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(19em, 1fr)); gap: 1.1em; margin: 0 0 1.8em; position: sticky; top: 0; z-index: 1; background: inherit; padding-top: .3em; }
+        #realtimeAmbilightConfigurationPage .raCard { text-align: left; border: 1px solid rgba(127, 127, 127, .35); border-radius: .9em; padding: 1.3em 1.4em; background: rgba(127, 127, 127, .05); cursor: pointer; font: inherit; color: inherit; display: flex; flex-direction: column; gap: .6em; min-height: 7em; }
+        #realtimeAmbilightConfigurationPage .raCard:hover, #realtimeAmbilightConfigurationPage .raCard:focus-visible, #realtimeAmbilightConfigurationPage .raCard.raCardActive { border-color: currentColor; background: rgba(127, 127, 127, .12); }
+        #realtimeAmbilightConfigurationPage .raCardTitle { font-weight: 700; font-size: 1.15em; display: flex; align-items: center; justify-content: space-between; gap: .6em; }
+        #realtimeAmbilightConfigurationPage .raCardMeta { font-size: .88em; opacity: .8; line-height: 1.5; }
+        #realtimeAmbilightConfigurationPage .raCardMeta div + div { margin-top: .15em; }
+        #realtimeAmbilightConfigurationPage .raPill { display: inline-flex; align-items: center; gap: .4em; padding: .2em .7em; border-radius: 999px; font-size: .75em; font-weight: 700; white-space: nowrap; border: 1px solid currentColor; }
+        /* Off: grey. Ready: configured but idle -- outline only, matches today's look. Streaming: actively sending frames right now -- filled, so it reads as unmistakably different from merely "ready". */
+        #realtimeAmbilightConfigurationPage .raPill.raReady { color: #2fae4e; }
+        #realtimeAmbilightConfigurationPage .raPill.raStreaming { color: #fff; background: #1f9d46; border-color: #1f9d46; }
         #realtimeAmbilightConfigurationPage .raPill.raOff { color: #9a9a9a; }
         #realtimeAmbilightConfigurationPage .raPill.raWarn { color: #d18e1c; }
         #realtimeAmbilightConfigurationPage .raBackLink { display: inline-flex; align-items: center; gap: .4em; background: none; border: none; cursor: pointer; color: inherit; opacity: .8; font: inherit; padding: .3em 0; margin-bottom: .6em; }
         #realtimeAmbilightConfigurationPage .raBackLink:hover { opacity: 1; }
+        #realtimeAmbilightConfigurationPage .raLink { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
 
         /* ---- per-section summary / edit toggle ---- */
         #realtimeAmbilightConfigurationPage .raSummary[hidden], #realtimeAmbilightConfigurationPage .raEdit[hidden] { display: none; }
@@ -33,7 +34,6 @@
         #realtimeAmbilightConfigurationPage .raFpsStage .raFpsLabel { opacity: .7; font-size: .85em; }
         #realtimeAmbilightConfigurationPage .raFpsStage .raFpsValue { font-weight: 700; font-size: 1.1em; }
         #realtimeAmbilightConfigurationPage .raFpsArrow { opacity: .5; }
-        #realtimeAmbilightConfigurationPage .raOverviewGrid[hidden] { display: none; }
     </style>
     <div class="content-primary">
         <div class="verticalSection">
@@ -54,22 +54,10 @@
                 <div class="raCardTitle"><span>Ambilight</span><span class="raPill" id="raCardAmbilightPill">&nbsp;</span></div>
                 <div class="raCardMeta" id="raCardAmbilightMeta">&nbsp;</div>
             </button>
-            <button type="button" class="raCard" data-open-tab="advanced">
-                <div class="raCardTitle"><span>Advanced</span></div>
-                <div class="raCardMeta" id="raCardAdvancedMeta">&nbsp;</div>
-            </button>
             <button type="button" class="raCard" data-open-tab="hue">
                 <div class="raCardTitle"><span>Hue</span><span class="raPill" id="raCardHuePill">&nbsp;</span></div>
                 <div class="raCardMeta" id="raCardHueMeta">&nbsp;</div>
             </button>
-        </div>
-
-        <div class="raTabBar" id="raTabBar" role="tablist" hidden>
-            <button type="button" class="raTab" data-tab="tv" role="tab">TV</button>
-            <button type="button" class="raTab" data-tab="wled" role="tab">WLED</button>
-            <button type="button" class="raTab" data-tab="ambilight" role="tab">Ambilight</button>
-            <button type="button" class="raTab" data-tab="advanced" role="tab">Advanced</button>
-            <button type="button" class="raTab" data-tab="hue" role="tab">Hue</button>
         </div>
 
         <form id="realtimeAmbilightConfigurationForm">
@@ -79,7 +67,8 @@
                 <div class="raSummary" id="tvSummary">
                     <div class="raSummaryRow"><span class="raK">Playback device</span><span class="raV" id="tvSummaryDevice">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">Ambilight</span><span class="raV" id="tvSummaryEnabled">&nbsp;</span></div>
-                    <button type="button" class="raised raEditToggle" data-edit-toggle="tv">Edit</button>
+                    <div class="raSummaryRow"><span class="raK">Sampling</span><span class="raV" id="tvSummarySampling">&nbsp;</span></div>
+                    <button is="emby-button" type="button" class="raised raEditToggle" data-edit-toggle="tv">Edit</button>
                 </div>
                 <div class="raEdit" id="tvEdit" hidden>
                 <div class="verticalSection">
@@ -100,6 +89,47 @@
                     </label>
                     <div class="fieldDescription">Turns output off without losing settings. <strong>Default: on.</strong></div>
                 </div>
+
+                <div class="verticalSection">
+                    <h3 class="sectionTitle">Reading the picture</h3>
+                    <p class="fieldDescription">How this plugin samples the TV's own picture, before any colour tuning is applied. Leave these at their defaults unless you need lower CPU use or a different edge response.</p>
+
+                    <div style="display:flex;gap:2em;flex-wrap:wrap;align-items:flex-start">
+                        <div style="flex:1 1 20em;min-width:18em">
+                            <div class="selectContainer">
+                                <select is="emby-select" id="analysisWidth" label="Sampling resolution">
+                                    <option value="96">96 × 54 — lightest</option>
+                                    <option value="128">128 × 72 — light</option>
+                                    <option value="160">160 × 90 — recommended</option>
+                                    <option value="240">240 × 135 — more detail</option>
+                                    <option value="320">320 × 180 — high</option>
+                                    <option value="480">480 × 270 — highest</option>
+                                </select>
+                                <div class="fieldDescription"><strong>Default: 160 × 90.</strong> Lower saves CPU; higher adds detail.</div>
+                            </div>
+                        </div>
+                        <div style="flex:1 1 20em;min-width:18em">
+                            <div class="inputContainer">
+                                <input is="emby-input" id="analysisFramesPerSecond" type="number" min="1" max="60" label="Sampling frames per second" />
+                                <div class="fieldDescription"><strong>Default: 30.</strong> Do not exceed the LED update rate.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="fieldDescription">Analysis size: <strong id="analysisSizeValue"></strong></div>
+
+                    <br />
+                    <div class="inputContainer">
+                        <input is="emby-input" id="samplingDepthPercent" type="range" min="1" max="30" step="1" label="Sampling edge range" />
+                        <div class="fieldDescription">Now: <strong id="samplingDepthValue"></strong>. Lower is more literal; higher is calmer. <strong>Default: 10%.</strong></div>
+                    </div>
+
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="ignoreBlackBorders" type="checkbox" />
+                        <span>Ignore black borders</span>
+                    </label>
+                    <div class="fieldDescription">Prevents wide-screen black bars from turning the LEDs off. <strong>Default: on.</strong></div>
+                </div>
                 </div>
             </div>
 
@@ -109,6 +139,7 @@
                     <div class="raSummaryRow"><span class="raK">Controller</span><span class="raV" id="wledSummaryHost">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">LEDs around the TV</span><span class="raV" id="wledSummaryLeds">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">White signal (RGBW)</span><span class="raV" id="wledSummaryRgbw">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Update rate / delay</span><span class="raV" id="wledSummaryTiming">&nbsp;</span></div>
                     <div class="raFpsChain" id="wledFpsChain">
                         <div class="raFpsStage"><div class="raFpsLabel">Analysis decode</div><div class="raFpsValue" id="fpsAnalyse">–</div></div>
                         <span class="raFpsArrow">&#8594;</span>
@@ -117,7 +148,7 @@
                         <div class="raFpsStage"><div class="raFpsLabel">Sent to WLED</div><div class="raFpsValue" id="fpsWled">–</div></div>
                     </div>
                     <div class="fieldDescription" id="fpsHint">Live only while something is playing on the bound device.</div>
-                    <button type="button" class="raised raEditToggle" data-edit-toggle="wled">Edit</button>
+                    <button is="emby-button" type="button" class="raised raEditToggle" data-edit-toggle="wled">Edit</button>
                 </div>
                 <div class="raEdit" id="wledEdit" hidden>
                 <div class="verticalSection">
@@ -242,16 +273,67 @@
                     </div>
                     </details>
                 </div>
+
+                <div class="verticalSection">
+                    <h3 class="sectionTitle">Keeping the picture and the LEDs in step</h3>
+
+                    <div class="inputContainer">
+                        <input is="emby-input" id="outputDelayMilliseconds" type="range" min="0" max="2000" step="25" label="LED delay" />
+                        <div class="fieldDescription">
+                            Currently set to: <strong id="outputDelayValue"></strong>.
+                            Raise this only when the LEDs visibly lead the picture. <strong>Default: 0 ms.</strong>
+                        </div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <input is="emby-input" id="outputFramesPerSecond" type="number" min="1" max="60" label="LED updates per second" />
+                        <div class="fieldDescription">Higher is smoother but costs more CPU. <strong>Default: 30.</strong> Restart after changing.</div>
+                    </div>
+
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="holdWhilePaused" type="checkbox" />
+                        <span>Hold the picture while paused</span>
+                    </label>
+                    <div class="fieldDescription">Keep the paused frame on the wall. <strong>Default: on.</strong></div>
+
+                    <div class="inputContainer">
+                        <input is="emby-input" id="stopFadeMilliseconds" type="number" min="0" max="5000" step="50" label="Fade out on stop (ms)" />
+                        <div class="fieldDescription"><code>0</code> cuts immediately. <strong>Default: 250 ms.</strong></div>
+                    </div>
+
+                    <div class="selectContainer">
+                        <select is="emby-select" id="realtimeProtocol" label="Realtime protocol">
+                            <option value="0">Automatic (recommended)</option>
+                            <option value="1">Hyperion Raw RGB</option>
+                            <option value="2">DDP</option>
+                        </select>
+                        <div class="fieldDescription">Automatic chooses the right protocol. Restart after changing.</div>
+                    </div>
+
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="autoDetectLedGamma" type="checkbox" />
+                        <span>Match LED brightness to the picture, read from the controller</span>
+                    </label>
+                    <div class="fieldDescription">Uses the gamma setting reported by WLED. <strong>Default: on.</strong></div>
+
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="correctLedGamma" type="checkbox" />
+                        <span>Correct brightness manually</span>
+                    </label>
+                    <div class="fieldDescription">Used when automatic detection is unavailable. <strong>Default: on.</strong></div>
+                </div>
                 </div>
             </div>
 
             <div class="raTabPanel" data-tab-panel="ambilight" hidden>
                 <button type="button" class="raBackLink" data-open-overview="1">&#9664; Overview</button>
                 <div class="raSummary" id="ambilightSummary">
-                    <div class="raSummaryRow"><span class="raK">Calibration</span><span class="raV" id="ambilightSummaryCalibrated">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Calibration</span><span class="raV"><span class="raPill" id="ambilightSummaryCalibrated">&nbsp;</span></span></div>
                     <div class="raSummaryRow"><span class="raK">Brightness</span><span class="raV" id="ambilightSummaryBrightness">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">Colour intensity</span><span class="raV" id="ambilightSummarySaturation">&nbsp;</span></div>
-                    <button type="button" class="raised raEditToggle" data-edit-toggle="ambilight">Edit</button>
+                    <div class="raSummaryRow"><span class="raK">Smoothing</span><span class="raV" id="ambilightSummarySmoothing">&nbsp;</span></div>
+                    <div class="raSummaryRow" style="align-items:flex-start"><span class="raK">Colour deviation</span><span class="raV" id="ambilightSummaryDeviation" style="text-align:right">&nbsp;</span></div>
+                    <button is="emby-button" type="button" class="raised raEditToggle" data-edit-toggle="ambilight">Edit</button>
                 </div>
                 <div class="raEdit" id="ambilightEdit" hidden>
                 <div class="verticalSection" id="calibrationSection">
@@ -291,6 +373,16 @@
                     <div class="inputContainer" style="margin-top:1.2em">
                         <input is="emby-input" id="brightnessPercent" type="range" min="1" max="200" step="1" label="LED brightness" />
                         <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. Above 100% pushes already-dim scenes brighter than the source picture -- physical LEDs next to a bright HDR screen otherwise always read as dim. <strong>Default: 100%.</strong></div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <input is="emby-input" id="wledSmoothingMilliseconds" type="range" min="0" max="500" step="10" label="Smoothing" />
+                        <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED toward a newly sampled colour instead of jumping straight to it -- lower is more reactive/intense, higher lets colour flow smoothly into the next, most noticeable as fewer visible little steps at low brightness. A real cut or fast pan still catches up within a few times this value. <strong>Default: 0 ms (off, fully reactive).</strong></div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <input is="emby-input" id="minimumColourHoldMilliseconds" type="range" min="0" max="1500" step="50" label="Minimum colour hold" />
+                        <div class="fieldDescription">Now: <strong id="minimumColourHoldValue"></strong>. A colour must stay in the picture for at least this long before the LEDs follow it, so a single flash cut or lens flare cannot snap the wall to a colour that was barely there. <strong>Default: 0 ms (off, every sampled frame shown as-is).</strong></div>
                     </div>
 
                     <div style="margin-top:1em">
@@ -351,123 +443,14 @@
                 </div>
             </div>
 
-            <div class="raTabPanel" data-tab-panel="advanced" hidden>
-                <button type="button" class="raBackLink" data-open-overview="1">&#9664; Overview</button>
-                <div class="raSummary" id="advancedSummary">
-                    <div class="raSummaryRow"><span class="raK">Sampling</span><span class="raV" id="advancedSummarySampling">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Smoothing</span><span class="raV" id="advancedSummarySmoothing">&nbsp;</span></div>
-                    <button type="button" class="raised raEditToggle" data-edit-toggle="advanced">Edit</button>
-                </div>
-                <div class="raEdit" id="advancedEdit" hidden>
-                <div class="verticalSection">
-                    <h3 class="sectionTitle">Keeping the picture and the LEDs in step</h3>
-
-                    <div class="inputContainer">
-                        <input is="emby-input" id="outputDelayMilliseconds" type="range" min="0" max="2000" step="25" label="LED delay" />
-                        <div class="fieldDescription">
-                            Currently set to: <strong id="outputDelayValue"></strong>.
-                            Raise this only when the LEDs visibly lead the picture. <strong>Default: 0 ms.</strong>
-                        </div>
-                    </div>
-
-                    <div class="inputContainer">
-                        <input is="emby-input" id="outputFramesPerSecond" type="number" min="1" max="60" label="LED updates per second" />
-                        <div class="fieldDescription">Higher is smoother but costs more CPU. <strong>Default: 30.</strong> Restart after changing.</div>
-                    </div>
-
-                    <label class="checkboxContainer">
-                        <input is="emby-checkbox" id="holdWhilePaused" type="checkbox" />
-                        <span>Hold the picture while paused</span>
-                    </label>
-                    <div class="fieldDescription">Keep the paused frame on the wall. <strong>Default: on.</strong></div>
-
-                    <div class="inputContainer">
-                        <input is="emby-input" id="stopFadeMilliseconds" type="number" min="0" max="5000" step="50" label="Fade out on stop (ms)" />
-                        <div class="fieldDescription"><code>0</code> cuts immediately. <strong>Default: 250 ms.</strong></div>
-                    </div>
-                </div>
-
-                <div class="verticalSection">
-                    <h3 class="sectionTitle">Advanced picture settings</h3>
-                    <p class="fieldDescription">Leave these at their defaults unless you need lower CPU use or a different edge response.</p>
-
-                    <div class="selectContainer">
-                        <select is="emby-select" id="realtimeProtocol" label="Realtime protocol">
-                            <option value="0">Automatic (recommended)</option>
-                            <option value="1">Hyperion Raw RGB</option>
-                            <option value="2">DDP</option>
-                        </select>
-                        <div class="fieldDescription">Automatic chooses the right protocol. Restart after changing.</div>
-                    </div>
-
-                    <div style="display:flex;gap:2em;flex-wrap:wrap;align-items:flex-start">
-                        <div style="flex:1 1 20em;min-width:18em">
-                            <div class="selectContainer">
-                                <select is="emby-select" id="analysisWidth" label="Sampling resolution">
-                                    <option value="96">96 × 54 — lightest</option>
-                                    <option value="128">128 × 72 — light</option>
-                                    <option value="160">160 × 90 — recommended</option>
-                                    <option value="240">240 × 135 — more detail</option>
-                                    <option value="320">320 × 180 — high</option>
-                                    <option value="480">480 × 270 — highest</option>
-                                </select>
-                                <div class="fieldDescription"><strong>Default: 160 × 90.</strong> Lower saves CPU; higher adds detail.</div>
-                            </div>
-                        </div>
-                        <div style="flex:1 1 20em;min-width:18em">
-                            <div class="inputContainer">
-                                <input is="emby-input" id="analysisFramesPerSecond" type="number" min="1" max="60" label="Sampling frames per second" />
-                                <div class="fieldDescription"><strong>Default: 30.</strong> Do not exceed the LED update rate.</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="fieldDescription">Analysis size: <strong id="analysisSizeValue"></strong></div>
-
-                    <br />
-                    <div class="inputContainer">
-                        <input is="emby-input" id="samplingDepthPercent" type="range" min="1" max="30" step="1" label="Sampling edge range" />
-                        <div class="fieldDescription">Now: <strong id="samplingDepthValue"></strong>. Lower is more literal; higher is calmer. <strong>Default: 10%.</strong></div>
-                    </div>
-
-                    <div class="inputContainer">
-                        <input is="emby-input" id="minimumColourHoldMilliseconds" type="range" min="0" max="1500" step="50" label="Minimum colour hold" />
-                        <div class="fieldDescription">Now: <strong id="minimumColourHoldValue"></strong>. A colour must stay in the picture for at least this long before the LEDs follow it, so a single flash cut or lens flare cannot snap the wall to a colour that was barely there. <strong>Default: 0 ms (off, every sampled frame shown as-is).</strong></div>
-                    </div>
-
-                    <div class="inputContainer">
-                        <input is="emby-input" id="wledSmoothingMilliseconds" type="range" min="0" max="500" step="10" label="Smoothing" />
-                        <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED toward a newly sampled colour instead of jumping straight to it -- lower is more reactive/intense, higher lets colour flow smoothly into the next, most noticeable as fewer visible little steps at low brightness. A real cut or fast pan still catches up within a few times this value. <strong>Default: 0 ms (off, fully reactive).</strong></div>
-                    </div>
-
-                    <label class="checkboxContainer">
-                        <input is="emby-checkbox" id="autoDetectLedGamma" type="checkbox" />
-                        <span>Match LED brightness to the picture, read from the controller</span>
-                    </label>
-                    <div class="fieldDescription">Uses the gamma setting reported by WLED. <strong>Default: on.</strong></div>
-
-                    <label class="checkboxContainer">
-                        <input is="emby-checkbox" id="correctLedGamma" type="checkbox" />
-                        <span>Correct brightness manually</span>
-                    </label>
-                    <div class="fieldDescription">Used when automatic detection is unavailable. <strong>Default: on.</strong></div>
-
-                    <label class="checkboxContainer">
-                        <input is="emby-checkbox" id="ignoreBlackBorders" type="checkbox" />
-                        <span>Ignore black borders</span>
-                    </label>
-                    <div class="fieldDescription">Prevents wide-screen black bars from turning the LEDs off. <strong>Default: on.</strong></div>
-                </div>
-                </div>
-            </div>
-
             <div class="raTabPanel" data-tab-panel="hue" hidden>
                 <button type="button" class="raBackLink" data-open-overview="1">&#9664; Overview</button>
                 <div class="raSummary" id="hueSummary">
                     <div class="raSummaryRow"><span class="raK">Bridge</span><span class="raV" id="hueSummaryBridge">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">Entertainment area</span><span class="raV" id="hueSummaryArea">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Brightness / response</span><span class="raV" id="hueSummaryTuning">&nbsp;</span></div>
-                    <button type="button" class="raised raEditToggle" data-edit-toggle="hue">Edit</button>
+                    <div class="raSummaryRow"><span class="raK">Brightness</span><span class="raV" id="hueSummaryBrightness">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Responsivity / intensity</span><span class="raV" id="hueSummaryResponsivity">&nbsp;</span></div>
+                    <button is="emby-button" type="button" class="raised raEditToggle" data-edit-toggle="hue">Edit</button>
                 </div>
                 <div class="raEdit" id="hueEdit" hidden>
                 <div class="verticalSection">
@@ -519,7 +502,7 @@
                     </div>
 
                     <div class="inputContainer">
-                        <input is="emby-input" id="hueResponsePercent" type="range" min="0" max="100" step="1" label="Ambilight response" />
+                        <input is="emby-input" id="hueResponsePercent" type="range" min="0" max="100" step="1" label="Responsivity / intensity (0-100)" />
                         <div class="fieldDescription">Now: <strong id="hueResponseValue"></strong>. Reactive tracks a cut or a flash almost instantly, like an intense Ambilight; smooth eases colour into a new scene over a second or more so the lighting stays ambience rather than something that draws the eye away from the content. <strong>Default: balanced (50).</strong> Takes effect on the next reconnect (stop and resume playback), not mid-stream.</div>
                     </div>
 
