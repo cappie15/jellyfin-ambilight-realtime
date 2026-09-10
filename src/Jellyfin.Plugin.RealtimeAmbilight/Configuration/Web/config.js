@@ -985,6 +985,8 @@ export default function (view) {
             fpsCap.textContent = "";
             timeoutStatus.textContent = "";
             show("wledRgbwModeWarning", false);
+            show("wledOffsetWarning", false);
+            show("wledNightlightWarning", false);
             return Promise.resolve();
         }
 
@@ -1017,11 +1019,19 @@ export default function (view) {
 
                 const rgbwMisconfigured = Boolean(settings && (settings.RgbwModeIsMisconfigured ?? settings.rgbwModeIsMisconfigured));
                 show("wledRgbwModeWarning", rgbwMisconfigured);
+
+                const pixelOffset = settings?.RealtimePixelOffset ?? settings?.realtimePixelOffset ?? 0;
+                show("wledOffsetWarning", pixelOffset !== 0);
+
+                const nightlightInterferes = Boolean(settings && (settings.NightlightInterferesWithOutput ?? settings.nightlightInterferesWithOutput));
+                show("wledNightlightWarning", nightlightInterferes);
             })
             .catch(() => {
                 show("maxBrightnessWarning", false);
                 show("rgbwSuggestion", false);
                 show("wledRgbwModeWarning", false);
+                show("wledOffsetWarning", false);
+                show("wledNightlightWarning", false);
                 abl.textContent = "";
                 fpsCap.textContent = "";
                 timeoutStatus.textContent = "";
@@ -1052,6 +1062,32 @@ export default function (view) {
                 ? "Turn on \"Allow this plugin to fix WLED settings\" above, save, and try again."
                 : (error?.responseText || "WLED did not accept the change.");
         }).finally(() => { byId("fixRgbwMode").disabled = false; });
+    }
+
+    function fixRealtimePixelOffset() {
+        const connection = currentWledConnection();
+        const status = byId("fixRealtimePixelOffsetStatus");
+        if (!connection) {
+            return Promise.resolve();
+        }
+
+        byId("fixRealtimePixelOffset").disabled = true;
+        status.textContent = "Resetting to 0…";
+        return window.ApiClient.ajax({
+            type: "POST",
+            url: window.ApiClient.getUrl("RealtimeAmbilight/Discovery/ResetRealtimePixelOffset", connection)
+        }).then(() => {
+            status.textContent = "Done. Checking WLED again…";
+            return checkControllerSettings();
+        }).then(() => {
+            status.textContent = byId("wledOffsetWarning").style.display !== "none"
+                ? "WLED still reports a nonzero offset; you may need to change it in WLED directly."
+                : "Fixed.";
+        }).catch(error => {
+            status.textContent = error?.status === 403
+                ? "Turn on \"Allow this plugin to fix WLED settings\" above, save, and try again."
+                : (error?.responseText || "WLED did not accept the change.");
+        }).finally(() => { byId("fixRealtimePixelOffset").disabled = false; });
     }
 
     function fixForceMaxBrightness() {
@@ -1555,6 +1591,7 @@ export default function (view) {
     });
     byId("fixForceMaxBrightness").addEventListener("click", fixForceMaxBrightness);
     byId("fixRgbwMode").addEventListener("click", fixRgbwMode);
+    byId("fixRealtimePixelOffset").addEventListener("click", fixRealtimePixelOffset);
     byId("hueScanBridges").addEventListener("click", scanHueBridges);
     byId("hueStartPairing").addEventListener("click", startHuePairing);
     byId("hueRefreshConfigs").addEventListener("click", refreshHueEntertainmentConfigs);

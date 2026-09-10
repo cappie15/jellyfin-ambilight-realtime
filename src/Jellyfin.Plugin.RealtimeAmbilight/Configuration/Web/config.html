@@ -183,6 +183,16 @@
                             <span id="fixRgbwModeStatus" class="fieldDescription" aria-live="polite"></span>
                         </div>
                     </div>
+                    <div id="wledOffsetWarning" class="fieldDescription" style="display:none;border-left:3px solid currentColor;padding-left:.8em;margin-top:1em">
+                        <strong>WLED has a realtime pixel offset set.</strong> Every LED this plugin addresses is shifted by that many positions on the physical strip, silently misaligning the whole layout.
+                        <div style="margin-top:.6em">
+                            <button is="emby-button" type="button" id="fixRealtimePixelOffset" class="raised">Reset to 0 in WLED</button>
+                            <span id="fixRealtimePixelOffsetStatus" class="fieldDescription" aria-live="polite"></span>
+                        </div>
+                    </div>
+                    <div id="wledNightlightWarning" class="fieldDescription" style="display:none;border-left:3px solid currentColor;padding-left:.8em;margin-top:1em">
+                        <strong>WLED's nightlight is currently active</strong>, and "force max brightness" is off, so nightlight's fading brightness is scaling this plugin's realtime output on top of everything else. Turn off the nightlight timer in WLED, or turn "force max brightness" back on.
+                    </div>
                     <button is="emby-button" type="button" id="refreshWledStatus" class="raised">Refresh controller status</button>
                 </div>
 

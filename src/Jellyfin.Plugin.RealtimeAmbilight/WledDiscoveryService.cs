@@ -285,6 +285,34 @@ public sealed class WledDiscoveryService
                 return null;
             }
 
+            // A second, small request for live state (not configuration):
+            // whether nightlight is actively counting down right now, which
+            // /json/cfg has no field for at all (it only carries nightlight's
+            // configured duration/mode/target, never its live on/off).
+            // Best-effort -- a failure here just means the nightlight warning
+            // below never fires, not that the whole read fails.
+            var nightlightActive = false;
+            try
+            {
+                using var stateResponse = await client
+                    .GetAsync(new Uri($"http://{authority}/json/state"), timeout.Token)
+                    .ConfigureAwait(false);
+                if (stateResponse.IsSuccessStatusCode)
+                {
+                    using var stateDocument = await JsonDocument.ParseAsync(
+                        await stateResponse.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false),
+                        cancellationToken: timeout.Token).ConfigureAwait(false);
+                    nightlightActive = stateDocument.RootElement.TryGetProperty("nl", out var nightlight)
+                        && nightlight.TryGetProperty("on", out var nightlightOn)
+                        && nightlightOn.ValueKind == JsonValueKind.True;
+                }
+            }
+            catch (Exception exception) when (exception is HttpRequestException or JsonException
+                || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+            {
+                // Best-effort, see remark above.
+            }
+
             var body = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
             await using (body.ConfigureAwait(false))
             {
@@ -368,6 +396,43 @@ public sealed class WledDiscoveryService
                         rgbwMode);
                 }
 
+                // Shifts every realtime pixel index before it reaches the
+                // strip. Confirmed against WLED's own source (udp.cpp:
+                // `unsigned pix = i + arlsOffset`) -- nonzero here silently
+                // misaligns this plugin's whole top/right/bottom/left layout
+                // onto the wrong physical LEDs, with no error anywhere to
+                // explain why the picture and the wall disagree.
+                var realtimePixelOffset = interfaceRoot.TryGetProperty("live", out var liveOffsetRoot)
+                    && liveOffsetRoot.TryGetProperty("offset", out var offsetElement)
+                    && offsetElement.TryGetInt32(out var parsedOffset)
+                        ? parsedOffset
+                        : 0;
+                if (realtimePixelOffset != 0)
+                {
+                    _logger.LogWarning(
+                        "WLED {Host} has a realtime pixel offset of {Offset}; every LED this plugin addresses will be shifted by that many positions on the physical strip.",
+                        authority,
+                        realtimePixelOffset);
+                }
+
+                // WLED's nightlight fades its own brightness (bri) over time
+                // regardless of whether a realtime session is running --
+                // confirmed live (started a nightlight, streamed a full-white
+                // realtime frame, watched bri stay pinned at a dimmed value
+                // for the whole session instead of the value this plugin
+                // sent). That only actually reaches the strip when
+                // "force max brightness" is off, since realtime bypasses
+                // WLED's own bri entirely while that is on -- so the warning
+                // is conditional on both being true together, not nightlight
+                // alone, which would be a false alarm most of the time.
+                var nightlightInterferesWithOutput = nightlightActive && !forcesMaxBrightness;
+                if (nightlightInterferesWithOutput)
+                {
+                    _logger.LogWarning(
+                        "WLED {Host} has an active nightlight timer while \"force max brightness\" is off, so its fading brightness is silently scaling this plugin's realtime output on top of everything else.",
+                        authority);
+                }
+
                 var appliesGamma = !realtimeExempt && colourGamma > 1d;
                 _logger.LogInformation(
                     "WLED {Host} reports colour gamma {Gamma} and realtime gamma {RealtimeGamma}; sending {Encoding} values.",
@@ -390,7 +455,9 @@ public sealed class WledDiscoveryService
                     hasWhiteChannelHardware,
                     ledFramesPerSecond,
                     realtimeTimeoutMilliseconds,
-                    hasWhiteChannelHardware && !rgbwModeIsManual);
+                    hasWhiteChannelHardware && !rgbwModeIsManual,
+                    realtimePixelOffset,
+                    nightlightInterferesWithOutput);
             }
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException
@@ -495,6 +562,51 @@ public sealed class WledDiscoveryService
         }
     }
 
+    /// <summary>
+    /// Zeroes WLED's realtime pixel offset -- confirmed via source
+    /// (udp.cpp's `unsigned pix = i + arlsOffset`) to shift every incoming
+    /// realtime pixel index before it reaches the strip, silently misaligning
+    /// this plugin's whole layout when nonzero. Same opt-in gate and
+    /// fixed-length request body as the other WLED fixes.
+    /// </summary>
+    public async Task<bool> TryResetRealtimePixelOffsetAsync(string host, int port, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(host);
+        var authority = port == 80 ? host : string.Create(CultureInfo.InvariantCulture, $"{host}:{port}");
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(ProbeTimeout);
+
+            var client = _httpClientFactory.CreateClient();
+            using var content = new StringContent(
+                """{"if":{"live":{"offset":0}}}""",
+                System.Text.Encoding.UTF8,
+                "application/json");
+            using var response = await client
+                .PostAsync(new Uri($"http://{authority}/json/cfg"), content, timeout.Token)
+                .ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "WLED {Host} rejected the request to reset the realtime pixel offset: {StatusCode}.",
+                    authority,
+                    response.StatusCode);
+                return false;
+            }
+
+            _logger.LogInformation("Reset the realtime pixel offset to 0 on WLED {Host}.", authority);
+            return true;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or UriFormatException
+            || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            _logger.LogWarning(exception, "Could not reach WLED {Host} to reset the realtime pixel offset.", authority);
+            return false;
+        }
+    }
+
     private static bool IsPrivateIpv4(string? host)
     {
         if (!IPAddress.TryParse(host, out var address) || address.AddressFamily != AddressFamily.InterNetwork)
@@ -524,7 +636,9 @@ public sealed record WledRealtimeSettings(
     bool HasWhiteChannelHardware,
     int? LedFramesPerSecond,
     int? RealtimeTimeoutMilliseconds,
-    bool RgbwModeIsMisconfigured);
+    bool RgbwModeIsMisconfigured,
+    int RealtimePixelOffset,
+    bool NightlightInterferesWithOutput);
 
 /// <summary>Reachability and temporary realtime ownership reported by WLED.</summary>
 public sealed record WledControllerStatus(bool IsOnline, bool IsRealtimeActive, string? Name = null)

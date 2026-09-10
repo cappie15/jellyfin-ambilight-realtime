@@ -124,6 +124,29 @@ public sealed class WledDiscoveryController : ControllerBase
             ? NoContent()
             : StatusCode(StatusCodes.Status502BadGateway, "WLED did not accept the change.");
     }
+
+    /// <summary>
+    /// Zeroes WLED's realtime pixel offset. Same opt-in gate as the other
+    /// WLED fixes.
+    /// </summary>
+    [HttpPost("ResetRealtimePixelOffset")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> ResetRealtimePixelOffsetAsync([FromQuery] string host, [FromQuery] int port, CancellationToken cancellationToken)
+    {
+        if (Plugin.Instance?.Configuration.AllowWledControl != true)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, "Turn on \"Allow this plugin to fix WLED settings\" first.");
+        }
+
+        var fixedIt = await _discoveryService
+            .TryResetRealtimePixelOffsetAsync(host, Math.Clamp(port, 1, ushort.MaxValue), cancellationToken)
+            .ConfigureAwait(false);
+        return fixedIt
+            ? NoContent()
+            : StatusCode(StatusCodes.Status502BadGateway, "WLED did not accept the change.");
+    }
 }
 
 /// <summary>
