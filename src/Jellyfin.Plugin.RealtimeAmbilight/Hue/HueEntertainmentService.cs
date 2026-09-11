@@ -70,6 +70,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     private HueSessionSnapshot? _snapshot;
     private Task? _pump;
     private Task? _lifecycleTask;
+    private int _disposed;
 
     public HueEntertainmentService(
         PlaybackEventCoordinator coordinator,
@@ -604,6 +605,22 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        // Jellyfin's DI registers this class both as itself and, forwarded,
+        // as IHostedService (see PluginServiceRegistrator) -- two distinct
+        // singleton registrations resolving to the very same instance. The
+        // generic host's own ServiceProviderEngineScope does not deduplicate
+        // by reference across registrations when it captures disposables,
+        // so it calls DisposeAsync on this one object twice at shutdown.
+        // Confirmed live: the second call reached _shutdown.Cancel() on an
+        // already-disposed CancellationTokenSource and threw
+        // ObjectDisposedException as an unhandled [FTL] exception during
+        // shutdown. Harmless in effect (the process was already tearing
+        // down) but alarming in the log and worth not repeating.
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+        {
+            return;
+        }
+
         _shutdown.Cancel();
         if (_pump is not null)
         {

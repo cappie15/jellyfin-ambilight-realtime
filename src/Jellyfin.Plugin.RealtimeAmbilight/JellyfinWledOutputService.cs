@@ -64,6 +64,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private static readonly TimeSpan OutputGapHold = TimeSpan.FromSeconds(6);
 
     private readonly CancellationTokenSource _shutdown = new();
+    private int _disposed;
     private Task? _pump;
     private Rgb24Encoding _encoding;
     private readonly int _ledCount;
@@ -575,6 +576,16 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        // Same dual-registration double-dispose exposure as
+        // HueEntertainmentService.DisposeAsync -- see its remarks. This
+        // class is registered the same way (itself, plus forwarded as
+        // IHostedService), so it is equally at risk even though this
+        // particular shutdown only happened to surface the Hue one.
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+        {
+            return;
+        }
+
         _shutdown.Cancel();
         if (_pump is not null)
         {
