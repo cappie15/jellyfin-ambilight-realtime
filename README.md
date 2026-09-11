@@ -82,14 +82,28 @@ on a busy host.
 
 ## Installing
 
-Installation from this checkout is manual. The package script generates a ZIP
-and repository manifest; generating them does **not** publish a release or host
-a plugin repository.
+### Via the plugin repository (recommended)
 
-For a conventional Linux Jellyfin service, build and copy **both** assemblies.
-Adjust the path and service account for your installation; the install/restart
-commands require administrator privileges. Container installations need their
-own mounted plugin path and container restart instead.
+Add this URL under **Dashboard → Plugins → Repositories**:
+
+```
+https://raw.githubusercontent.com/cappie15/jellyfin-ambilight-realtime/main/manifest.json
+```
+
+Then install **Realtime Ambilight** from the catalog and restart Jellyfin. This
+one URL always resolves to the file committed at the repository root on `main`,
+so adding it once is enough -- every future release updates that same file
+(see "Cutting a release" below), rather than requiring the URL to be re-added
+each time. The manifest lists every published version, newest first, so
+Jellyfin can also offer a downgrade if a release turns out to have a problem.
+
+### Build from source
+
+Installation from a checkout is manual. For a conventional Linux Jellyfin
+service, build and copy **both** assemblies. Adjust the path and service
+account for your installation; the install/restart commands require
+administrator privileges. Container installations need their own mounted
+plugin path and container restart instead.
 
 Back up your existing plugin/configuration before replacing it. From the
 repository root:
@@ -99,12 +113,12 @@ dotnet build src/Jellyfin.Plugin.RealtimeAmbilight/Jellyfin.Plugin.RealtimeAmbil
   --configuration Release --no-incremental
 
 sudo install -d -o jellyfin -g jellyfin \
-  "/var/lib/jellyfin/plugins/Realtime Ambilight_0.1.1/"
+  "/var/lib/jellyfin/plugins/Realtime Ambilight_0.2.0/"
 
 sudo install -o jellyfin -g jellyfin \
   src/Jellyfin.Plugin.RealtimeAmbilight/bin/Release/net9.0/Jellyfin.Plugin.RealtimeAmbilight.dll \
   src/Jellyfin.Plugin.RealtimeAmbilight/bin/Release/net9.0/Jellyfin.Plugin.RealtimeAmbilight.Core.dll \
-  "/var/lib/jellyfin/plugins/Realtime Ambilight_0.1.1/"
+  "/var/lib/jellyfin/plugins/Realtime Ambilight_0.2.0/"
 
 sudo systemctl restart jellyfin
 ```
@@ -118,14 +132,34 @@ Copying only the plugin assembly and leaving a stale `*.Core.dll` behind causes 
 ./build/package.sh
 ```
 
-This recreates `artifacts/` and produces `realtime-ambilight_0.1.1.zip` containing
-both assemblies and `meta.json`, plus `manifest.json`. The manifest's default
-download URL points to a versioned GitHub release; it only works after the ZIP
-has been published there. Pass your own release base URL as the script's first
+This recreates `artifacts/` and produces a versioned ZIP (e.g.
+`realtime-ambilight_0.2.0.zip`) containing both assemblies and `meta.json`,
+plus a `manifest.json` whose default download URL points at a matching
+versioned GitHub release -- it only resolves once that ZIP has actually been
+published there. Pass your own release base URL as the script's first
 argument when hosting elsewhere.
 
 The [CI workflow](.github/workflows/ci.yml) builds, tests and packages the project,
-then uploads the ZIP and manifest as the `realtime-ambilight-plugin` artifact.
+then uploads the ZIP and manifest as the `realtime-ambilight-plugin` artifact --
+that CI artifact is a build check, not a publish step; it still has to be
+attached to a GitHub release by hand (see below) to actually become installable.
+
+### Cutting a release
+
+1. Bump `version` (and `timestamp`) in `plugin-package/meta.json`.
+2. Run `./build/package.sh`; it writes `artifacts/realtime-ambilight_<version>.zip`,
+   `artifacts/ambilight-logo.png` and `artifacts/manifest.json`.
+3. Fill in that version's `changelog` in `artifacts/manifest.json`, and copy the
+   *previous* release's own version entry into the same `versions` array (newest
+   first) -- the published manifest is the full, standing history of installable
+   versions, not just the newest one.
+4. Tag (`git tag vX.Y.Z`, `git push origin vX.Y.Z`) and create a GitHub release
+   from that tag, uploading the ZIP, icon and manifest as release assets.
+5. Copy the same (multi-version) `artifacts/manifest.json` to `manifest.json` at
+   the repository root and commit it to `main` -- this is what the stable
+   `raw.githubusercontent.com/.../main/manifest.json` URL above actually serves,
+   so a release is not visible to existing repository subscribers until this
+   step lands on `main`.
 Packaging implementation: [build/package.sh](build/package.sh).
 
 ## Configuration

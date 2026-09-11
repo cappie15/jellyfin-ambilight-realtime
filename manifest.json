@@ -1,0 +1,29 @@
+[
+  {
+    "guid": "7d6d91ed-0f36-46ea-9868-9623283b6b51",
+    "name": "Realtime Ambilight",
+    "description": "Server-side realtime Ambilight output to WLED",
+    "overview": "Realtime HDR-aware ambient lighting for Jellyfin playback",
+    "owner": "Realtime Ambilight contributors",
+    "category": "General",
+    "imageUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.2.0/ambilight-logo.png",
+    "versions": [
+      {
+        "version": "0.2.0",
+        "changelog": "Adds Philips Hue Entertainment as a second, independent realtime output alongside WLED (same picture, same bound TV, off by default). Adds a settings-page overhaul: overview cards that expand in place, one combined \"edit all settings\" page, live pipeline/device status, live activity log, device reachability pings, colour-deviation breakdown, and a reset-to-defaults action. Adds WLED settings management (realtime pixel offset, nightlight interference) and 200+ unit tests. Several real bugs found and fixed against physical hardware over multiple hands-on test rounds (see the project's ADRs and commit history).",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.2.0/realtime-ambilight_0.2.0.zip",
+        "checksum": "9cc4cbcf8b7fd20491d674fb0126069e",
+        "timestamp": "2026-09-11T02:53:00.0000000Z"
+      },
+      {
+        "version": "0.1.1",
+        "changelog": "First installable pre-alpha release: server-side video analysis driving WLED in realtime, with calibration and RGBW output. Hue integration was not yet included.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.1.1/realtime-ambilight_0.1.1.zip",
+        "checksum": "378e7cb8ba84d77c4fde8c448b7beefe",
+        "timestamp": "2026-09-08T17:44:51.0000000Z"
+      }
+    ]
+  }
+]
