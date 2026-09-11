@@ -27,6 +27,23 @@ public sealed record HueBridgeInfo(string Host, string BridgeId, string ModelId,
 public sealed record HuePairingResult(bool Success, string? ApplicationKey, string? ClientKey, string? FailureReason);
 
 /// <summary>
+/// The narrow slice of <see cref="HueBridgeClient"/> that <see cref="HueEntertainmentService"/>
+/// actually calls -- pairing, discovery-time capability reads and the typed
+/// HueApi client are deliberately not part of this interface, since only
+/// <see cref="Api.HueController"/> needs those and it depends on the
+/// concrete class directly. Exists purely so a test can fake the bridge
+/// without a real network call.
+/// </summary>
+public interface IHueBridgeClient
+{
+    Task<IReadOnlyList<HueEntertainmentConfiguration>> GetEntertainmentConfigurationsAsync(
+        string host, string expectedCertificateThumbprintSha256, string applicationKey, CancellationToken cancellationToken);
+
+    Task<IReadOnlyDictionary<Guid, Guid>> ResolveLightIdsAsync(
+        string host, string expectedCertificateThumbprintSha256, string applicationKey, CancellationToken cancellationToken);
+}
+
+/// <summary>
 /// The local REST calls this plugin makes to a Hue bridge directly (not
 /// through the Entertainment DTLS stream): discovery/capability read,
 /// pairing, reading entertainment configurations, and end-of-session light
@@ -34,7 +51,7 @@ public sealed record HuePairingResult(bool Success, string? ApplicationKey, stri
 /// plugin actually chose, never <c>HttpClientHandler.DangerousAcceptAnyServerCertificateValidator</c>
 /// -- see the ADR for why that specific default matters here.
 /// </summary>
-public sealed class HueBridgeClient
+public sealed class HueBridgeClient : IHueBridgeClient
 {
     private const int Port = 443;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);

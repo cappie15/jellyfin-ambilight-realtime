@@ -46,9 +46,10 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     private const int MaximumConsecutiveFailuresBeforeSlowestBackoff = 6;
 
     private readonly PlaybackEventCoordinator _coordinator;
-    private readonly HueCredentialStore _credentialStore;
-    private readonly HueBridgeClient _bridgeClient;
-    private readonly HueLightControl _lightControl;
+    private readonly IHueCredentialStore _credentialStore;
+    private readonly IHueBridgeClient _bridgeClient;
+    private readonly IHueLightControl _lightControl;
+    private readonly IHueStreamChannelFactory _channelFactory;
     private readonly ILogger<HueEntertainmentService> _logger;
     private readonly HueEntertainmentStateMachine _stateMachine = new();
     private readonly LatestFrameBuffer<AnalysisFrame> _latestFrames;
@@ -56,7 +57,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     private readonly Random _jitter = new();
 
     private HueFrameProcessor? _frameProcessor;
-    private HueDtlsChannel? _channel;
+    private IHueStreamChannel? _channel;
     private HueCredentials? _credentials;
     private IReadOnlyList<HueEntertainmentChannel> _channels = [];
     private IReadOnlyDictionary<Guid, Guid> _lightIdsByServiceId = new Dictionary<Guid, Guid>();
@@ -70,16 +71,18 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
 
     public HueEntertainmentService(
         PlaybackEventCoordinator coordinator,
-        HueCredentialStore credentialStore,
-        HueBridgeClient bridgeClient,
-        HueLightControl lightControl,
-        ILogger<HueEntertainmentService> logger)
+        IHueCredentialStore credentialStore,
+        IHueBridgeClient bridgeClient,
+        IHueLightControl lightControl,
+        ILogger<HueEntertainmentService> logger,
+        IHueStreamChannelFactory? channelFactory = null)
     {
         _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
         _credentialStore = credentialStore ?? throw new ArgumentNullException(nameof(credentialStore));
         _bridgeClient = bridgeClient ?? throw new ArgumentNullException(nameof(bridgeClient));
         _lightControl = lightControl ?? throw new ArgumentNullException(nameof(lightControl));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _channelFactory = channelFactory ?? new HueDtlsChannelFactory();
         _latestFrames = _coordinator.LatestFrames.Subscribe();
     }
 
@@ -324,7 +327,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                     .ConfigureAwait(false);
             }
 
-            var channel = new HueDtlsChannel(configuration.HueBridgeHost, credentials.ApplicationKey, credentials.ClientKey);
+            var channel = _channelFactory.Create(configuration.HueBridgeHost, credentials.ApplicationKey, credentials.ClientKey);
             var connected = await channel.TryConnectAsync(selected.Id, ConnectTimeout, _shutdown.Token).ConfigureAwait(false);
             if (!connected)
             {

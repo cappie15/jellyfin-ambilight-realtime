@@ -41,7 +41,18 @@ public sealed record HueCredentials(
 /// silently producing garbage credentials.
 /// </para>
 /// </remarks>
-public sealed class HueCredentialStore
+/// <summary>
+/// <see cref="HueEntertainmentService"/>'s whole dependency on <see cref="HueCredentialStore"/>
+/// -- it only ever loads credentials, never saves/deletes them (that is
+/// <see cref="Api.HueController"/>'s job, via the concrete class directly).
+/// Exists so a test can supply fake credentials without touching disk.
+/// </summary>
+public interface IHueCredentialStore
+{
+    Task<HueCredentials?> LoadAsync(CancellationToken cancellationToken);
+}
+
+public sealed class HueCredentialStore : IHueCredentialStore
 {
     private const string FileName = "hue-credentials.dat";
     private const string Purpose = "Jellyfin.Plugin.RealtimeAmbilight.Hue.Credentials.v1";

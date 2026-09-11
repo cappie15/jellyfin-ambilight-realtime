@@ -30,10 +30,14 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         // slot -- never the WLED output pump's.
         serviceCollection.AddSingleton(_ => new HueCredentialStore(
             Plugin.Instance?.DataFolderPath ?? Path.Combine(Path.GetTempPath(), "jellyfin-realtime-ambilight-hue")));
+        serviceCollection.AddSingleton<IHueCredentialStore>(serviceProvider => serviceProvider.GetRequiredService<HueCredentialStore>());
         serviceCollection.AddSingleton(serviceProvider => new HueBridgeClient(
             serviceProvider.GetRequiredService<ILogger<HueBridgeClient>>()));
+        serviceCollection.AddSingleton<IHueBridgeClient>(serviceProvider => serviceProvider.GetRequiredService<HueBridgeClient>());
         serviceCollection.AddSingleton(serviceProvider => new HueLightControl(
             serviceProvider.GetRequiredService<ILogger<HueLightControl>>()));
+        serviceCollection.AddSingleton<IHueLightControl>(serviceProvider => serviceProvider.GetRequiredService<HueLightControl>());
+        serviceCollection.AddSingleton<IHueStreamChannelFactory, HueDtlsChannelFactory>();
         serviceCollection.AddSingleton<HueBridgeDiscoveryService>();
         serviceCollection.AddSingleton<HueEntertainmentService>();
         serviceCollection.AddSingleton<IHostedService>(serviceProvider => serviceProvider.GetRequiredService<HueEntertainmentService>());

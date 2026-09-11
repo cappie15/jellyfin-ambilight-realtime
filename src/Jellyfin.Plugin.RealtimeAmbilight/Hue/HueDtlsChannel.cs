@@ -3,6 +3,33 @@ using HueApi.Entertainment;
 namespace Jellyfin.Plugin.RealtimeAmbilight.Hue;
 
 /// <summary>
+/// <see cref="HueEntertainmentService"/>'s whole dependency on the open DTLS
+/// stream -- exists so a test can drive the service's lifecycle/state-machine
+/// logic without a real bridge or a real DTLS handshake.
+/// </summary>
+public interface IHueStreamChannel : IDisposable
+{
+    Task<bool> TryConnectAsync(Guid entertainmentConfigurationId, TimeSpan timeout, CancellationToken cancellationToken);
+
+    void SendPacket(byte[] packet);
+
+    void Close();
+}
+
+/// <summary>Creates a fresh <see cref="IHueStreamChannel"/> per connect attempt, since a channel is single-use (one connect, then closed for good).</summary>
+public interface IHueStreamChannelFactory
+{
+    IHueStreamChannel Create(string bridgeHost, string applicationKey, string clientKey);
+}
+
+/// <summary>Production factory: a real <see cref="HueDtlsChannel"/> per call.</summary>
+public sealed class HueDtlsChannelFactory : IHueStreamChannelFactory
+{
+    public IHueStreamChannel Create(string bridgeHost, string applicationKey, string clientKey)
+        => new HueDtlsChannel(bridgeHost, applicationKey, clientKey);
+}
+
+/// <summary>
 /// Wraps <see cref="StreamingHueClient"/> for exactly two things it does not
 /// offer itself: a bounded, abandonable connect, and a way to send one raw
 /// HueStream datagram this plugin built with its own <c>HueStreamPacketizer</c>
@@ -24,7 +51,7 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Hue;
 /// the underlying socket, which unblocks the handshake's blocked read and
 /// lets it fail out on its own rather than leaving a thread stuck forever.
 /// </remarks>
-public sealed class HueDtlsChannel : StreamingHueClient
+public sealed class HueDtlsChannel : StreamingHueClient, IHueStreamChannel
 {
     public HueDtlsChannel(string ip, string applicationKey, string clientKey)
         : base(ip, applicationKey, clientKey)

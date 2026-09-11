@@ -8,8 +8,20 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!--
+      The plugin project excludes these packages' runtime assets on purpose
+      (it runs inside a real Jellyfin server process, which already provides
+      MediaBrowser.Common/Controller/Model), but a test process is not a
+      Jellyfin server, so HueEntertainmentServiceTests' real Plugin/BasePlugin
+      bootstrap needs the actual DLLs copied to the test output. Referenced
+      here, without ExcludeAssets, for exactly that.
+    -->
+    <PackageReference Include="Jellyfin.Common" Version="10.11.9" />
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.9" />
+    <PackageReference Include="Jellyfin.Model" Version="10.11.9" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Jellyfin.Plugin.RealtimeAmbilight.Core/Jellyfin.Plugin.RealtimeAmbilight.Core.csproj" />
+    <ProjectReference Include="../../src/Jellyfin.Plugin.RealtimeAmbilight/Jellyfin.Plugin.RealtimeAmbilight.csproj" />
   </ItemGroup>
 </Project>

@@ -7,12 +7,29 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.RealtimeAmbilight.Hue;
 
 /// <summary>
+/// <see cref="HueEntertainmentService"/>'s whole dependency on <see cref="HueLightControl"/>
+/// -- exists purely so a test can fake a bridge's light responses without a
+/// real network call.
+/// </summary>
+public interface IHueLightControl
+{
+    Task<HueLightSnapshotEntry?> ReadStateAsync(
+        string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken);
+
+    Task TurnOnAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken);
+
+    Task ApplyWarmWhiteDimAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken);
+
+    Task RestoreAsync(string host, string certificateThumbprint, string applicationKey, HueLightSnapshotEntry entry, CancellationToken cancellationToken);
+}
+
+/// <summary>
 /// The plain (non-Entertainment) CLIP v2 <c>light</c> resource calls needed
 /// for the end-of-session behaviour: reading each light's state once before
 /// a session starts, and writing the warm-white-dim or restore payload once
 /// it ends. Ordinary REST PUTs, not part of the realtime DTLS path.
 /// </summary>
-public sealed class HueLightControl
+public sealed class HueLightControl : IHueLightControl
 {
     private const int Port = 443;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
