@@ -18,6 +18,11 @@ export default function (view) {
     // swatch dots and the curve chart's wedges/lines -- one source so the two
     // views of the same six colours can never drift apart.
     const wedgeColours = { Red: "#e6483c", Yellow: "#d6c22e", Green: "#4caf50", Cyan: "#26a69a", Blue: "#4a6fd6", Magenta: "#c04fb0" };
+    // Above this, a reachable device's own ping figure (and that card's state
+    // label) turns amber -- still "there", just slow enough to call out. WLED
+    // and the Hue bridge are both LAN devices normally answering in a few ms,
+    // so this is a generous margin, not a hair trigger.
+    const SlowPingThresholdMs = 15;
     const hueAnchorFieldsFor = colour => [`${colour}HueShiftDegrees`, `${colour}BrightnessPercent`, `${colour}IntensityPercent`];
     const hueAnchorFields = hueAnchorColours.flatMap(hueAnchorFieldsFor);
     let hueAnchors = {};
@@ -144,32 +149,52 @@ export default function (view) {
         }).join("");
     }
 
-    // Card overview is the landing page: clicking a card's header expands
-    // that same card in place to show a read-only summary of what is
-    // already configured -- no navigation away, the whole overview grid
-    // (and the live Pipeline/activity panels below it) stay exactly where
-    // they were. Every card's own "Edit all settings" button opens the one
-    // shared raEditAllPanel further down the page (see openEditAll),
-    // scrolled to that section: there is only ever one place to actually
-    // change a setting, so a change made from any card is made alongside
-    // every other setting, never in an isolated per-section view.
+    // Card overview is the landing page: every card always shows its own
+    // compact, read-only summary (name, state, one headline stat, one
+    // caption) -- there is nothing to expand or collapse any more. Every
+    // card's own "Edit all settings" button opens the one shared
+    // raEditAllPanel further down the page (see openEditAll), scrolled to
+    // that section: there is only ever one place to actually change a
+    // setting, so a change made from any card is made alongside every other
+    // setting, never in an isolated per-section view.
     const sectionSummarisers = {};
 
-    function toggleCardDetail(section) {
-        const detail = byId(`${section}CardDetail`);
-        const expanding = detail.hidden;
-        detail.hidden = !expanding;
-        byId(`raCard-${section}`)?.classList.toggle("raCardExpanded", expanding);
-        if (expanding) {
-            sectionSummarisers[section]?.();
+    // Ready / Streaming / Calibrated all read as the same "working" green;
+    // only the label text (passed in by the caller) tells them apart. Slow
+    // (reachable, high latency) and Off/Unreachable are the only states that
+    // are not green -- see the CSS remarks on .raCardState.
+    function setCardState(prefix, state, label) {
+        const el = byId(`${prefix}State`);
+        if (!el) {
+            return;
         }
+
+        el.className = `raCardState ra${state[0].toUpperCase()}${state.slice(1)}`;
+        el.textContent = label;
+    }
+
+    // The one shared bar spanning all four cards: solid green whenever
+    // Ambilight is enabled, rotating through an Ambilight-style colour sweep
+    // only while something is actually streaming right now, and a plain grey
+    // when the master switch is off. This is a whole-panel signal ("is
+    // anything alive"), independent of any one card's own state.
+    function updateRackBar() {
+        const bar = byId("raRackBar");
+        if (!bar) {
+            return;
+        }
+
+        const enabled = byId("enabled").checked;
+        const streaming = isWledStreaming() || isHueStreaming();
+        bar.classList.toggle("raRackOff", !enabled);
+        bar.classList.toggle("raRackSweep", enabled && streaming);
     }
 
     // Scrolled to the section it was opened from, but the overview cards
     // and the Pipeline/Live activity panels are never hidden while this is
     // open -- their own periodic refreshes keep running, so a slider
-    // changed here is visible taking effect up in the sticky cards above
-    // without leaving this page.
+    // changed here is visible taking effect up in the cards above without
+    // leaving this page.
     function openEditAll(section) {
         byId("raEditAllPanel").hidden = false;
         if (section) {
@@ -214,22 +239,33 @@ export default function (view) {
     }
 
     sectionSummarisers.tv = function summariseTv() {
-        byId("tvSummaryDevice").textContent = deviceLabelWithIp();
-        byId("tvSummaryEnabled").textContent = byId("enabled").checked ? "On" : "Off";
-        byId("tvSummarySampling").textContent = `${byId("analysisWidth").value}×${analysisHeight()} @ ${byId("analysisFramesPerSecond").value} fps`;
+        const enabled = byId("enabled").checked;
+        const streaming = isWledStreaming() || isHueStreaming();
+        setCardState("tv", enabled ? "ok" : "off", !enabled ? "OFF" : streaming ? "STREAM" : "READY");
+        byId("tvStat").textContent = targetDeviceName() || "Not bound yet";
+        const ip = targetDeviceIp();
+        byId("tvCap").textContent = `${ip ? `${ip} · ` : ""}Ambilight ${enabled ? "on" : "off"}`;
+        const device = knownDevices.find(candidate => candidate.id === byId("targetDeviceId").value);
+        byId("tvSub").textContent = device?.lastUsed ? `Last seen ${lastUsedLabel(device.lastUsed)}` : "";
     };
 
     sectionSummarisers.wled = function summariseWled() {
         const host = byId("wledHost").value.trim() || loadedConfig?.WledHost || "";
         const wledName = latestWledStatus?.Name ?? latestWledStatus?.name;
-        byId("wledSummaryHost").textContent = host ? (wledName ? `${wledName} (${host})` : host) : "Not set up yet";
+        const streaming = isWledStreaming();
+        const ping = latestPings.wled;
+        const state = !host ? "off"
+            : (ping && !ping.reachable) ? "dead"
+            : (ping?.reachable && ping.milliseconds > SlowPingThresholdMs) ? "warn"
+            : "ok";
+        const label = !host ? "OFF" : state === "dead" ? "UNREACHABLE" : state === "warn" ? "SLOW" : streaming ? "STREAM" : "READY";
+        setCardState("wled", state, label);
         const counts = ledCountFields.map(field => Number(byId(field).value) || 0);
-        byId("wledSummaryLeds").textContent = `${counts.reduce((a, b) => a + b, 0)} (${counts.join("/")})`;
-        byId("wledSummaryRgbw").textContent = byId("sendWhiteChannel").checked
-            ? `On, strength ${byId("whiteChannelStrengthPercent").value}%`
-            : "Off";
-        const delay = Number(byId("outputDelayMilliseconds").value) || 0;
-        byId("wledSummaryTiming").textContent = `${byId("outputFramesPerSecond").value} fps, ${delay === 0 ? "no delay" : `${delay} ms delay`}`;
+        byId("wledStat").innerHTML = host ? `${counts.reduce((a, b) => a + b, 0)} <span class="raUnit">LEDs</span>` : "&mdash;";
+        byId("wledCap").textContent = host
+            ? `${wledName ? `${wledName} (${host})` : host} · ${byId("sendWhiteChannel").checked ? "RGBW" : "RGB"} · ${byId("outputFramesPerSecond").value} fps`
+            : "Scan or enter a controller address";
+        byId("wledPing").innerHTML = pingLine(ping);
     };
 
     // Always one cell per anchor (a fixed 2-column, 3-row grid), a small dot
@@ -280,24 +316,35 @@ export default function (view) {
 
     sectionSummarisers.ambilight = function summariseAmbilight() {
         const calibrated = isAmbilightCalibrated();
-        setPill("ambilightSummaryCalibrated", calibrated ? "ready" : "off");
-        byId("ambilightSummaryCalibrated").textContent = calibrated ? "Calibrated" : "Default";
-        byId("ambilightSummaryBrightness").textContent = `${byId("brightnessPercent").value}%`;
-        byId("ambilightSummarySaturation").textContent = `${byId("saturationPercent").value}%`;
-        const smoothingMs = Number(byId("wledSmoothingMilliseconds").value) || 0;
-        byId("ambilightSummarySmoothing").textContent = smoothingMs === 0 ? "Off (fully reactive)" : `${smoothingMs} ms`;
+        setCardState("ambilight", calibrated ? "ok" : "off", calibrated ? "CALIBRATED" : "DEFAULT");
+        byId("ambilightStat").innerHTML = `${byId("brightnessPercent").value}<span class="raUnit">%</span>`;
         renderColourDeviation();
+        const deviationSummary = byId("ambilightSummaryDeviationCount").textContent;
+        byId("ambilightCap").textContent = `intensity ${byId("saturationPercent").value}% · ${deviationSummary}`;
     };
 
     sectionSummarisers.hue = function summariseHue() {
         const bridgeHost = loadedConfig?.HueBridgeHost || "";
-        byId("hueSummaryBridge").textContent = bridgeHost ? `Hue Bridge (${bridgeHost})` : "Not paired yet";
-        byId("hueSummaryArea").textContent = byId("hueEntertainmentConfig").selectedOptions[0]?.textContent
+        const enabled = byId("hueEnabled").checked;
+        const paired = Boolean(bridgeHost);
+        const configured = enabled && paired;
+        const streaming = isHueStreaming();
+        const ping = latestPings.hue;
+        const state = !configured ? "off"
+            : (ping && !ping.reachable) ? "dead"
+            : (ping?.reachable && ping.milliseconds > SlowPingThresholdMs) ? "warn"
+            : "ok";
+        const label = !configured ? "OFF" : state === "dead" ? "UNREACHABLE" : state === "warn" ? "SLOW" : streaming ? "STREAM" : "READY";
+        setCardState("hue", state, label);
+
+        const areaOption = byId("hueEntertainmentConfig").selectedOptions[0]?.textContent
             || loadedConfig?.HueEntertainmentConfigurationName
-            || "Not selected";
-        byId("hueSummaryBrightness").textContent = `${byId("hueBrightnessPercent").value}%`;
-        const response = byId("hueResponsePercent").value;
-        byId("hueSummaryResponsivity").textContent = `${response} (out of 100)`;
+            || "";
+        const lightMatch = areaOption.match(/\((\d+) lights?\)/);
+        byId("hueStat").innerHTML = lightMatch ? `${lightMatch[1]} <span class="raUnit">lights</span>` : "&mdash;";
+        const areaName = areaOption.replace(/\s*\(\d+ lights?\)\s*$/, "") || (paired ? "Not selected" : "Not paired yet");
+        byId("hueCap").textContent = `${areaName}${bridgeHost ? ` · ${bridgeHost}` : ""}`;
+        byId("huePing").innerHTML = pingLine(ping);
     };
 
     // Cheap: reads three already-maintained counters, no measuring work of
@@ -332,60 +379,30 @@ export default function (view) {
     // every 5 s -- not a real ICMP ping (no raw-socket privilege here), but
     // the same "is it there, how far away does it feel" answer a web
     // dashboard's own ping widget gives. null means "never checked" (no host
-    // configured yet).
+    // configured yet): renders nothing, rather than a misleading state.
+    // Reachable always carries one decimal; past SlowPingThresholdMs the
+    // figure (not the dot) turns amber. Unreachable gets a plain red dot and
+    // a red "Unreachable" label instead of a number -- there is nothing to
+    // measure once the connect itself failed.
     function pingLine(ping) {
         if (!ping) {
             return "";
         }
 
-        return `<div>${ping.reachable ? `${Math.round(ping.milliseconds)} ms` : "Unreachable"}</div>`;
+        if (!ping.reachable) {
+            return `<span class="raDot raDotDead"></span><span class="raDeadLabel">Unreachable</span>`;
+        }
+
+        const slow = ping.milliseconds > SlowPingThresholdMs;
+        return `<span class="raDot raDotLive"></span><span class="${slow ? "raMsWarn" : "raMsOk"}">${ping.milliseconds.toFixed(1)} ms</span>`;
     }
 
-    // The TV card deliberately does not get the same TCP-connect ping as
-    // WLED/Hue: those two are addressable HTTP(S) servers with a
-    // well-known port, but a smart TV / streaming client generally accepts
-    // no inbound connection at all even while very much on and playing, so
-    // a failed connect there would misleadingly read as "unreachable" for a
-    // device that is working perfectly. "Last seen" (from Jellyfin's own
-    // device registry, already loaded -- no extra network call) is the
-    // honest live signal for this one.
-    function tvLastSeenLine() {
-        const device = knownDevices.find(candidate => candidate.id === byId("targetDeviceId").value);
-        return device?.lastUsed ? `<div>Last seen ${lastUsedLabel(device.lastUsed)}</div>` : "";
-    }
-
+    // Rack bar + every card's own state/stat/caption -- cheap (string/DOM
+    // writes only, nothing fetched here), and it is exactly what makes a
+    // setting changed on the "all settings" page below visibly take effect
+    // in the cards above without the operator needing to go back to them.
     function refreshOverviewCards() {
-        const enabled = byId("enabled").checked;
-        const boundDevice = Boolean(byId("targetDeviceId").value);
-        const streaming = isWledStreaming();
-        setPill("raCardTvPill", !enabled ? "off" : streaming ? "streaming" : "ready");
-        byId("raCardTvMeta").innerHTML = `<div>${deviceLabelWithIp()}</div><div>Ambilight ${enabled ? "on" : "off"}</div>${tvLastSeenLine()}`;
-
-        const wledHost = byId("wledHost").value.trim() || loadedConfig?.WledHost || "";
-        const wledName = latestWledStatus?.Name ?? latestWledStatus?.name;
-        setPill("raCardWledPill", !wledHost ? "off" : streaming ? "streaming" : "ready");
-        byId("raCardWledMeta").innerHTML = wledHost
-            ? `<div>${wledName ? `${wledName} (${wledHost})` : wledHost}</div><div>${ledCountFields.map(f => Number(byId(f).value) || 0).reduce((a, b) => a + b, 0)} LEDs${byId("sendWhiteChannel").checked ? ", RGBW" : ""}</div>${pingLine(latestPings.wled)}`
-            : "Scan or enter a controller address";
-
-        const calibrated = isAmbilightCalibrated();
-        setPill("raCardAmbilightPill", calibrated ? "ready" : "off");
-        byId("raCardAmbilightPill").textContent = calibrated ? "Calibrated" : "Default";
-        byId("raCardAmbilightMeta").innerHTML = `<div>${calibrated ? "Custom colour calibration" : "Using the picture as recorded"}</div><div>Brightness ${byId("brightnessPercent").value}% · intensity ${byId("saturationPercent").value}%</div>`;
-
-        const hueEnabled = byId("hueEnabled").checked;
-        const huePaired = Boolean(loadedConfig?.HueBridgeHost);
-        const hueStreaming = isHueStreaming();
-        setPill("raCardHuePill", !hueEnabled || !huePaired ? "off" : hueStreaming ? "streaming" : "ready");
-        byId("raCardHueMeta").innerHTML = hueEnabled && huePaired
-            ? `<div>${loadedConfig?.HueEntertainmentConfigurationName || "Paired"}</div><div>Brightness ${byId("hueBrightnessPercent").value}%</div>${pingLine(latestPings.hue)}`
-            : (huePaired ? "Paired, currently off" : "Not paired yet") + pingLine(latestPings.hue);
-
-        // Keeps each card's own inline detail live too, not just its collapsed
-        // meta line -- cheap (string/DOM writes only, nothing fetched here),
-        // and it is exactly what makes a setting changed on the "all
-        // settings" page below visibly take effect up here without the
-        // operator needing to close and reopen a card to see it.
+        updateRackBar();
         Object.values(sectionSummarisers).forEach(summarise => summarise());
     }
 
@@ -1709,12 +1726,6 @@ export default function (view) {
     // are (re)created after this point by innerHTML writes, so binding once
     // at init would silently miss them.
     view.addEventListener("click", event => {
-        const toggle = event.target.closest("[data-toggle-card]");
-        if (toggle) {
-            toggleCardDetail(toggle.dataset.toggleCard);
-            return;
-        }
-
         const openEdit = event.target.closest("[data-open-edit-all]");
         if (openEdit) {
             openEditAll(openEdit.dataset.openEditAll);

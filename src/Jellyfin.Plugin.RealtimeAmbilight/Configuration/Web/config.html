@@ -1,36 +1,56 @@
 <div data-role="page" id="realtimeAmbilightConfigurationPage" class="page type-interior pluginConfigurationPage" data-controller="__plugin/RealtimeAmbilight.js">
     <style>
-        /* ---- overview cards ---- */
-        /* Deliberately not position:sticky -- pinning this to the top of the
-           viewport reliably broke the page layout in practice, especially
-           once a card can grow tall by showing its own detail in place.
-           Plain, normal-flow grid; it scrolls with the rest of the page. */
-        #realtimeAmbilightConfigurationPage .raOverviewGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(19em, 1fr)); align-content: start; gap: 1.1em; margin: 0 0 1.8em; }
-        #realtimeAmbilightConfigurationPage .raCard { text-align: left; border: 1px solid rgba(127, 127, 127, .35); border-radius: .9em; padding: 1.3em 1.4em; background: rgba(127, 127, 127, .05); display: flex; flex-direction: column; min-height: 7em; }
-        #realtimeAmbilightConfigurationPage .raCard:hover, #realtimeAmbilightConfigurationPage .raCard:focus-within, #realtimeAmbilightConfigurationPage .raCard.raCardExpanded { border-color: currentColor; background: rgba(127, 127, 127, .12); }
-        #realtimeAmbilightConfigurationPage .raCardHeader { all: unset; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; gap: .6em; cursor: pointer; font: inherit; color: inherit; }
-        #realtimeAmbilightConfigurationPage .raCardHeader:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: .3em; }
-        #realtimeAmbilightConfigurationPage .raCardTitle { font-weight: 700; font-size: 1.15em; display: flex; align-items: center; justify-content: space-between; gap: .6em; }
-        #realtimeAmbilightConfigurationPage .raCardMeta { font-size: .88em; opacity: .8; line-height: 1.5; }
-        #realtimeAmbilightConfigurationPage .raCardMeta div + div { margin-top: .15em; }
-        #realtimeAmbilightConfigurationPage .raPill { display: inline-flex; align-items: center; gap: .4em; padding: .2em .7em; border-radius: 999px; font-size: .75em; font-weight: 700; white-space: nowrap; border: 1px solid currentColor; }
-        /* Off: grey. Ready: configured but idle -- outline only, matches today's look. Streaming: actively sending frames right now -- filled, so it reads as unmistakably different from merely "ready". */
-        #realtimeAmbilightConfigurationPage .raPill.raReady { color: #2fae4e; }
-        #realtimeAmbilightConfigurationPage .raPill.raStreaming { color: #fff; background: #1f9d46; border-color: #1f9d46; }
-        #realtimeAmbilightConfigurationPage .raPill.raOff { color: #9a9a9a; }
-        #realtimeAmbilightConfigurationPage .raPill.raWarn { color: #d18e1c; }
+        /* ---- overview cards: "Instrument Panel" -- one rack, one shared bar ---- */
+        #realtimeAmbilightConfigurationPage .raRack { border-radius: 0 0 1.1em 1.1em; overflow: hidden; border: 1px solid #23262b; border-top: none; margin: 0 0 1.8em; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+        /* Square top on purpose: this bar has to read as one unbroken straight
+           line across all four cards, not four separate rounded edges.
+           Rounded corners live on the bottom of the rack instead. */
+        #realtimeAmbilightConfigurationPage .raRackBar { height: 4px; position: relative; overflow: hidden; background: #173322; }
+        #realtimeAmbilightConfigurationPage .raRackBar.raRackOff { background: #2a2d33; }
+        #realtimeAmbilightConfigurationPage .raRackBarFill { position: absolute; inset: 0; background: #3ddc84; }
+        #realtimeAmbilightConfigurationPage .raRackBar.raRackOff .raRackBarFill { background: #55595f; }
+        /* Calm solid green at rest; a slow rotating Ambilight-style colour
+           sweep only while something is actually streaming right now -- the
+           same signal that drives the real LEDs, condensed into 4px. */
+        #realtimeAmbilightConfigurationPage .raRackBar.raRackSweep .raRackBarFill { background: linear-gradient(90deg, #ff5f6d, #ffc371, #3ddc84, #6dd5ed, #a78bfa, #ff5f6d); background-size: 300% 100%; animation: raRackSweepMove 6s linear infinite; }
+        @keyframes raRackSweepMove { from { background-position: 0% 0; } to { background-position: -300% 0; } }
+        /* Rounded on the container, not per-card: at a narrow viewport the
+           grid can wrap to two rows, and rounding individual first/last
+           cards then rounds whatever happens to land in that slot rather
+           than the rack's own actual bottom-left/bottom-right corner.
+           Clipping the container itself always rounds the true outer
+           silhouette, however many rows the cards wrap into. */
+        #realtimeAmbilightConfigurationPage .raRackGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(19em, 1fr)); gap: 1px; background: #22262c; border-radius: 0 0 1em 1em; overflow: hidden; }
+        #realtimeAmbilightConfigurationPage .raCard { background: #0d0f12; color: #e7e9ec; padding: 1.1em 1.2em; display: flex; flex-direction: column; }
+        #realtimeAmbilightConfigurationPage .raCardTop { display: flex; justify-content: space-between; align-items: center; gap: .6em; font-weight: 600; font-size: .95em; }
+        /* Ready / Streaming / Calibrated are all a working system -- green,
+           full stop, telling them apart is the label text's job, not colour.
+           Slow (reachable but high latency) is the one shade of trouble that
+           does not also turn the shared bar above anything but green. */
+        #realtimeAmbilightConfigurationPage .raCardState { font: 500 .68em/1 "IBM Plex Mono", monospace; letter-spacing: .06em; text-transform: uppercase; color: #8a929c; }
+        #realtimeAmbilightConfigurationPage .raCardState.raOk { color: #3ddc84; }
+        #realtimeAmbilightConfigurationPage .raCardState.raWarn { color: #f5a623; }
+        #realtimeAmbilightConfigurationPage .raCardState.raDead { color: #ff5a5a; }
+        #realtimeAmbilightConfigurationPage .raCardStat { font: 600 1.5em/1.15 "IBM Plex Mono", monospace; margin: .7em 0 .1em; font-variant-numeric: tabular-nums; }
+        #realtimeAmbilightConfigurationPage .raCardStat .raUnit { font-size: .5em; color: #6d747d; }
+        #realtimeAmbilightConfigurationPage .raCardCap { font-size: .74em; color: #6d747d; }
+        #realtimeAmbilightConfigurationPage .raCardPing { display: flex; align-items: center; gap: .45em; margin-top: .85em; font: 500 .78em/1 "IBM Plex Mono", monospace; }
+        #realtimeAmbilightConfigurationPage .raCardAction { margin-top: 1em; align-self: flex-start; }
         #realtimeAmbilightConfigurationPage .raBackLink { display: inline-flex; align-items: center; gap: .4em; background: none; border: none; cursor: pointer; color: inherit; opacity: .8; font: inherit; padding: .3em 0; margin-bottom: .6em; }
         #realtimeAmbilightConfigurationPage .raBackLink:hover { opacity: 1; }
         #realtimeAmbilightConfigurationPage .raLink { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
 
-        /* ---- a card's own inline detail, expanded in place -- no navigation away ---- */
-        #realtimeAmbilightConfigurationPage .raCardDetail[hidden] { display: none; }
-        #realtimeAmbilightConfigurationPage .raCardDetail { margin-top: 1em; padding-top: 1em; border-top: 1px solid rgba(127, 127, 127, .25); display: flex; flex-direction: column; }
-        #realtimeAmbilightConfigurationPage .raSummaryRow { display: flex; justify-content: space-between; gap: 1.5em; padding: .35em 0; border-top: 1px solid rgba(127, 127, 127, .18); font-size: .92em; }
-        #realtimeAmbilightConfigurationPage .raSummaryRow:first-child { border-top: none; padding-top: 0; }
-        #realtimeAmbilightConfigurationPage .raSummaryRow .raK { opacity: .75; }
-        #realtimeAmbilightConfigurationPage .raSummaryRow .raV { font-weight: 600; text-align: right; }
-        #realtimeAmbilightConfigurationPage .raEditToggle { margin-top: .8em; align-self: flex-start; }
+        /* ---- reachability dot + ping figure, shared by the WLED/Hue cards ---- */
+        #realtimeAmbilightConfigurationPage .raDot { width: .62em; height: .62em; border-radius: 50%; flex: none; display: inline-block; }
+        #realtimeAmbilightConfigurationPage .raDot.raDotLive { background: #3ddc84; box-shadow: 0 0 0 0 rgba(61, 220, 132, .6); animation: raDotPulse 1.8s ease-out infinite; }
+        #realtimeAmbilightConfigurationPage .raDot.raDotDead { background: #ff5a5a; }
+        @keyframes raDotPulse { 0% { box-shadow: 0 0 0 0 rgba(61, 220, 132, .55); } 70% { box-shadow: 0 0 0 .5em rgba(61, 220, 132, 0); } 100% { box-shadow: 0 0 0 0 rgba(61, 220, 132, 0); } }
+        #realtimeAmbilightConfigurationPage .raMsOk { color: #3ddc84; }
+        #realtimeAmbilightConfigurationPage .raMsWarn { color: #f5a623; }
+        #realtimeAmbilightConfigurationPage .raDeadLabel { color: #ff5a5a; font-weight: 600; }
+        @media (prefers-reduced-motion: reduce) {
+            #realtimeAmbilightConfigurationPage .raDot.raDotLive, #realtimeAmbilightConfigurationPage .raRackBar.raRackSweep .raRackBarFill { animation: none; }
+        }
 
         /* ---- the one combined "all settings" page every card's Edit button opens ---- */
         #realtimeAmbilightConfigurationPage .raEditAllPanel[hidden] { display: none; }
@@ -70,58 +90,35 @@
             <p>Matches WLED to the picture while Jellyfin plays. WLED regains control when playback ends.</p>
         </div>
 
-        <div class="raOverviewGrid" id="raOverviewGrid">
-            <div class="raCard" id="raCard-tv">
-                <button type="button" class="raCardHeader" data-toggle-card="tv">
-                    <div class="raCardTitle"><span>TV</span><span class="raPill" id="raCardTvPill">&nbsp;</span></div>
-                    <div class="raCardMeta" id="raCardTvMeta">&nbsp;</div>
-                </button>
-                <div class="raCardDetail" id="tvCardDetail">
-                    <div class="raSummaryRow"><span class="raK">Playback device</span><span class="raV" id="tvSummaryDevice">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Ambilight</span><span class="raV" id="tvSummaryEnabled">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Sampling</span><span class="raV" id="tvSummarySampling">&nbsp;</span></div>
-                    <button is="emby-button" type="button" class="raised raEditToggle" data-open-edit-all="tv">Edit all settings</button>
+        <div class="raRack" id="raOverviewGrid">
+            <div class="raRackBar" id="raRackBar"><div class="raRackBarFill"></div></div>
+            <div class="raRackGrid">
+                <div class="raCard" id="raCard-tv">
+                    <div class="raCardTop"><span>TV</span><span class="raCardState" id="tvState">&nbsp;</span></div>
+                    <div class="raCardStat" id="tvStat">&nbsp;</div>
+                    <div class="raCardCap" id="tvCap">&nbsp;</div>
+                    <div class="raCardCap" id="tvSub">&nbsp;</div>
+                    <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="tv">Edit all settings</button>
                 </div>
-            </div>
-            <div class="raCard" id="raCard-wled">
-                <button type="button" class="raCardHeader" data-toggle-card="wled">
-                    <div class="raCardTitle"><span>WLED</span><span class="raPill" id="raCardWledPill">&nbsp;</span></div>
-                    <div class="raCardMeta" id="raCardWledMeta">&nbsp;</div>
-                </button>
-                <div class="raCardDetail" id="wledCardDetail">
-                    <div class="raSummaryRow"><span class="raK">Controller</span><span class="raV" id="wledSummaryHost">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">LEDs around the TV</span><span class="raV" id="wledSummaryLeds">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">White signal (RGBW)</span><span class="raV" id="wledSummaryRgbw">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Update rate / delay</span><span class="raV" id="wledSummaryTiming">&nbsp;</span></div>
-                    <button is="emby-button" type="button" class="raised raEditToggle" data-open-edit-all="wled">Edit all settings</button>
+                <div class="raCard" id="raCard-wled">
+                    <div class="raCardTop"><span>WLED</span><span class="raCardState" id="wledState">&nbsp;</span></div>
+                    <div class="raCardStat" id="wledStat">&nbsp;</div>
+                    <div class="raCardCap" id="wledCap">&nbsp;</div>
+                    <div class="raCardPing" id="wledPing"></div>
+                    <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="wled">Edit all settings</button>
                 </div>
-            </div>
-            <div class="raCard" id="raCard-ambilight">
-                <button type="button" class="raCardHeader" data-toggle-card="ambilight">
-                    <div class="raCardTitle"><span>Ambilight</span><span class="raPill" id="raCardAmbilightPill">&nbsp;</span></div>
-                    <div class="raCardMeta" id="raCardAmbilightMeta">&nbsp;</div>
-                </button>
-                <div class="raCardDetail" id="ambilightCardDetail">
-                    <div class="raSummaryRow"><span class="raK">Calibration</span><span class="raV"><span class="raPill" id="ambilightSummaryCalibrated">&nbsp;</span></span></div>
-                    <div class="raSummaryRow"><span class="raK">Brightness</span><span class="raV" id="ambilightSummaryBrightness">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Colour intensity</span><span class="raV" id="ambilightSummarySaturation">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Smoothing</span><span class="raV" id="ambilightSummarySmoothing">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Colour deviation</span><span class="raV" id="ambilightSummaryDeviationCount">&nbsp;</span></div>
-                    <div class="raColourColumns" id="ambilightSummaryDeviation"></div>
-                    <button is="emby-button" type="button" class="raised raEditToggle" data-open-edit-all="ambilight">Edit all settings</button>
+                <div class="raCard" id="raCard-ambilight">
+                    <div class="raCardTop"><span>Ambilight</span><span class="raCardState" id="ambilightState">&nbsp;</span></div>
+                    <div class="raCardStat" id="ambilightStat">&nbsp;</div>
+                    <div class="raCardCap" id="ambilightCap">&nbsp;</div>
+                    <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="ambilight">Edit all settings</button>
                 </div>
-            </div>
-            <div class="raCard" id="raCard-hue">
-                <button type="button" class="raCardHeader" data-toggle-card="hue">
-                    <div class="raCardTitle"><span>Hue</span><span class="raPill" id="raCardHuePill">&nbsp;</span></div>
-                    <div class="raCardMeta" id="raCardHueMeta">&nbsp;</div>
-                </button>
-                <div class="raCardDetail" id="hueCardDetail">
-                    <div class="raSummaryRow"><span class="raK">Bridge</span><span class="raV" id="hueSummaryBridge">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Entertainment area</span><span class="raV" id="hueSummaryArea">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Brightness</span><span class="raV" id="hueSummaryBrightness">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Responsivity / intensity</span><span class="raV" id="hueSummaryResponsivity">&nbsp;</span></div>
-                    <button is="emby-button" type="button" class="raised raEditToggle" data-open-edit-all="hue">Edit all settings</button>
+                <div class="raCard" id="raCard-hue">
+                    <div class="raCardTop"><span>Hue</span><span class="raCardState" id="hueState">&nbsp;</span></div>
+                    <div class="raCardStat" id="hueStat">&nbsp;</div>
+                    <div class="raCardCap" id="hueCap">&nbsp;</div>
+                    <div class="raCardPing" id="huePing"></div>
+                    <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="hue">Edit all settings</button>
                 </div>
             </div>
         </div>
@@ -439,6 +436,9 @@
                         </div>
                     </div>
                     <button is="emby-button" type="button" id="showCurveChart" class="raised" style="margin-top:.7em">Show my colour calibration</button>
+
+                    <div class="fieldDescription" style="margin-top:1.2em">Deviation from the default curve, per colour: <strong id="ambilightSummaryDeviationCount"></strong></div>
+                    <div class="raColourColumns" id="ambilightSummaryDeviation"></div>
 
                     <div class="inputContainer" style="margin-top:1.2em">
                         <input is="emby-input" id="brightnessPercent" type="range" min="1" max="200" step="1" label="LED brightness" />
