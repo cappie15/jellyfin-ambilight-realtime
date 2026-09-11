@@ -546,12 +546,17 @@ export default function (view) {
         };
 
         const button = (label, direction) => {
-            // The is="emby-button" upgrade has to happen at creation time --
-            // setting it afterward via setAttribute does not upgrade a
-            // customized built-in element -- otherwise this renders as a bare
-            // unstyled browser button next to every other properly-upgraded
-            // control on the page.
-            const el = document.createElement("button", { is: "emby-button" });
+            // Set is="emby-button" via setAttribute on the still-disconnected
+            // element, not document.createElement's {is} option -- Jellyfin's
+            // own bundled webcomponents polyfill throws on that object form
+            // (it expects the older two-string-argument shape), which
+            // silently aborted this whole controller's setup before it ever
+            // reached view.addEventListener("viewshow", load) further down,
+            // leaving the settings page loading forever. Upgrade still
+            // happens correctly this way, since the element has not been
+            // connected to the document yet when "is" is set.
+            const el = document.createElement("button");
+            el.setAttribute("is", "emby-button");
             el.type = "button";
             el.className = "raised raStepBtn";
             el.textContent = label;
