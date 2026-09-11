@@ -51,11 +51,18 @@
         #realtimeAmbilightConfigurationPage .raActivityRow.raActivityWarning .raActivityMessage { color: #d18e1c; }
 
         /* ---- colour deviation: primary/secondary columns, right-aligned ---- */
-        #realtimeAmbilightConfigurationPage .raColourColumns { display: flex; gap: 1.8em; margin-top: .7em; font-size: .92em; }
-        #realtimeAmbilightConfigurationPage .raColourColumn { flex: 1 1 0; text-align: right; }
+        #realtimeAmbilightConfigurationPage .raColourColumns { display: flex; gap: 1.2em; margin-top: .7em; font-size: .88em; min-width: 0; }
+        #realtimeAmbilightConfigurationPage .raColourColumn { flex: 1 1 0; min-width: 0; text-align: right; }
+        /* Primary hugs the card's left edge, Secondary the right -- the two
+           columns flare outward from the middle instead of both crowding the
+           same (right) edge. */
+        #realtimeAmbilightConfigurationPage .raColourColumn:first-child { text-align: left; }
         #realtimeAmbilightConfigurationPage .raColourColumnTitle { font-weight: 700; opacity: .7; font-size: .78em; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .4em; }
-        #realtimeAmbilightConfigurationPage .raColourCell { padding: .18em 0; }
-        #realtimeAmbilightConfigurationPage .raColourDot { display: inline-block; width: .8em; height: .8em; border-radius: 50%; margin-right: .5em; vertical-align: middle; border: 1px solid rgba(127, 127, 127, .45); }
+        /* Never a second line, whatever the content -- truncate with an
+           ellipsis instead of wrapping if a card is ever narrow enough that
+           even the shortened text does not fit. */
+        #realtimeAmbilightConfigurationPage .raColourCell { padding: .18em 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #realtimeAmbilightConfigurationPage .raColourDot { display: inline-block; width: .8em; height: .8em; border-radius: 50%; margin-right: .4em; vertical-align: middle; border: 1px solid rgba(127, 127, 127, .45); }
     </style>
     <div class="content-primary">
         <div class="verticalSection">

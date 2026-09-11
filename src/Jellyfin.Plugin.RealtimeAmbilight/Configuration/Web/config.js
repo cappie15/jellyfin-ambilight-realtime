@@ -237,7 +237,8 @@ export default function (view) {
     // attribute carries the hex for a plain-browser tooltip -- and every
     // deviation from the default expressed the same way: a signed number
     // against its own 100% baseline, never a bare absolute percentage, so
-    // "-6% intensity" always means the same kind of thing "+8°" does.
+    // "-6% int" always means the same kind of thing "+8°" does. Kept to one
+    // line per colour no matter what -- see .raColourCell's own CSS remarks.
     function renderColourDeviation() {
         // Clamped to match PerimeterColourTuning.Anchor()'s own server-side
         // range (hue +-21 deg, brightness/intensity 50-100%) -- a value
@@ -260,7 +261,7 @@ export default function (view) {
                 parts.push(`${signed(a.brightness - 100)} bright`);
             }
             if (a.intensity !== 100) {
-                parts.push(`${signed(a.intensity - 100)} intensity`);
+                parts.push(`${signed(a.intensity - 100)} int`);
             }
             const hex = wedgeColours[a.colour];
             return `<div class="raColourCell"><span class="raColourDot" style="background:${hex}" title="${hex}"></span><strong>${a.colour}</strong>: ${parts.length ? parts.join(", ") : "Default"}</div>`;
