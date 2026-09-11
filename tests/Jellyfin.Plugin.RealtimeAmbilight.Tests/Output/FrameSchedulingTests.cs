@@ -33,17 +33,34 @@ public sealed class FrameSchedulingTests
             new AmbilightFrameProcessor(layout, LogicalSamplingLayout.FromPhysicalLayout(layout), _ => default),
             new NullOutput());
 
-        Assert.False(scheduler.TryTakeProcessedFrame(out _, out _));
+        Assert.False(scheduler.TrySampleFrame(out _, out _));
 
         buffer.Publish(new AnalysisFrame(new byte[16 * 16 * 4], 16, 16, TimeSpan.FromMinutes(3).Ticks));
 
-        Assert.True(scheduler.TryTakeProcessedFrame(out var rgb24Frame, out var positionTicks));
-        Assert.NotNull(rgb24Frame);
+        Assert.True(scheduler.TrySampleFrame(out var target, out var positionTicks));
+        Assert.NotNull(target);
         Assert.Equal(TimeSpan.FromMinutes(3).Ticks, positionTicks);
     }
 
     [Fact]
-    public void RepeatingAProcessedFrameKeepsSendingTheLastSampledTargetBetweenNewFrames()
+    public void EncodingASampledTargetProducesRgb24AndMakesItTheRepeatTarget()
+    {
+        var buffer = new LatestFrameBuffer<AnalysisFrame>();
+        var layout = new LedLayout(4, 2, 4, 2);
+        var scheduler = new LatestFrameOutputScheduler(
+            buffer,
+            new AmbilightFrameProcessor(layout, LogicalSamplingLayout.FromPhysicalLayout(layout), _ => default),
+            new NullOutput());
+
+        buffer.Publish(new AnalysisFrame(new byte[16 * 16 * 4], 16, 16));
+        Assert.True(scheduler.TrySampleFrame(out var target, out _));
+
+        var encoded = scheduler.EncodeTarget(target!);
+        Assert.NotEmpty(encoded);
+    }
+
+    [Fact]
+    public void RepeatingAProcessedFrameKeepsSendingTheLastDueTargetBetweenNewFrames()
     {
         var buffer = new LatestFrameBuffer<AnalysisFrame>();
         var layout = new LedLayout(4, 2, 4, 2);
@@ -55,8 +72,13 @@ public sealed class FrameSchedulingTests
         Assert.Null(scheduler.TryRepeatProcessedFrame());
 
         buffer.Publish(new AnalysisFrame(new byte[16 * 16 * 4], 16, 16));
-        Assert.True(scheduler.TryTakeProcessedFrame(out _, out _));
+        Assert.True(scheduler.TrySampleFrame(out var target, out _));
 
+        // Sampling alone must not make a target repeatable -- only actually
+        // encoding it (i.e. it having become due) may.
+        Assert.Null(scheduler.TryRepeatProcessedFrame());
+
+        scheduler.EncodeTarget(target!);
         var repeated = scheduler.TryRepeatProcessedFrame();
         Assert.NotNull(repeated);
 

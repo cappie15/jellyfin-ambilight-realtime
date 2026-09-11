@@ -62,15 +62,29 @@ public sealed class AmbilightFrameProcessor
     }
 
     /// <summary>
-    /// The most recently sampled target -- pre-dwell, pre-smoothing, in linear
-    /// light -- so <see cref="ProcessRepeat"/> can keep easing/dithering toward
-    /// it between real decoded frames. Never mutated in place: dwell/smoothing
-    /// mutate their own copy each call, so this always stays the true latest
-    /// sample regardless of how many repeats run against it.
+    /// The most recently <em>encoded</em> (dwell/smoothing already applied)
+    /// target, in linear light before that -- so <see cref="ProcessRepeat"/>
+    /// can keep easing/dithering toward it between real decoded frames. Set
+    /// only by <see cref="EncodeTarget"/>, never by <see cref="Sample"/>:
+    /// the analysis decoder runs several seconds ahead of the picture
+    /// actually due to be shown (see <c>DecoderLead</c>), so a target that
+    /// has only been sampled, not yet due, is not what should be repeated
+    /// onto the strip right now -- repeating it caused exactly the flicker
+    /// this split fixes, racing against the correctly-scheduled real frame
+    /// once its own due time finally arrived.
     /// </summary>
     private LinearRgb[]? _lastTarget;
 
-    public byte[] Process(AnalysisFrame frame)
+    /// <summary>
+    /// Samples one decoded frame into a physical-LED target, in linear light,
+    /// before any dwell/smoothing/encoding. Deliberately does not touch that
+    /// state or <see cref="_lastTarget"/> -- the caller schedules the result
+    /// against the playback timeline (the decoder samples ahead of the
+    /// picture) and only <see cref="EncodeTarget"/>, called once it actually
+    /// becomes due, may advance dwell/smoothing or become what
+    /// <see cref="ProcessRepeat"/> repeats.
+    /// </summary>
+    public LinearRgb[] Sample(AnalysisFrame frame)
     {
         ArgumentNullException.ThrowIfNull(frame);
         _processRate.Increment();
@@ -81,34 +95,47 @@ public sealed class AmbilightFrameProcessor
             _cropResolver(frame),
             _logicalLayout,
             _samplingDepthPercent);
-        _lastTarget = LinearLightInterpolator.InterpolatePerimeter(
+        return LinearLightInterpolator.InterpolatePerimeter(
             _physicalLayout,
             _logicalLayout,
             samples.Top,
             samples.Right,
             samples.Bottom,
             samples.Left);
-        return Encode(_lastTarget);
     }
 
     /// <summary>
-    /// Re-applies dwell/smoothing/encoding to the last sampled target, without
-    /// a new decoded frame to sample. The source video's own frame rate caps
-    /// how often a genuinely new picture can be sampled (a 24fps film cannot
-    /// yield more than ~24 distinct frames a second, however high the output
-    /// rate is set), but smoothing and the encoder's own temporal dithering
-    /// both benefit from running at the full output tick rate regardless --
-    /// this is what lets the output side keep advancing toward the latest
-    /// target every tick instead of only when the source happens to deliver
-    /// something new. Returns <see langword="null"/> before the first frame has
-    /// ever been sampled -- there is no target yet to repeat.
+    /// Applies dwell/smoothing/encoding to <paramref name="target"/> and
+    /// remembers it for <see cref="ProcessRepeat"/>. Call this only when a
+    /// sampled target actually becomes due -- see <see cref="_lastTarget"/>'s
+    /// own remarks for why sample time is the wrong moment.
+    /// </summary>
+    public byte[] EncodeTarget(LinearRgb[] target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        _lastTarget = target;
+        return Encode(target);
+    }
+
+    /// <summary>
+    /// Re-applies dwell/smoothing/encoding to the last frame that actually
+    /// became due, without a new one due yet. The source video's own frame
+    /// rate caps how often a genuinely new picture can become due (a 24fps
+    /// film cannot yield more than ~24 distinct frames a second, however high
+    /// the output rate is set), but smoothing and the encoder's own temporal
+    /// dithering both benefit from running at the full output tick rate
+    /// regardless -- this is what lets the output side keep advancing toward
+    /// the latest due target every tick instead of only when the source
+    /// happens to deliver something new. Returns <see langword="null"/> before
+    /// the first frame of a session has become due -- there is no target yet
+    /// to repeat.
     /// </summary>
     public byte[]? ProcessRepeat() => _lastTarget is null ? null : Encode(_lastTarget);
 
     /// <summary>
-    /// Forgets the last sampled target, so a stale colour from a previous
-    /// session cannot be repeated onto the strip before this session's own
-    /// first frame arrives.
+    /// Forgets the last due target, so a stale colour from a previous session
+    /// cannot be repeated onto the strip before this session's own first
+    /// frame becomes due.
     /// </summary>
     public void ClearTarget() => _lastTarget = null;
 

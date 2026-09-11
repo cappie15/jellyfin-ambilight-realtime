@@ -338,7 +338,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
         var lastLateReport = DateTimeOffset.MinValue;
         var lastResync = DateTimeOffset.MinValue;
         string? previousSession = null;
-        var pendingFrames = new Queue<(DateTimeOffset DueAt, byte[] Rgb24Frame)>();
+        var pendingFrames = new Queue<(DateTimeOffset DueAt, LinearRgb[] Target)>();
         var loggedProcessedFrame = false;
         var loggedSentFrame = false;
         var wasOutputEnabled = true;
@@ -444,7 +444,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                 previousSession = currentSession;
                 try
                 {
-                    if (_scheduler.TryTakeProcessedFrame(out var rgb24Frame, out var framePositionTicks) && rgb24Frame is not null)
+                    if (_scheduler.TrySampleFrame(out var target, out var framePositionTicks) && target is not null)
                     {
                         if (!loggedProcessedFrame)
                         {
@@ -508,7 +508,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                             }
                         }
 
-                        pendingFrames.Enqueue((dueAt, rgb24Frame));
+                        pendingFrames.Enqueue((dueAt, target));
                     }
                     else if (currentSession is not null)
                     {
@@ -537,7 +537,17 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                     while (pendingFrames.TryPeek(out var pending) && pending.DueAt <= now)
                     {
                         pendingFrames.Dequeue();
-                        await _scheduler.SendFrameAsync(pending.Rgb24Frame, _shutdown.Token).ConfigureAwait(false);
+
+                        // Dwell/smoothing/encoding happen here, at the moment
+                        // this target actually becomes due -- not back when it
+                        // was sampled, which the decoder's own lead can put
+                        // several seconds ahead of the picture actually due
+                        // right now. Encoding at sample time instead let a
+                        // repeated frame (see the branch above) race a
+                        // too-early target against this queue's own correctly
+                        // scheduled one once it finally arrived, which is what
+                        // caused the strip to visibly flicker between the two.
+                        await _scheduler.SendFrameAsync(_scheduler.EncodeTarget(pending.Target), _shutdown.Token).ConfigureAwait(false);
                         if (!loggedSentFrame)
                         {
                             _logger.LogInformation("Realtime Ambilight sent its first WLED frame.");

@@ -10,11 +10,12 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Tests.Output;
 public class AmbilightFrameProcessorTests
 {
     [Fact]
-    public void ProcessConnectsBgraSamplingInterpolationAndRgb24Encoding()
+    public void SampleThenEncodeTargetConnectsBgraSamplingInterpolationAndRgb24Encoding()
     {
         var processor = CreateProcessor();
 
-        var rgb24 = processor.Process(CreateSolidFrame(red: 235, green: 16, blue: 16));
+        var target = processor.Sample(CreateSolidFrame(red: 235, green: 16, blue: 16));
+        var rgb24 = processor.EncodeTarget(target);
 
         Assert.Equal(24, rgb24.Length);
         for (var offset = 0; offset < rgb24.Length; offset += 3)
@@ -34,10 +35,25 @@ public class AmbilightFrameProcessorTests
     }
 
     [Fact]
-    public void ProcessRepeatReEncodesTheLastSampledTargetWithoutANewFrame()
+    public void SamplingAloneDoesNotMakeATargetRepeatable()
     {
         var processor = CreateProcessor();
-        processor.Process(CreateSolidFrame(red: 235, green: 16, blue: 16));
+
+        processor.Sample(CreateSolidFrame(red: 235, green: 16, blue: 16));
+
+        // The analysis decoder samples ahead of the picture actually due right
+        // now (see DecoderLead); repeating a merely-sampled target here is
+        // exactly the bug that made the strip flicker between too-early
+        // decode-ahead content and the correctly scheduled real frame.
+        Assert.Null(processor.ProcessRepeat());
+    }
+
+    [Fact]
+    public void ProcessRepeatReEncodesTheLastEncodedTargetWithoutANewFrame()
+    {
+        var processor = CreateProcessor();
+        var target = processor.Sample(CreateSolidFrame(red: 235, green: 16, blue: 16));
+        processor.EncodeTarget(target);
 
         var repeated = processor.ProcessRepeat();
 
@@ -55,7 +71,8 @@ public class AmbilightFrameProcessorTests
     public void ClearTargetMakesProcessRepeatReturnNullAgain()
     {
         var processor = CreateProcessor();
-        processor.Process(CreateSolidFrame(red: 235, green: 16, blue: 16));
+        var target = processor.Sample(CreateSolidFrame(red: 235, green: 16, blue: 16));
+        processor.EncodeTarget(target);
 
         processor.ClearTarget();
 
