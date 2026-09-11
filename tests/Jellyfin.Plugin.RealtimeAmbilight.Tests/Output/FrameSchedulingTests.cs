@@ -43,6 +43,28 @@ public sealed class FrameSchedulingTests
     }
 
     [Fact]
+    public void RepeatingAProcessedFrameKeepsSendingTheLastSampledTargetBetweenNewFrames()
+    {
+        var buffer = new LatestFrameBuffer<AnalysisFrame>();
+        var layout = new LedLayout(4, 2, 4, 2);
+        var scheduler = new LatestFrameOutputScheduler(
+            buffer,
+            new AmbilightFrameProcessor(layout, LogicalSamplingLayout.FromPhysicalLayout(layout), _ => default),
+            new NullOutput());
+
+        Assert.Null(scheduler.TryRepeatProcessedFrame());
+
+        buffer.Publish(new AnalysisFrame(new byte[16 * 16 * 4], 16, 16));
+        Assert.True(scheduler.TryTakeProcessedFrame(out _, out _));
+
+        var repeated = scheduler.TryRepeatProcessedFrame();
+        Assert.NotNull(repeated);
+
+        scheduler.ClearTarget();
+        Assert.Null(scheduler.TryRepeatProcessedFrame());
+    }
+
+    [Fact]
     public void TheDecoderLeadExceedsTheMeasuredHdrStartUpCost()
     {
         // The HDR graph needed about 1.1 s to yield its first frame on the

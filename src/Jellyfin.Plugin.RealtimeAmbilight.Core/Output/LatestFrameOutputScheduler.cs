@@ -57,6 +57,19 @@ public sealed class LatestFrameOutputScheduler
         return true;
     }
 
+    /// <summary>
+    /// Re-encodes the last sampled target without taking a new decoded frame --
+    /// see <see cref="AmbilightFrameProcessor.ProcessRepeat"/>. Lets smoothing
+    /// and the encoder's own temporal dithering keep advancing every output
+    /// tick even when the source video's own frame rate is lower than the
+    /// configured output rate. Returns <see langword="null"/> before the first
+    /// frame of a session has been sampled.
+    /// </summary>
+    public byte[]? TryRepeatProcessedFrame() => _processor.ProcessRepeat();
+
+    /// <summary>Forgets the last sampled target -- see <see cref="AmbilightFrameProcessor.ClearTarget"/>.</summary>
+    public void ClearTarget() => _processor.ClearTarget();
+
     public Task SendFrameAsync(ReadOnlyMemory<byte> rgb24Frame, CancellationToken cancellationToken)
         => _output.SendFrameAsync(rgb24Frame, cancellationToken);
 

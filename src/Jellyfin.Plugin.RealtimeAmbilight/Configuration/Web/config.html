@@ -77,6 +77,7 @@
 
         /* ---- modernized sliders + step buttons inside every modal ---- */
         #realtimeAmbilightConfigurationPage .raModalBody input[type="range"] { accent-color: #3ddc84; height: 1.4em; }
+        #realtimeAmbilightConfigurationPage .raModalBody input:disabled { opacity: .45; cursor: not-allowed; }
         #realtimeAmbilightConfigurationPage .raStepBtn { flex: 0 0 auto; min-width: 2.2em; padding: .2em .5em; font: 600 .95em/1 "IBM Plex Mono", monospace; }
 
         /* ---- greyed out while its own "enable" checkbox is off, e.g. the Hue
@@ -142,6 +143,7 @@
         #realtimeAmbilightConfigurationPage .raStageLabel { font-size: .68em; color: #8a929c; margin-bottom: .35em; padding-right: 1.1em; }
         #realtimeAmbilightConfigurationPage .raStageValue { font: 600 .95em/1 "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; color: #e7e9ec; white-space: nowrap; }
         #realtimeAmbilightConfigurationPage .raStage:not(.raOk):not(.raWarn):not(.raDead) .raStageValue { color: #6d747d; }
+        #realtimeAmbilightConfigurationPage .raStageSub { font: 500 .62em/1 "IBM Plex Mono", monospace; color: #6d747d; margin-top: .3em; white-space: nowrap; }
         /* The short wires between stages: grey at rest, the same travelling
            gradient as the boxes and the rack bar once both stages either
            side of it are actually live, so the colour reads as one signal
@@ -226,7 +228,7 @@
             <div class="raPanelTop"><span>Signal chain</span><span class="raCardState" id="pipelineState">&nbsp;</span></div>
             <div class="raStageRailWrap">
             <div class="raStageGrid" id="raStageGrid">
-                <div class="raStage" id="stage-playback"><span class="raStageNum">1</span><div class="raStageLabel">Playback</div><div class="raStageValue" id="stagePlayback">–</div></div>
+                <div class="raStage" id="stage-playback"><span class="raStageNum">1</span><div class="raStageLabel">Playback</div><div class="raStageValue" id="stagePlayback">–</div><div class="raStageSub" id="stageSourceFps"></div></div>
                 <div class="raConnector" id="connector-1"></div>
                 <div class="raStage" id="stage-decode"><span class="raStageNum">2</span><div class="raStageLabel">FFmpeg decode</div><div class="raStageValue" id="fpsAnalyse">–</div></div>
                 <div class="raConnector" id="connector-2"></div>
@@ -302,6 +304,11 @@
                                 <input is="emby-input" id="analysisFramesPerSecond" type="number" min="1" max="60" label="Sampling frames per second" />
                                 <div class="fieldDescription"><strong>Default: 30.</strong> Do not exceed the LED update rate.</div>
                             </div>
+                            <label class="checkboxContainer">
+                                <input is="emby-checkbox" id="matchSourceFrameRate" type="checkbox" />
+                                <span>Match the source's own frame rate</span>
+                            </label>
+                            <div class="fieldDescription">Decoding faster than the source's real rate only duplicates frames it never has. <strong>Default: on.</strong></div>
                         </div>
                     </div>
 

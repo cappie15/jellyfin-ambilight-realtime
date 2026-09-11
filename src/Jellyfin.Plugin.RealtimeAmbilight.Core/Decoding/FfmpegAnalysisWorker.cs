@@ -43,13 +43,16 @@ public sealed class FfmpegAnalysisWorker : IPlaybackAnalysisWorker
     public async Task RunAsync(
         PlaybackWorkerRequest request,
         FanOutFrameBuffer<AnalysisFrame> latestFrames,
+        Action<double?> reportSourceFramesPerSecond,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(latestFrames);
+        ArgumentNullException.ThrowIfNull(reportSourceFramesPerSecond);
 
         var source = await _sourceResolver.ResolveAsync(request, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("No FFmpeg analysis source was resolved for the playback request.");
+        reportSourceFramesPerSecond(source.SourceFramesPerSecond);
         var startPosition = TimeSpan.FromTicks(request.PositionTicks) + DecoderLead;
         var startInfo = source.VideoProfile is { } profile
             ? CreateHdrStartInfo(source, startPosition, profile)

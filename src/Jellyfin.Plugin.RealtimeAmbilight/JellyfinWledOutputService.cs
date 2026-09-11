@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.RealtimeAmbilight;
 
 /// <summary>Dashboard-facing throughput at each pipeline stage, Hz. Null means no session is active.</summary>
-public sealed record PipelinePerformanceSnapshot(double? AnalyseFps, double? SampleFps, double? WledRenderFps, double? HueSendFps = null);
+public sealed record PipelinePerformanceSnapshot(double? AnalyseFps, double? SampleFps, double? WledRenderFps, double? HueSendFps = null, double? SourceFps = null);
 
 /// <summary>Runs the latest-only frame pump for the reference 831-led WLED.</summary>
 public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
@@ -106,7 +106,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
         return new PipelinePerformanceSnapshot(
             active ? _coordinator.LatestFrames.PublishRateHz : null,
             active ? _scheduler.ProcessRateHz : null,
-            active ? _output.SendRateHz : null);
+            active ? _output.SendRateHz : null,
+            SourceFps: active ? _coordinator.SourceFramesPerSecond : null);
     }
 
     public JellyfinWledOutputService(
@@ -417,6 +418,12 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
 
                 if (previousSession is null && currentSession is not null)
                 {
+                    // Forget any target left over from a previous session --
+                    // otherwise the repeat-frame path below could resend an
+                    // old colour over the blank frame this same branch is
+                    // about to send.
+                    _scheduler.ClearTarget();
+
                     // Claim the strip immediately. Otherwise WLED keeps showing
                     // whatever effect it was running until the first analysed
                     // frame lands, which is seconds into the item.
@@ -502,6 +509,28 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                         }
 
                         pendingFrames.Enqueue((dueAt, rgb24Frame));
+                    }
+                    else if (currentSession is not null)
+                    {
+                        // No new decoded frame this tick -- the source video's
+                        // own frame rate is lower than the configured output
+                        // rate, which is normal (a 24fps film cannot yield a
+                        // new sample every 16ms at 60fps output). Smoothing and
+                        // the encoder's own temporal dithering still benefit
+                        // from running at the full output tick rate, so keep
+                        // easing/dithering toward the last real sample and send
+                        // that. Sent immediately rather than through the
+                        // due-time queue below: a repeat has no media position
+                        // to schedule against, and queuing it behind decode-ahead
+                        // frames already due seconds from now would defeat the
+                        // whole point of sending it promptly.
+                        var repeatFrame = _scheduler.TryRepeatProcessedFrame();
+                        if (repeatFrame is not null)
+                        {
+                            await _scheduler.SendFrameAsync(repeatFrame, _shutdown.Token).ConfigureAwait(false);
+                            lastFrameSent = DateTimeOffset.UtcNow;
+                            lastSend = lastFrameSent;
+                        }
                     }
 
                     var now = DateTimeOffset.UtcNow;

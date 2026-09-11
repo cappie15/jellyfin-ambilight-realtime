@@ -371,6 +371,7 @@ export default function (view) {
                 const sample = perf?.SampleFps ?? perf?.sampleFps;
                 const wled = perf?.WledRenderFps ?? perf?.wledRenderFps;
                 const hue = perf?.HueSendFps ?? perf?.hueSendFps;
+                const sourceFps = perf?.SourceFps ?? perf?.sourceFps;
                 const active = analyse !== null && analyse !== undefined;
                 const hueActive = hue !== null && hue !== undefined;
                 const format = value => `${Number(value).toFixed(1)} fps`;
@@ -381,6 +382,7 @@ export default function (view) {
                 };
 
                 setStage("stage-playback", "stagePlayback", active ? "Playing" : "Idle", active);
+                byId("stageSourceFps").textContent = active && sourceFps ? `source ${Number(sourceFps).toFixed(3)} fps` : "";
                 setStage("stage-decode", "fpsAnalyse", active ? format(analyse) : "Ready", active);
                 setStage("stage-sample", "fpsSample", active ? format(sample) : "Ready", active);
                 setStage("stage-colour", "stageColour", "inline", active);
@@ -921,6 +923,12 @@ export default function (view) {
         byId("analysisSizeValue").textContent = `${width} × ${analysisHeight()} pixels`;
     }
 
+    // The slider is meaningless while the source's own rate is what actually
+    // gets used, so grey it out rather than leave it interactive with no effect.
+    function updateMatchSourceFrameRateState() {
+        byId("analysisFramesPerSecond").disabled = byId("matchSourceFrameRate").checked;
+    }
+
     // A configuration written by hand, or by an older build, can hold a width the
     // preset list does not offer. Keep it selectable instead of silently moving
     // the user to a different resolution on the next save.
@@ -1339,6 +1347,8 @@ export default function (view) {
                 byId("ignoreBlackBorders").checked = config.IgnoreBlackBorders !== false;
                 byId("correctLedGamma").checked = config.CorrectLedGamma !== false;
                 byId("autoDetectLedGamma").checked = config.AutoDetectLedGamma !== false;
+                byId("matchSourceFrameRate").checked = config.MatchSourceFrameRate !== false;
+                updateMatchSourceFrameRateState();
                 byId("allowWledControl").checked = config.AllowWledControl === true;
                 byId("sendWhiteChannel").checked = config.SendWhiteChannel === true;
                 byId("whiteChannelStrengthPercent").value = config.WhiteChannelStrengthPercent ?? 50;
@@ -1438,6 +1448,7 @@ export default function (view) {
             IgnoreBlackBorders: byId("ignoreBlackBorders").checked,
             CorrectLedGamma: byId("correctLedGamma").checked,
             AutoDetectLedGamma: byId("autoDetectLedGamma").checked,
+            MatchSourceFrameRate: byId("matchSourceFrameRate").checked,
             AllowWledControl: byId("allowWledControl").checked,
             SendWhiteChannel: byId("sendWhiteChannel").checked,
             WhiteChannelStrengthPercent: Number(byId("whiteChannelStrengthPercent").value),
@@ -1529,6 +1540,7 @@ export default function (view) {
             AnalysisWidth: 160,
             AnalysisHeight: 90,
             AnalysisFramesPerSecond: 30,
+            MatchSourceFrameRate: true,
             AllowWledControl: false,
             MinimumColourHoldMilliseconds: 0,
             WledSmoothingMilliseconds: 0,
@@ -1879,6 +1891,7 @@ export default function (view) {
     });
     byId("whiteChannelStrengthPercent").addEventListener("input", setColourLabels);
     byId("sendWhiteChannel").addEventListener("change", setColourLabels);
+    byId("matchSourceFrameRate").addEventListener("change", updateMatchSourceFrameRateState);
     byId("allowWledControl").addEventListener("change", () => {
         byId("allowWledControlSummary").textContent = byId("allowWledControl").checked
             ? "This plugin may fix WLED settings for you. Save to keep it that way."

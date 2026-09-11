@@ -10,7 +10,8 @@ public sealed record FfmpegAnalysisSource(
     string MediaPath,
     AnalysisFrameOptions FrameOptions,
     HdrVideoProfile? VideoProfile = null,
-    string HardwareDevicePath = "/dev/dri/renderD128")
+    string HardwareDevicePath = "/dev/dri/renderD128",
+    double? SourceFramesPerSecond = null)
 {
     public void Validate()
     {

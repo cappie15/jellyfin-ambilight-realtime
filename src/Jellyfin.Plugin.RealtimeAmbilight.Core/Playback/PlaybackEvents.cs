@@ -36,9 +36,17 @@ public sealed record PlaybackWorkerRequest(string SessionId, long PositionTicks,
 /// </summary>
 public interface IPlaybackAnalysisWorker
 {
+    /// <param name="reportSourceFramesPerSecond">
+    /// Called once the source's own real frame rate is known (typically right
+    /// after resolving it, well before the first frame is read), so the
+    /// coordinator can surface it (dashboard-facing) without a circular
+    /// dependency back onto itself from the source resolver. Never called for
+    /// a source that does not report one.
+    /// </param>
     Task RunAsync(
         PlaybackWorkerRequest request,
         FanOutFrameBuffer<AnalysisFrame> latestFrames,
+        Action<double?> reportSourceFramesPerSecond,
         CancellationToken cancellationToken);
 }
 

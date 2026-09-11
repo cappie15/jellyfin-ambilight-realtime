@@ -26,6 +26,43 @@ public class AmbilightFrameProcessorTests
     }
 
     [Fact]
+    public void ProcessRepeatReturnsNullBeforeAnyFrameHasBeenSampled()
+    {
+        var processor = CreateProcessor();
+
+        Assert.Null(processor.ProcessRepeat());
+    }
+
+    [Fact]
+    public void ProcessRepeatReEncodesTheLastSampledTargetWithoutANewFrame()
+    {
+        var processor = CreateProcessor();
+        processor.Process(CreateSolidFrame(red: 235, green: 16, blue: 16));
+
+        var repeated = processor.ProcessRepeat();
+
+        Assert.NotNull(repeated);
+        Assert.Equal(24, repeated.Length);
+        for (var offset = 0; offset < repeated.Length; offset += 3)
+        {
+            Assert.Equal((byte)255, repeated[offset]);
+            Assert.Equal((byte)0, repeated[offset + 1]);
+            Assert.Equal((byte)0, repeated[offset + 2]);
+        }
+    }
+
+    [Fact]
+    public void ClearTargetMakesProcessRepeatReturnNullAgain()
+    {
+        var processor = CreateProcessor();
+        processor.Process(CreateSolidFrame(red: 235, green: 16, blue: 16));
+
+        processor.ClearTarget();
+
+        Assert.Null(processor.ProcessRepeat());
+    }
+
+    [Fact]
     public async Task SchedulerDropsSupersededFramesAndSendsOnlyTheLatest()
     {
         var latestFrames = new LatestFrameBuffer<AnalysisFrame>();

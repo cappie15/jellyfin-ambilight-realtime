@@ -61,6 +61,15 @@ public sealed class AmbilightFrameProcessor
         _encoder = sendWhiteChannel ? new DitheredRgbw32Encoder() : new DitheredRgb24Encoder();
     }
 
+    /// <summary>
+    /// The most recently sampled target -- pre-dwell, pre-smoothing, in linear
+    /// light -- so <see cref="ProcessRepeat"/> can keep easing/dithering toward
+    /// it between real decoded frames. Never mutated in place: dwell/smoothing
+    /// mutate their own copy each call, so this always stays the true latest
+    /// sample regardless of how many repeats run against it.
+    /// </summary>
+    private LinearRgb[]? _lastTarget;
+
     public byte[] Process(AnalysisFrame frame)
     {
         ArgumentNullException.ThrowIfNull(frame);
@@ -72,13 +81,44 @@ public sealed class AmbilightFrameProcessor
             _cropResolver(frame),
             _logicalLayout,
             _samplingDepthPercent);
-        var physicalFrame = LinearLightInterpolator.InterpolatePerimeter(
+        _lastTarget = LinearLightInterpolator.InterpolatePerimeter(
             _physicalLayout,
             _logicalLayout,
             samples.Top,
             samples.Right,
             samples.Bottom,
             samples.Left);
+        return Encode(_lastTarget);
+    }
+
+    /// <summary>
+    /// Re-applies dwell/smoothing/encoding to the last sampled target, without
+    /// a new decoded frame to sample. The source video's own frame rate caps
+    /// how often a genuinely new picture can be sampled (a 24fps film cannot
+    /// yield more than ~24 distinct frames a second, however high the output
+    /// rate is set), but smoothing and the encoder's own temporal dithering
+    /// both benefit from running at the full output tick rate regardless --
+    /// this is what lets the output side keep advancing toward the latest
+    /// target every tick instead of only when the source happens to deliver
+    /// something new. Returns <see langword="null"/> before the first frame has
+    /// ever been sampled -- there is no target yet to repeat.
+    /// </summary>
+    public byte[]? ProcessRepeat() => _lastTarget is null ? null : Encode(_lastTarget);
+
+    /// <summary>
+    /// Forgets the last sampled target, so a stale colour from a previous
+    /// session cannot be repeated onto the strip before this session's own
+    /// first frame arrives.
+    /// </summary>
+    public void ClearTarget() => _lastTarget = null;
+
+    private byte[] Encode(LinearRgb[] target)
+    {
+        // dwell/smoothing mutate in place -- a private copy, never the stored
+        // target itself, so ProcessRepeat's next call still eases from the
+        // true latest sample rather than from whatever the previous repeat
+        // already blended it toward.
+        var physicalFrame = (LinearRgb[])target.Clone();
         var now = DateTimeOffset.UtcNow;
         var elapsedMilliseconds = _lastProcessedAt is { } last ? (now - last).TotalMilliseconds : 0;
         _lastProcessedAt = now;

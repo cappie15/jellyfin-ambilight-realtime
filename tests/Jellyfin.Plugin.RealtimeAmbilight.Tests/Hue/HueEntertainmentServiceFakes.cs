@@ -9,7 +9,7 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Tests.Hue;
 /// <summary>Never actually analyses anything -- the tests in this namespace only drive the coordinator's session/pause bookkeeping, never real frames.</summary>
 internal sealed class NoOpAnalysisWorker : IPlaybackAnalysisWorker
 {
-    public async Task RunAsync(PlaybackWorkerRequest request, FanOutFrameBuffer<Jellyfin.Plugin.RealtimeAmbilight.Core.Decoding.AnalysisFrame> latestFrames, CancellationToken cancellationToken)
+    public async Task RunAsync(PlaybackWorkerRequest request, FanOutFrameBuffer<Jellyfin.Plugin.RealtimeAmbilight.Core.Decoding.AnalysisFrame> latestFrames, Action<double?> reportSourceFramesPerSecond, CancellationToken cancellationToken)
     {
         try
         {

@@ -28,6 +28,7 @@ public sealed class PlaybackEventCoordinator : IAsyncDisposable
     private long _generation;
     private bool _isPaused;
     private bool _disposed;
+    private double? _sourceFramesPerSecond;
 
     public PlaybackEventCoordinator(
         IPlaybackAnalysisWorker worker,
@@ -81,6 +82,32 @@ public sealed class PlaybackEventCoordinator : IAsyncDisposable
             lock (_sync)
             {
                 return _isPaused;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The current session's source video's own real frame rate, dashboard-
+    /// facing and used to size the analysis decoder when the operator has
+    /// opted into matching it rather than a fixed configured rate. Set once
+    /// the media source has actually been resolved (a little after playback
+    /// starts), <see langword="null"/> before that and once the session ends.
+    /// </summary>
+    public double? SourceFramesPerSecond
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _sourceFramesPerSecond;
+            }
+        }
+
+        set
+        {
+            lock (_sync)
+            {
+                _sourceFramesPerSecond = value;
             }
         }
     }
@@ -237,6 +264,7 @@ public sealed class PlaybackEventCoordinator : IAsyncDisposable
         _activeSessionId = null;
         _source = null;
         _isPaused = false;
+        _sourceFramesPerSecond = null;
         _clock.Pause();
         CancelSeekAndWorker();
         LatestFrames.Clear();
@@ -370,7 +398,7 @@ public sealed class PlaybackEventCoordinator : IAsyncDisposable
     {
         try
         {
-            await _worker.RunAsync(request, LatestFrames, cancellationToken).ConfigureAwait(false);
+            await _worker.RunAsync(request, LatestFrames, fps => SourceFramesPerSecond = fps, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

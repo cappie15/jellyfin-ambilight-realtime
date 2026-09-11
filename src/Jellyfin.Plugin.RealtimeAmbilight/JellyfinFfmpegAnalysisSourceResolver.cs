@@ -61,20 +61,34 @@ public sealed class JellyfinFfmpegAnalysisSourceResolver : IFfmpegAnalysisSource
 
         _logger.LogInformation("Realtime Ambilight resolved source {Path}.", mediaSource.Path);
 
+        // RealFrameRate is the stream's actual measured rate; AverageFrameRate
+        // is its fallback for a source that does not report the former (an
+        // older/unusual container). Either is a real per-frame-timestamp
+        // figure, not a rounded nominal one -- 23.976, not 24 -- which is
+        // exactly why matching it avoids FFmpeg decoding at a rate the source
+        // was never going to fill with genuinely new frames anyway.
+        var videoStream = mediaSource.VideoStream;
+        double? sourceFramesPerSecond = videoStream?.RealFrameRate ?? videoStream?.AverageFrameRate;
+
         return new FfmpegAnalysisSource(
             _mediaEncoder.EncoderPath,
             mediaSource.Path,
-            CreateFrameOptions());
+            CreateFrameOptions(sourceFramesPerSecond),
+            SourceFramesPerSecond: sourceFramesPerSecond);
     }
 
-    private static AnalysisFrameOptions CreateFrameOptions()
+    private static AnalysisFrameOptions CreateFrameOptions(double? sourceFramesPerSecond)
     {
         var configuration = Plugin.Instance?.Configuration;
+        var matchSource = configuration?.MatchSourceFrameRate ?? true;
+        var framesPerSecond = matchSource && sourceFramesPerSecond is > 0
+            ? (int)Math.Round(sourceFramesPerSecond.Value, MidpointRounding.AwayFromZero)
+            : configuration?.AnalysisFramesPerSecond ?? 30;
         return new AnalysisFrameOptions
         {
             Width = Math.Clamp(configuration?.AnalysisWidth ?? 160, 16, 1920),
             Height = Math.Clamp(configuration?.AnalysisHeight ?? 90, 16, 1080),
-            FramesPerSecond = Math.Clamp(configuration?.AnalysisFramesPerSecond ?? 30, 1, 60),
+            FramesPerSecond = Math.Clamp(framesPerSecond, 1, 60),
         };
     }
 }

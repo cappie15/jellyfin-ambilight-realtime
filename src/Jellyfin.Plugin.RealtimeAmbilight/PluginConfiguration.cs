@@ -219,6 +219,15 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public int AnalysisFramesPerSecond { get; set; } = 30;
 
     /// <summary>
+    /// Sizes the analysis decoder to the currently playing source's own real
+    /// frame rate instead of <see cref="AnalysisFramesPerSecond"/>. On by
+    /// default: decoding faster than the source's own frame rate only makes
+    /// FFmpeg duplicate frames that a 24/25/30fps film or show never actually
+    /// has, wasted work the latest-only sampling buffer discards anyway.
+    /// </summary>
+    public bool MatchSourceFrameRate { get; set; } = true;
+
+    /// <summary>
     /// Lets the settings page write the one WLED setting it can fix directly
     /// (turning off "force max brightness" for realtime data), instead of
     /// requiring a separate login to WLED's own interface. Off by default: the
