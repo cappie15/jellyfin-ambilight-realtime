@@ -21,6 +21,11 @@
            Clipping the container itself always rounds the true outer
            silhouette, however many rows the cards wrap into. */
         #realtimeAmbilightConfigurationPage .raRackGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(19em, 1fr)); gap: 1px; background: #22262c; border-radius: 0 0 1em 1em; overflow: hidden; }
+        /* A fixed number of identical slots (top / stat / cap / sub-or-ping /
+           action) in every one of the four cards -- not a fixed pixel height
+           -- is what actually keeps every card the same size and every
+           "Edit" button on the same line: same slots, same natural height,
+           regardless of which card currently has real data in them yet. */
         #realtimeAmbilightConfigurationPage .raCard { background: #0d0f12; color: #e7e9ec; padding: 1.1em 1.2em; display: flex; flex-direction: column; }
         #realtimeAmbilightConfigurationPage .raCardTop { display: flex; justify-content: space-between; align-items: center; gap: .6em; font-weight: 600; font-size: .95em; }
         /* Ready / Streaming / Calibrated are all a working system -- green,
@@ -33,12 +38,32 @@
         #realtimeAmbilightConfigurationPage .raCardState.raDead { color: #ff5a5a; }
         #realtimeAmbilightConfigurationPage .raCardStat { font: 600 1.5em/1.15 "IBM Plex Mono", monospace; margin: .7em 0 .1em; font-variant-numeric: tabular-nums; }
         #realtimeAmbilightConfigurationPage .raCardStat .raUnit { font-size: .5em; color: #6d747d; }
-        #realtimeAmbilightConfigurationPage .raCardCap { font-size: .74em; color: #6d747d; }
-        #realtimeAmbilightConfigurationPage .raCardPing { display: flex; align-items: center; gap: .45em; margin-top: .85em; font: 500 .78em/1 "IBM Plex Mono", monospace; }
-        #realtimeAmbilightConfigurationPage .raCardAction { margin-top: 1em; align-self: flex-start; }
-        #realtimeAmbilightConfigurationPage .raBackLink { display: inline-flex; align-items: center; gap: .4em; background: none; border: none; cursor: pointer; color: inherit; opacity: .8; font: inherit; padding: .3em 0; margin-bottom: .6em; }
-        #realtimeAmbilightConfigurationPage .raBackLink:hover { opacity: 1; }
+        #realtimeAmbilightConfigurationPage .raCardCap { font-size: .74em; color: #6d747d; min-height: 1.1em; }
+        #realtimeAmbilightConfigurationPage .raCardPing { display: flex; align-items: center; gap: .45em; margin-top: .85em; font: 500 .78em/1 "IBM Plex Mono", monospace; min-height: 1em; }
+        /* Pushed to the bottom by the auto margin regardless of how much (or
+           little) sits above it, then pinned to the right -- every card's
+           button ends up on the exact same line without needing the cards
+           themselves to share one fixed pixel height. */
+        #realtimeAmbilightConfigurationPage .raCardAction { margin-top: auto; padding-top: 1em; align-self: flex-end; font-size: .9em; }
         #realtimeAmbilightConfigurationPage .raLink { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
+
+        /* ---- loading skeleton: same footprint as the real text, so nothing
+           grows or reflows once the real value replaces it ---- */
+        #realtimeAmbilightConfigurationPage .raSkel { display: inline-block; height: .85em; width: 65%; max-width: 8em; border-radius: .3em; background: linear-gradient(90deg, #1c2024 25%, #272c32 37%, #1c2024 63%); background-size: 400% 100%; animation: raSkelShimmer 1.4s ease infinite; vertical-align: middle; }
+        @keyframes raSkelShimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+        @media (prefers-reduced-motion: reduce) { #realtimeAmbilightConfigurationPage .raSkel { animation: none; } }
+
+        /* ---- per-section edit modals ---- */
+        #realtimeAmbilightConfigurationPage .raModalBackdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 40; }
+        #realtimeAmbilightConfigurationPage .raModalBackdrop[hidden] { display: none; }
+        #realtimeAmbilightConfigurationPage .raModal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 41; width: min(44em, 92vw); max-height: 84vh; display: flex; flex-direction: column; background: #0d0f12; color: #e7e9ec; border: 1px solid #2a2f36; border-radius: 1em; box-shadow: 0 20px 60px -12px rgba(0, 0, 0, .6); font-family: "IBM Plex Sans", system-ui, sans-serif; }
+        #realtimeAmbilightConfigurationPage .raModal[hidden] { display: none; }
+        #realtimeAmbilightConfigurationPage .raModalHeader { display: flex; align-items: center; justify-content: space-between; padding: 1.1em 1.3em; border-bottom: 1px solid #22262c; flex: none; }
+        #realtimeAmbilightConfigurationPage .raModalTitle { margin: 0; font-size: 1.15em; }
+        #realtimeAmbilightConfigurationPage .raModalClose { background: none; border: none; color: #8a929c; font-size: 1.5em; line-height: 1; cursor: pointer; padding: .1em .3em; }
+        #realtimeAmbilightConfigurationPage .raModalClose:hover { color: #e7e9ec; }
+        #realtimeAmbilightConfigurationPage .raModalBody { padding: 1.2em 1.3em; overflow-y: auto; flex: 1 1 auto; }
+        #realtimeAmbilightConfigurationPage .raModalFooter { padding: 1em 1.3em; border-top: 1px solid #22262c; flex: none; }
 
         /* ---- reachability dot + ping figure, shared by the WLED/Hue cards ---- */
         #realtimeAmbilightConfigurationPage .raDot { width: .62em; height: .62em; border-radius: 50%; flex: none; display: inline-block; }
@@ -52,23 +77,31 @@
             #realtimeAmbilightConfigurationPage .raDot.raDotLive, #realtimeAmbilightConfigurationPage .raRackBar.raRackSweep .raRackBarFill { animation: none; }
         }
 
-        /* ---- the one combined "all settings" page every card's Edit button opens ---- */
-        #realtimeAmbilightConfigurationPage .raEditAllPanel[hidden] { display: none; }
-        #realtimeAmbilightConfigurationPage .raEditAllPanel > .verticalSection:not(:first-of-type) { margin-top: 2.2em; padding-top: 1.6em; border-top: 1px solid rgba(127, 127, 127, .25); }
+        /* ---- panels below the overview cards (signal chain, live activity) --
+           same dark instrument-panel surface and border-colour vocabulary as
+           the cards above (grey/green/amber/red), so they read as the same
+           system instead of a leftover, differently-styled block. ---- */
+        #realtimeAmbilightConfigurationPage .raPanel { background: #0d0f12; color: #e7e9ec; border: 1px solid #23262b; border-radius: 1em; padding: 1.1em 1.3em; margin: 0 0 1.4em; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+        #realtimeAmbilightConfigurationPage .raPanelTop { display: flex; justify-content: space-between; align-items: center; gap: .6em; font-weight: 600; font-size: .95em; margin-bottom: .7em; }
 
-        /* ---- FPS chain ---- */
-        #realtimeAmbilightConfigurationPage .raFpsChain { display: flex; align-items: center; gap: .5em; flex-wrap: wrap; font-size: .88em; margin: .6em 0; }
-        #realtimeAmbilightConfigurationPage .raFpsStage { border: 1px solid rgba(127, 127, 127, .35); border-radius: .6em; padding: .5em .8em; min-width: 8em; }
-        #realtimeAmbilightConfigurationPage .raFpsStage .raFpsLabel { opacity: .7; font-size: .85em; }
-        #realtimeAmbilightConfigurationPage .raFpsStage .raFpsValue { font-weight: 700; font-size: 1.1em; }
-        #realtimeAmbilightConfigurationPage .raFpsArrow { opacity: .5; }
+        /* ---- signal chain: eight real stages, not just the three with their
+           own independent counter -- 4/5/6 are genuinely inline with 2/3/7 so
+           they show "inline" rather than a fabricated rate of their own. ---- */
+        #realtimeAmbilightConfigurationPage .raStageGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6em; }
+        #realtimeAmbilightConfigurationPage .raStage { position: relative; border: 1px solid #3a3f47; border-radius: .6em; padding: .6em .7em; background: rgba(255, 255, 255, .015); }
+        #realtimeAmbilightConfigurationPage .raStage.raOk { border-color: #3ddc84; }
+        #realtimeAmbilightConfigurationPage .raStage.raWarn { border-color: #f5a623; }
+        #realtimeAmbilightConfigurationPage .raStage.raDead { border-color: #ff5a5a; }
+        #realtimeAmbilightConfigurationPage .raStageNum { position: absolute; top: .5em; right: .6em; font: 600 .65em/1 "IBM Plex Mono", monospace; color: #55595f; }
+        #realtimeAmbilightConfigurationPage .raStageLabel { font-size: .72em; color: #8a929c; margin-bottom: .35em; padding-right: 1.2em; }
+        #realtimeAmbilightConfigurationPage .raStageValue { font: 600 .95em/1 "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; color: #e7e9ec; }
+        #realtimeAmbilightConfigurationPage .raStage:not(.raOk):not(.raWarn):not(.raDead) .raStageValue { color: #6d747d; }
 
-        /* ---- panels below the overview cards (pipeline, live activity) ---- */
-        #realtimeAmbilightConfigurationPage .raPanel { border: 1px solid rgba(127, 127, 127, .35); border-radius: .7em; padding: 1em 1.2em; margin: 0 0 1.8em; }
-        #realtimeAmbilightConfigurationPage .raActivityList { max-height: 13em; overflow-y: auto; font-size: .85em; display: flex; flex-direction: column-reverse; gap: .25em; }
-        #realtimeAmbilightConfigurationPage .raActivityRow { display: flex; gap: .7em; padding: .15em 0; }
-        #realtimeAmbilightConfigurationPage .raActivityRow .raActivityTime { opacity: .6; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        #realtimeAmbilightConfigurationPage .raActivityRow.raActivityWarning .raActivityMessage { color: #d18e1c; }
+        #realtimeAmbilightConfigurationPage .raActivityList { max-height: 13em; overflow-y: auto; font-size: .85em; display: flex; flex-direction: column-reverse; gap: .25em; font-family: "IBM Plex Mono", monospace; }
+        #realtimeAmbilightConfigurationPage .raActivityRow { display: flex; gap: .7em; padding: .2em 0; }
+        #realtimeAmbilightConfigurationPage .raActivityRow .raActivityTime { color: #6d747d; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        #realtimeAmbilightConfigurationPage .raActivityRow .raActivityMessage { color: #c6cad2; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+        #realtimeAmbilightConfigurationPage .raActivityRow.raActivityWarning .raActivityMessage { color: #f5a623; }
 
         /* ---- colour deviation: primary/secondary columns, right-aligned ---- */
         #realtimeAmbilightConfigurationPage .raColourColumns { display: flex; gap: 1.2em; margin-top: .7em; font-size: .88em; min-width: 0; }
@@ -94,67 +127,69 @@
             <div class="raRackBar" id="raRackBar"><div class="raRackBarFill"></div></div>
             <div class="raRackGrid">
                 <div class="raCard" id="raCard-tv">
-                    <div class="raCardTop"><span>TV</span><span class="raCardState" id="tvState">&nbsp;</span></div>
-                    <div class="raCardStat" id="tvStat">&nbsp;</div>
-                    <div class="raCardCap" id="tvCap">&nbsp;</div>
+                    <div class="raCardTop"><span>TV</span><span class="raCardState" id="tvState"><span class="raSkel"></span></span></div>
+                    <div class="raCardStat" id="tvStat"><span class="raSkel" style="width:80%;max-width:11em"></span></div>
+                    <div class="raCardCap" id="tvCap"><span class="raSkel"></span></div>
                     <div class="raCardCap" id="tvSub">&nbsp;</div>
-                    <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="tv">Edit all settings</button>
+                    <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="tv">Edit</button>
                 </div>
                 <div class="raCard" id="raCard-wled">
-                    <div class="raCardTop"><span>WLED</span><span class="raCardState" id="wledState">&nbsp;</span></div>
-                    <div class="raCardStat" id="wledStat">&nbsp;</div>
-                    <div class="raCardCap" id="wledCap">&nbsp;</div>
+                    <div class="raCardTop"><span>WLED</span><span class="raCardState" id="wledState"><span class="raSkel"></span></span></div>
+                    <div class="raCardStat" id="wledStat"><span class="raSkel" style="width:80%;max-width:11em"></span></div>
+                    <div class="raCardCap" id="wledCap"><span class="raSkel"></span></div>
                     <div class="raCardPing" id="wledPing"></div>
-                    <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="wled">Edit all settings</button>
+                    <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="wled">Edit</button>
                 </div>
                 <div class="raCard" id="raCard-ambilight">
-                    <div class="raCardTop"><span>Ambilight</span><span class="raCardState" id="ambilightState">&nbsp;</span></div>
-                    <div class="raCardStat" id="ambilightStat">&nbsp;</div>
-                    <div class="raCardCap" id="ambilightCap">&nbsp;</div>
-                    <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="ambilight">Edit all settings</button>
+                    <div class="raCardTop"><span>Ambilight</span><span class="raCardState" id="ambilightState"><span class="raSkel"></span></span></div>
+                    <div class="raCardStat" id="ambilightStat"><span class="raSkel" style="width:80%;max-width:11em"></span></div>
+                    <div class="raCardCap" id="ambilightCap"><span class="raSkel"></span></div>
+                    <div class="raCardCap" id="ambilightSub">&nbsp;</div>
+                    <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="ambilight">Edit</button>
                 </div>
                 <div class="raCard" id="raCard-hue">
-                    <div class="raCardTop"><span>Hue</span><span class="raCardState" id="hueState">&nbsp;</span></div>
-                    <div class="raCardStat" id="hueStat">&nbsp;</div>
-                    <div class="raCardCap" id="hueCap">&nbsp;</div>
+                    <div class="raCardTop"><span>Hue</span><span class="raCardState" id="hueState"><span class="raSkel"></span></span></div>
+                    <div class="raCardStat" id="hueStat"><span class="raSkel" style="width:80%;max-width:11em"></span></div>
+                    <div class="raCardCap" id="hueCap"><span class="raSkel"></span></div>
                     <div class="raCardPing" id="huePing"></div>
-                    <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="hue">Edit all settings</button>
+                    <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="hue">Edit</button>
                 </div>
             </div>
         </div>
 
-        <!-- Not a device card: this is the shared decode/sample/send pipeline behind
-             both WLED and Hue, not something with its own address to bind or ping. -->
+        <!-- Not a device card: this is the shared chain behind both WLED and Hue's
+             output, not something with its own address to bind or ping. All eight
+             stages a frame actually passes through, in order -- not just the three
+             that happen to have their own independent throughput counter. -->
         <div class="raPanel" id="raPipelinePanel">
-            <div class="raCardTitle" style="margin-bottom:.5em"><span>Pipeline</span><span class="raPill" id="raCardPipelinePill">&nbsp;</span></div>
-            <div class="raFpsChain" id="wledFpsChain">
-                <div class="raFpsStage"><div class="raFpsLabel">FFmpeg decode</div><div class="raFpsValue" id="fpsAnalyse">–</div></div>
-                <span class="raFpsArrow">&#8594;</span>
-                <div class="raFpsStage"><div class="raFpsLabel">Sampling</div><div class="raFpsValue" id="fpsSample">–</div></div>
-                <span class="raFpsArrow">&#8594;</span>
-                <div class="raFpsStage"><div class="raFpsLabel">Sent to WLED</div><div class="raFpsValue" id="fpsWled">–</div></div>
+            <div class="raPanelTop"><span>Signal chain</span><span class="raCardState" id="pipelineState">&nbsp;</span></div>
+            <div class="raStageGrid" id="raStageGrid">
+                <div class="raStage" id="stage-playback"><span class="raStageNum">1</span><div class="raStageLabel">Playback</div><div class="raStageValue" id="stagePlayback">–</div></div>
+                <div class="raStage" id="stage-decode"><span class="raStageNum">2</span><div class="raStageLabel">FFmpeg decode</div><div class="raStageValue" id="fpsAnalyse">–</div></div>
+                <div class="raStage" id="stage-sample"><span class="raStageNum">3</span><div class="raStageLabel">Edge sampling</div><div class="raStageValue" id="fpsSample">–</div></div>
+                <div class="raStage" id="stage-colour"><span class="raStageNum">4</span><div class="raStageLabel">Colour &amp; HDR</div><div class="raStageValue" id="stageColour">inline</div></div>
+                <div class="raStage" id="stage-interp"><span class="raStageNum">5</span><div class="raStageLabel">LED mapping</div><div class="raStageValue" id="stageInterp">inline</div></div>
+                <div class="raStage" id="stage-smooth"><span class="raStageNum">6</span><div class="raStageLabel">Smoothing</div><div class="raStageValue" id="stageSmooth">inline</div></div>
+                <div class="raStage" id="stage-wled"><span class="raStageNum">7</span><div class="raStageLabel">Sent to WLED</div><div class="raStageValue" id="fpsWled">–</div></div>
+                <div class="raStage" id="stage-hue"><span class="raStageNum">8</span><div class="raStageLabel">Sent to Hue</div><div class="raStageValue" id="fpsHue">–</div></div>
             </div>
             <div class="fieldDescription" id="fpsHint">Live only while something is playing on the bound device.</div>
         </div>
 
         <div class="raPanel">
-            <div class="raCardTitle" style="margin-bottom:.5em"><span>Live activity</span></div>
+            <div class="raPanelTop"><span>Live activity</span></div>
             <div class="raActivityList" id="raActivityList"></div>
             <div class="fieldDescription" id="raActivityEmpty">Nothing yet -- this fills in as WLED, Hue or the TV connect, disconnect, or need attention.</div>
         </div>
 
         <form id="realtimeAmbilightConfigurationForm">
 
-            <!-- Every card's own "Edit all settings" button opens this one page, scrolled
-                 to the section it was opened from -- there is only ever one destination
-                 for editing, never a per-section edit view, so a change made anywhere is
-                 always made alongside every other setting rather than in an isolated tab. -->
-            <div class="raEditAllPanel" id="raEditAllPanel" hidden>
-                <button type="button" class="raBackLink" data-close-edit-all="1">&#9664; Back to overview</button>
-
-                <div class="verticalSection" id="editSection-tv">
-                    <h2 class="sectionTitle">TV</h2>
-                </div>
+            <!-- Every card's own "Edit" button opens its own modal -- settings split
+                 by section instead of one long shared page, so opening one never means
+                 scrolling past three other sections' worth of controls to find it. -->
+            <div class="raModal" id="editModal-tv" hidden>
+                <div class="raModalHeader"><h2 class="raModalTitle">TV</h2><button type="button" class="raModalClose" data-close-modal aria-label="Close">&times;</button></div>
+                <div class="raModalBody">
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Which TV do these LEDs belong to?</h3>
                     <div class="selectContainer">
@@ -214,10 +249,13 @@
                     </label>
                     <div class="fieldDescription">Prevents wide-screen black bars from turning the LEDs off. <strong>Default: on.</strong></div>
                 </div>
-
-                <div class="verticalSection" id="editSection-wled">
-                    <h2 class="sectionTitle">WLED</h2>
+                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save</span></button></div>
                 </div>
+            </div>
+
+            <div class="raModal" id="editModal-wled" hidden>
+                <div class="raModalHeader"><h2 class="raModalTitle">WLED</h2><button type="button" class="raModalClose" data-close-modal aria-label="Close">&times;</button></div>
+                <div class="raModalBody">
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Which WLED controller?</h3>
                     <p class="fieldDescription">Finds WLED controllers on your network.</p>
@@ -399,10 +437,13 @@
                     </label>
                     <div class="fieldDescription">Used when automatic detection is unavailable. <strong>Default: on.</strong></div>
                 </div>
-
-                <div class="verticalSection" id="editSection-ambilight">
-                    <h2 class="sectionTitle">Ambilight</h2>
+                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save</span></button></div>
                 </div>
+            </div>
+
+            <div class="raModal" id="editModal-ambilight" hidden>
+                <div class="raModalHeader"><h2 class="raModalTitle">Ambilight</h2><button type="button" class="raModalClose" data-close-modal aria-label="Close">&times;</button></div>
+                <div class="raModalBody">
                 <div class="verticalSection" id="calibrationSection">
                     <h3 class="sectionTitle">Color calibration</h3>
                     <p class="fieldDescription">Start with the picture as recorded, then adjust only what this room needs. One continuous strip usually runs the whole way round the TV, so the wizard below tunes all four sides together, not one at a time.</p>
@@ -510,10 +551,13 @@
                     </details>
                     </div>
                 </div>
-
-                <div class="verticalSection" id="editSection-hue">
-                    <h2 class="sectionTitle">Hue</h2>
+                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save</span></button></div>
                 </div>
+            </div>
+
+            <div class="raModal" id="editModal-hue" hidden>
+                <div class="raModalHeader"><h2 class="raModalTitle">Hue</h2><button type="button" class="raModalClose" data-close-modal aria-label="Close">&times;</button></div>
+                <div class="raModalBody">
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Philips Hue Entertainment (optional)</h3>
                     <p class="fieldDescription">
@@ -580,20 +624,19 @@
                         <input is="emby-checkbox" id="hueEnabled" type="checkbox" />
                         <span>Enable Hue Entertainment</span>
                     </label>
-                    <div class="fieldDescription">Starts automatically when the bound TV plays, same as WLED. <strong>Default: off.</strong> Saved together with the rest of this page -- use the <strong>Save</strong> button at the very bottom.</div>
+                    <div class="fieldDescription">Starts automatically when the bound TV plays, same as WLED. <strong>Default: off.</strong> Saved with this modal's own <strong>Save</strong> button below.</div>
                 </div>
+                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save</span></button></div>
+                </div>
+            </div>
 
-                <div class="verticalSection">
-                    <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
-                    <button is="emby-button" type="button" id="resetConfiguration" class="raised block" style="margin-top:.8em">Reset to defaults</button>
-                    <div class="fieldDescription" style="margin-top:.4em">
-                        Puts every setting on this page back to its factory default and saves immediately -- asks for
-                        confirmation first. Does not unlink a paired Hue bridge; use "Unlink this bridge" above for that.
-                    </div>
-                    <!-- A second "Back to overview" here, not just the one at the very top of this
-                         (long, scrollable) page: opening straight into a section further down --
-                         e.g. Hue -- leaves the top one scrolled out of reach until this one is used. -->
-                    <button type="button" class="raBackLink" data-close-edit-all="1" style="margin-top:1.2em">&#9664; Back to overview</button>
+            <div class="raModalBackdrop" id="raModalBackdrop" hidden></div>
+
+            <div class="verticalSection">
+                <button type="button" is="emby-button" id="resetConfiguration" class="raised">Reset to defaults</button>
+                <div class="fieldDescription" style="margin-top:.4em">
+                    Puts every setting on this page back to its factory default and saves immediately -- asks for
+                    confirmation first. Does not unlink a paired Hue bridge; use "Unlink this bridge" in the Hue card for that.
                 </div>
             </div>
 

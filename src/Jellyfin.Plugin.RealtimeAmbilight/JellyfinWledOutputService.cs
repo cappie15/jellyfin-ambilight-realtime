@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.RealtimeAmbilight;
 
 /// <summary>Dashboard-facing throughput at each pipeline stage, Hz. Null means no session is active.</summary>
-public sealed record PipelinePerformanceSnapshot(double? AnalyseFps, double? SampleFps, double? WledRenderFps);
+public sealed record PipelinePerformanceSnapshot(double? AnalyseFps, double? SampleFps, double? WledRenderFps, double? HueSendFps = null);
 
 /// <summary>Runs the latest-only frame pump for the reference 831-led WLED.</summary>
 public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable

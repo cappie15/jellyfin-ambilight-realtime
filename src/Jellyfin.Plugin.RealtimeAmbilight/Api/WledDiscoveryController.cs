@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Color;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Diagnostics;
+using Jellyfin.Plugin.RealtimeAmbilight.Hue;
 
 namespace Jellyfin.Plugin.RealtimeAmbilight.Api;
 
@@ -21,12 +22,18 @@ public sealed class WledDiscoveryController : ControllerBase
 {
     private readonly WledDiscoveryService _discoveryService;
     private readonly JellyfinWledOutputService _outputService;
+    private readonly HueEntertainmentService _hueService;
     private readonly PluginActivityLog _activityLog;
 
-    public WledDiscoveryController(WledDiscoveryService discoveryService, JellyfinWledOutputService outputService, PluginActivityLog activityLog)
+    public WledDiscoveryController(
+        WledDiscoveryService discoveryService,
+        JellyfinWledOutputService outputService,
+        HueEntertainmentService hueService,
+        PluginActivityLog activityLog)
     {
         _discoveryService = discoveryService ?? throw new ArgumentNullException(nameof(discoveryService));
         _outputService = outputService ?? throw new ArgumentNullException(nameof(outputService));
+        _hueService = hueService ?? throw new ArgumentNullException(nameof(hueService));
         _activityLog = activityLog ?? throw new ArgumentNullException(nameof(activityLog));
     }
 
@@ -80,7 +87,7 @@ public sealed class WledDiscoveryController : ControllerBase
     [HttpGet("Performance")]
     [ProducesResponseType(typeof(PipelinePerformanceSnapshot), StatusCodes.Status200OK)]
     public ActionResult<PipelinePerformanceSnapshot> GetPerformance()
-        => Ok(_outputService.GetPerformance());
+        => Ok(_outputService.GetPerformance() with { HueSendFps = _hueService.SendRateHz });
 
     /// <summary>
     /// Reports controller settings that visibly change how the Ambilight looks,

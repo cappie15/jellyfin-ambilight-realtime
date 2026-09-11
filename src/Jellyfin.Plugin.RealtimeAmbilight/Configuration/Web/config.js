@@ -152,11 +152,9 @@ export default function (view) {
     // Card overview is the landing page: every card always shows its own
     // compact, read-only summary (name, state, one headline stat, one
     // caption) -- there is nothing to expand or collapse any more. Every
-    // card's own "Edit all settings" button opens the one shared
-    // raEditAllPanel further down the page (see openEditAll), scrolled to
-    // that section: there is only ever one place to actually change a
-    // setting, so a change made from any card is made alongside every other
-    // setting, never in an isolated per-section view.
+    // card's own "Edit" button opens that section's own modal (see
+    // openEditModal) -- settings are split one modal per section rather
+    // than one long shared page.
     const sectionSummarisers = {};
 
     // Ready / Streaming / Calibrated all read as the same "working" green;
@@ -190,42 +188,37 @@ export default function (view) {
         bar.classList.toggle("raRackSweep", enabled && streaming);
     }
 
-    // Scrolled to the section it was opened from, but the overview cards
-    // and the Pipeline/Live activity panels are never hidden while this is
-    // open -- their own periodic refreshes keep running, so a slider
-    // changed here is visible taking effect up in the cards above without
-    // leaving this page.
-    function openEditAll(section) {
-        byId("raEditAllPanel").hidden = false;
-        if (section) {
-            byId(`editSection-${section}`)?.scrollIntoView({ behavior: "instant", block: "start" });
+    // Settings are split one modal per section rather than one long shared
+    // page -- opening TV's settings should not mean scrolling past WLED,
+    // Ambilight and Hue's controls to get there. The overview cards and the
+    // signal chain/activity panels sit behind the backdrop, still refreshing
+    // -- closing the modal (or just glancing at the pill/state visible
+    // through the dimmed backdrop) is enough to see a change take effect.
+    let openModalSection = null;
+
+    function openEditModal(section) {
+        if (!section) {
+            return;
         }
+
+        closeEditModal();
+        byId(`editModal-${section}`).hidden = false;
+        byId("raModalBackdrop").hidden = false;
+        openModalSection = section;
     }
 
-    function closeEditAll() {
-        byId("raEditAllPanel").hidden = true;
-        byId("raOverviewGrid")?.scrollIntoView({ behavior: "instant", block: "start" });
+    function closeEditModal() {
+        if (openModalSection) {
+            byId(`editModal-${openModalSection}`).hidden = true;
+        }
+
+        byId("raModalBackdrop").hidden = true;
+        openModalSection = null;
     }
 
     function isAmbilightCalibrated() {
         return hueAnchorColours.some(colour => hueAnchors[`${colour}HueShiftDegrees`] !== 0)
             || Number(byId("brightnessPercent").value) !== 100;
-    }
-
-    // "Off" = disabled/unconfigured. "Ready" = configured and idle -- today's
-    // outline-only look. "Streaming" = actually sending frames right now, a
-    // deliberately different (filled) look: "On" was reported as misleading
-    // because it read as "currently streaming" when it only ever meant
-    // "enabled", so the two are now visually distinct states, not one pill
-    // with two different real meanings.
-    function setPill(id, state) {
-        const el = byId(id);
-        if (!el) {
-            return;
-        }
-
-        el.textContent = state === "streaming" ? "Streaming" : state === "ready" ? "Ready" : state === "warn" ? "Check" : "Off";
-        el.className = `raPill ra${state[0].toUpperCase()}${state.slice(1)}`;
     }
 
     function isWledStreaming() {
@@ -321,6 +314,8 @@ export default function (view) {
         renderColourDeviation();
         const deviationSummary = byId("ambilightSummaryDeviationCount").textContent;
         byId("ambilightCap").textContent = `intensity ${byId("saturationPercent").value}% · ${deviationSummary}`;
+        const smoothingMs = Number(byId("wledSmoothingMilliseconds").value) || 0;
+        byId("ambilightSub").textContent = smoothingMs === 0 ? "Smoothing off (fully reactive)" : `Smoothing ${smoothingMs} ms`;
     };
 
     sectionSummarisers.hue = function summariseHue() {
@@ -351,6 +346,14 @@ export default function (view) {
     // its own on the server. Polled at a modest interval regardless of
     // which section is open, so the overview card's own pill/meta text
     // stays current without needing its own separate refresh path.
+    // All eight stages a frame actually passes through, in order -- not just
+    // the three (decode/sample/WLED-send) that happen to have their own
+    // independent throughput counter. Colour+HDR, LED mapping and smoothing
+    // run inline inside the same per-frame WLED call as "Sent to WLED"
+    // itself, so they share its own active/inactive state rather than
+    // inventing a rate of their own that does not exist. Hue has a genuinely
+    // separate send rate (its own 25 Hz pump, independent of WLED), so it
+    // gets its own active flag instead of piggy-backing on WLED's.
     function refreshFpsChain() {
         return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Performance"))
             .then(perf => {
@@ -358,18 +361,30 @@ export default function (view) {
                 const analyse = perf?.AnalyseFps ?? perf?.analyseFps;
                 const sample = perf?.SampleFps ?? perf?.sampleFps;
                 const wled = perf?.WledRenderFps ?? perf?.wledRenderFps;
+                const hue = perf?.HueSendFps ?? perf?.hueSendFps;
                 const active = analyse !== null && analyse !== undefined;
-                const format = value => value === null || value === undefined ? "" : `${Number(value).toFixed(1)} fps`;
-                byId("fpsAnalyse").textContent = active ? format(analyse) : "Ready";
-                byId("fpsSample").textContent = active ? format(sample) : "Ready";
-                byId("fpsWled").textContent = active ? format(wled) : "Ready";
-                view.querySelectorAll("#wledFpsChain .raFpsStage .raFpsValue").forEach(el => {
-                    el.style.color = active ? "" : "#2fae4e";
-                });
+                const hueActive = hue !== null && hue !== undefined;
+                const format = value => `${Number(value).toFixed(1)} fps`;
+
+                const setStage = (stageId, valueId, text, isActive) => {
+                    byId(valueId).textContent = text;
+                    byId(stageId).className = `raStage${isActive ? " raOk" : ""}`;
+                };
+
+                setStage("stage-playback", "stagePlayback", active ? "Playing" : "Idle", active);
+                setStage("stage-decode", "fpsAnalyse", active ? format(analyse) : "Ready", active);
+                setStage("stage-sample", "fpsSample", active ? format(sample) : "Ready", active);
+                setStage("stage-colour", "stageColour", "inline", active);
+                setStage("stage-interp", "stageInterp", "inline", active);
+                setStage("stage-smooth", "stageSmooth", "inline", active);
+                setStage("stage-wled", "fpsWled", active ? format(wled) : "Ready", active);
+                setStage("stage-hue", "fpsHue", hueActive ? format(hue) : "Ready", hueActive);
+
                 byId("fpsHint").innerHTML = active
                     ? ""
                     : `Live only while something is playing on the bound device (${deviceLabelWithIp()}). <button type="button" class="raLink" data-open-edit-all="tv">Open TV settings</button>`;
-                setPill("raCardPipelinePill", !byId("enabled").checked ? "off" : active ? "streaming" : "ready");
+                const enabled = byId("enabled").checked;
+                setCardState("pipeline", !enabled ? "off" : "ok", !enabled ? "OFF" : active ? "STREAM" : "READY");
                 refreshOverviewCards();
             })
             .catch(() => {});
@@ -1322,24 +1337,39 @@ export default function (view) {
                 setColourLabels();
                 updateCalibrationPatternUrl();
                 setLedTotal();
-                return loadDevices(config.TargetDeviceId || "");
+
+                // Everything below reads only what was just set above (or its
+                // own already-configured values), so none of it actually
+                // depends on any of the others finishing first -- there is no
+                // real reason for this to have ever been one long chain.
+                // Once a WLED controller is already configured, the ~1.5 s
+                // mDNS scan is skipped entirely on every page load (it stays
+                // one click away via "Scan the network for WLED"); this alone
+                // was the single biggest cost on a normal, already-set-up load.
+                const alreadyConfigured = Boolean(config.WledHost);
+                if (alreadyConfigured) {
+                    show("wledCandidatesContainer", false);
+                    show("manualWledContainer", true);
+                }
+
+                return Promise.all([
+                    loadDevices(config.TargetDeviceId || ""),
+                    alreadyConfigured ? Promise.resolve() : findWled(),
+                    checkControllerSettings(),
+                    checkControllerStatus(),
+                    loadWizardState(),
+                    // On a normal page load (not right after an interactive
+                    // pairing), nothing else ever populates the entertainment-area
+                    // dropdown -- do it here too whenever a bridge is already
+                    // paired, or the saved selection has nothing to bind to.
+                    loadHueStatus().then(paired => paired ? refreshHueEntertainmentConfigs() : null)
+                ]);
             })
-            .then(findWled)
-            .then(() => Promise.all([
-                checkControllerSettings(),
-                checkControllerStatus(),
-                loadWizardState(),
-                // On a normal page load (not right after an interactive
-                // pairing), nothing else ever populates the entertainment-area
-                // dropdown -- do it here too whenever a bridge is already
-                // paired, or the saved selection has nothing to bind to.
-                loadHueStatus().then(paired => paired ? refreshHueEntertainmentConfigs() : null)
-            ]))
             .then(() => {
                 refreshOverviewCards();
                 refreshPings();
                 refreshActivityLog();
-                closeEditAll();
+                closeEditModal();
             })
             .finally(() => Dashboard.hideLoadingMsg());
     }
@@ -1728,12 +1758,17 @@ export default function (view) {
     view.addEventListener("click", event => {
         const openEdit = event.target.closest("[data-open-edit-all]");
         if (openEdit) {
-            openEditAll(openEdit.dataset.openEditAll);
+            openEditModal(openEdit.dataset.openEditAll);
             return;
         }
 
-        if (event.target.closest("[data-close-edit-all]")) {
-            closeEditAll();
+        if (event.target.closest("[data-close-modal]") || event.target.id === "raModalBackdrop") {
+            closeEditModal();
+        }
+    });
+    view.addEventListener("keydown", event => {
+        if (event.key === "Escape" && openModalSection) {
+            closeEditModal();
         }
     });
     setInterval(refreshFpsChain, 2000);

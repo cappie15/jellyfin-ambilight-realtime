@@ -57,6 +57,12 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     private readonly LatestFrameBuffer<AnalysisFrame> _latestFrames;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Random _jitter = new();
+    // Same idea as JellyfinWledOutputService's own send-rate meter: how many
+    // packets per second actually go out the DTLS socket, not how many
+    // frames were merely produced upstream. Counts a keep-alive resend too --
+    // that is genuinely a packet leaving this process every bit as much as a
+    // fresh frame is.
+    private readonly FrameRateMeter _sendRateMeter = new(new PlaybackMonotonicTimeAdapter());
 
     private HueFrameProcessor? _frameProcessor;
     private IHueStreamChannel? _channel;
@@ -117,6 +123,14 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             configuration?.HueEntertainmentConfigurationName ?? string.Empty,
             _channels.Count);
     }
+
+    /// <summary>
+    /// Packets actually sent per second, or <see langword="null"/> while not
+    /// streaming -- mirrors <c>JellyfinWledOutputService.GetPerformance</c>'s
+    /// own null-when-inactive convention, folded into the same dashboard
+    /// "Pipeline" snapshot by <see cref="Api.WledDiscoveryController.GetPerformance"/>.
+    /// </summary>
+    public double? SendRateHz => _stateMachine.State == HueEntertainmentState.Streaming ? _sendRateMeter.RateHz : null;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -453,6 +467,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         {
             _channel.SendPacket(packet);
             _lastSend = DateTimeOffset.UtcNow;
+            _sendRateMeter.Increment();
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
