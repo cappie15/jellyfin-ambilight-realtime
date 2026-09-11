@@ -144,43 +144,42 @@ export default function (view) {
         }).join("");
     }
 
-    // Card overview is the landing page; opening a card reveals that one
-    // section (a "detail view"), each showing a read-only summary of what
-    // is already configured by default, with an "Edit" button that reveals
-    // the actual controls -- already pre-filled with the current values,
-    // since nothing in the edit markup is ever cleared or rebuilt when
-    // toggled, only shown or hidden. A section with nothing configured yet
-    // opens straight into Edit instead (see each summarise* function).
+    // Card overview is the landing page: clicking a card's header expands
+    // that same card in place to show a read-only summary of what is
+    // already configured -- no navigation away, the whole overview grid
+    // (and the live Pipeline/activity panels below it) stay exactly where
+    // they were. Every card's own "Edit all settings" button opens the one
+    // shared raEditAllPanel further down the page (see openEditAll),
+    // scrolled to that section: there is only ever one place to actually
+    // change a setting, so a change made from any card is made alongside
+    // every other setting, never in an isolated per-section view.
     const sectionSummarisers = {};
 
-    // The overview cards are always on screen, above whichever detail panel
-    // (if any) is open below them -- they are never hidden by opening a
-    // section, only the reverse.
-    function switchTab(tab) {
-        view.querySelectorAll(".raTabPanel").forEach(panel => {
-            panel.hidden = panel.dataset.tabPanel !== tab;
-        });
-        view.querySelectorAll(".raCard").forEach(card => {
-            card.classList.toggle("raCardActive", card.dataset.openTab === tab);
-        });
-        sectionSummarisers[tab]?.();
-        view.querySelector(`[data-tab-panel="${tab}"]`)?.scrollIntoView({ behavior: "instant", block: "start" });
+    function toggleCardDetail(section) {
+        const detail = byId(`${section}CardDetail`);
+        const expanding = detail.hidden;
+        detail.hidden = !expanding;
+        byId(`raCard-${section}`)?.classList.toggle("raCardExpanded", expanding);
+        if (expanding) {
+            sectionSummarisers[section]?.();
+        }
     }
 
-    function showOverview() {
-        view.querySelectorAll(".raTabPanel").forEach(panel => { panel.hidden = true; });
-        view.querySelectorAll(".raCard").forEach(card => card.classList.remove("raCardActive"));
-        window.scrollTo({ top: 0, behavior: "instant" });
+    // Scrolled to the section it was opened from, but the overview cards
+    // and the Pipeline/Live activity panels are never hidden while this is
+    // open -- their own periodic refreshes keep running, so a slider
+    // changed here is visible taking effect up in the sticky cards above
+    // without leaving this page.
+    function openEditAll(section) {
+        byId("raEditAllPanel").hidden = false;
+        if (section) {
+            byId(`editSection-${section}`)?.scrollIntoView({ behavior: "instant", block: "start" });
+        }
     }
 
-    function showSectionSummary(section) {
-        show(`${section}Summary`, true);
-        show(`${section}Edit`, false);
-    }
-
-    function showSectionEdit(section) {
-        show(`${section}Summary`, false);
-        show(`${section}Edit`, true);
+    function closeEditAll() {
+        byId("raEditAllPanel").hidden = true;
+        byId("raOverviewGrid")?.scrollIntoView({ behavior: "instant", block: "start" });
     }
 
     function isAmbilightCalibrated() {
@@ -218,7 +217,6 @@ export default function (view) {
         byId("tvSummaryDevice").textContent = deviceLabelWithIp();
         byId("tvSummaryEnabled").textContent = byId("enabled").checked ? "On" : "Off";
         byId("tvSummarySampling").textContent = `${byId("analysisWidth").value}×${analysisHeight()} @ ${byId("analysisFramesPerSecond").value} fps`;
-        byId("targetDeviceId").value ? showSectionSummary("tv") : showSectionEdit("tv");
     };
 
     sectionSummarisers.wled = function summariseWled() {
@@ -232,8 +230,6 @@ export default function (view) {
             : "Off";
         const delay = Number(byId("outputDelayMilliseconds").value) || 0;
         byId("wledSummaryTiming").textContent = `${byId("outputFramesPerSecond").value} fps, ${delay === 0 ? "no delay" : `${delay} ms delay`}`;
-        host ? showSectionSummary("wled") : showSectionEdit("wled");
-        refreshFpsChain();
     };
 
     // Always one cell per anchor (a fixed 2-column, 3-row grid), a small dot
@@ -290,7 +286,6 @@ export default function (view) {
         const smoothingMs = Number(byId("wledSmoothingMilliseconds").value) || 0;
         byId("ambilightSummarySmoothing").textContent = smoothingMs === 0 ? "Off (fully reactive)" : `${smoothingMs} ms`;
         renderColourDeviation();
-        calibrated ? showSectionSummary("ambilight") : showSectionEdit("ambilight");
     };
 
     sectionSummarisers.hue = function summariseHue() {
@@ -302,7 +297,6 @@ export default function (view) {
         byId("hueSummaryBrightness").textContent = `${byId("hueBrightnessPercent").value}%`;
         const response = byId("hueResponsePercent").value;
         byId("hueSummaryResponsivity").textContent = `${response} (out of 100)`;
-        bridgeHost && byId("hueEnabled").checked ? showSectionSummary("hue") : showSectionEdit("hue");
     };
 
     // Cheap: reads three already-maintained counters, no measuring work of
@@ -326,7 +320,7 @@ export default function (view) {
                 });
                 byId("fpsHint").innerHTML = active
                     ? ""
-                    : `Live only while something is playing on the bound device (${deviceLabelWithIp()}). <button type="button" class="raLink" data-open-tab="tv">Open TV settings</button>`;
+                    : `Live only while something is playing on the bound device (${deviceLabelWithIp()}). <button type="button" class="raLink" data-open-edit-all="tv">Open TV settings</button>`;
                 setPill("raCardPipelinePill", !byId("enabled").checked ? "off" : active ? "streaming" : "ready");
                 refreshOverviewCards();
             })
@@ -385,6 +379,13 @@ export default function (view) {
         byId("raCardHueMeta").innerHTML = hueEnabled && huePaired
             ? `<div>${loadedConfig?.HueEntertainmentConfigurationName || "Paired"}</div><div>Brightness ${byId("hueBrightnessPercent").value}%</div>${pingLine(latestPings.hue)}`
             : (huePaired ? "Paired, currently off" : "Not paired yet") + pingLine(latestPings.hue);
+
+        // Keeps each card's own inline detail live too, not just its collapsed
+        // meta line -- cheap (string/DOM writes only, nothing fetched here),
+        // and it is exactly what makes a setting changed on the "all
+        // settings" page below visibly take effect up here without the
+        // operator needing to close and reopen a card to see it.
+        Object.values(sectionSummarisers).forEach(summarise => summarise());
     }
 
     function pingOne(host, port) {
@@ -1320,7 +1321,7 @@ export default function (view) {
                 refreshOverviewCards();
                 refreshPings();
                 refreshActivityLog();
-                showOverview();
+                closeEditAll();
             })
             .finally(() => Dashboard.hideLoadingMsg());
     }
@@ -1702,18 +1703,27 @@ export default function (view) {
     createSideTuningCards();
     addRangeScales();
     addStepButtonsToSection();
-    // Delegated, not a per-element listener: some [data-open-tab] elements
-    // (e.g. the "Open TV settings" link inside the FPS chain hint) are
-    // (re)created after this point by innerHTML writes, so binding once at
-    // init would silently miss them.
+    // Delegated, not a per-element listener: some [data-open-edit-all]
+    // elements (e.g. the "Open TV settings" link inside the FPS chain hint)
+    // are (re)created after this point by innerHTML writes, so binding once
+    // at init would silently miss them.
     view.addEventListener("click", event => {
-        const opener = event.target.closest("[data-open-tab]");
-        if (opener) {
-            switchTab(opener.dataset.openTab);
+        const toggle = event.target.closest("[data-toggle-card]");
+        if (toggle) {
+            toggleCardDetail(toggle.dataset.toggleCard);
+            return;
+        }
+
+        const openEdit = event.target.closest("[data-open-edit-all]");
+        if (openEdit) {
+            openEditAll(openEdit.dataset.openEditAll);
+            return;
+        }
+
+        if (event.target.closest("[data-close-edit-all]")) {
+            closeEditAll();
         }
     });
-    view.querySelectorAll("[data-open-overview]").forEach(link => link.addEventListener("click", showOverview));
-    view.querySelectorAll("[data-edit-toggle]").forEach(button => button.addEventListener("click", () => showSectionEdit(button.dataset.editToggle)));
     setInterval(refreshFpsChain, 2000);
     // Every 5 s: a real network round trip to WLED/Hue (status + ping), not
     // just a cheap in-process counter read like refreshFpsChain -- but still

@@ -1,11 +1,17 @@
 <div data-role="page" id="realtimeAmbilightConfigurationPage" class="page type-interior pluginConfigurationPage" data-controller="__plugin/RealtimeAmbilight.js">
     <style>
-        #realtimeAmbilightConfigurationPage .raTabPanel[hidden] { display: none; }
-
         /* ---- overview cards ---- */
-        #realtimeAmbilightConfigurationPage .raOverviewGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(19em, 1fr)); gap: 1.1em; margin: 0 0 1.8em; position: sticky; top: 0; z-index: 1; background: inherit; padding-top: .3em; }
-        #realtimeAmbilightConfigurationPage .raCard { text-align: left; border: 1px solid rgba(127, 127, 127, .35); border-radius: .9em; padding: 1.3em 1.4em; background: rgba(127, 127, 127, .05); cursor: pointer; font: inherit; color: inherit; display: flex; flex-direction: column; gap: .6em; min-height: 7em; }
-        #realtimeAmbilightConfigurationPage .raCard:hover, #realtimeAmbilightConfigurationPage .raCard:focus-visible, #realtimeAmbilightConfigurationPage .raCard.raCardActive { border-color: currentColor; background: rgba(127, 127, 127, .12); }
+        /* max-height + its own scrollbar: without a cap here, expanding two or
+           three cards at once (each now able to grow tall in place, holding
+           its own inline detail) can make this sticky block taller than the
+           viewport, which -- being pinned to the top -- then covers every
+           panel below it (Pipeline, Live activity, the edit-all page)
+           instead of merely sitting above them. */
+        #realtimeAmbilightConfigurationPage .raOverviewGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(19em, 1fr)); align-content: start; gap: 1.1em; margin: 0 0 1.8em; position: sticky; top: 0; z-index: 1; background: inherit; padding-top: .3em; max-height: 75vh; overflow-y: auto; overflow-x: hidden; }
+        #realtimeAmbilightConfigurationPage .raCard { text-align: left; border: 1px solid rgba(127, 127, 127, .35); border-radius: .9em; padding: 1.3em 1.4em; background: rgba(127, 127, 127, .05); display: flex; flex-direction: column; min-height: 7em; }
+        #realtimeAmbilightConfigurationPage .raCard:hover, #realtimeAmbilightConfigurationPage .raCard:focus-within, #realtimeAmbilightConfigurationPage .raCard.raCardExpanded { border-color: currentColor; background: rgba(127, 127, 127, .12); }
+        #realtimeAmbilightConfigurationPage .raCardHeader { all: unset; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; gap: .6em; cursor: pointer; font: inherit; color: inherit; }
+        #realtimeAmbilightConfigurationPage .raCardHeader:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: .3em; }
         #realtimeAmbilightConfigurationPage .raCardTitle { font-weight: 700; font-size: 1.15em; display: flex; align-items: center; justify-content: space-between; gap: .6em; }
         #realtimeAmbilightConfigurationPage .raCardMeta { font-size: .88em; opacity: .8; line-height: 1.5; }
         #realtimeAmbilightConfigurationPage .raCardMeta div + div { margin-top: .15em; }
@@ -19,14 +25,18 @@
         #realtimeAmbilightConfigurationPage .raBackLink:hover { opacity: 1; }
         #realtimeAmbilightConfigurationPage .raLink { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
 
-        /* ---- per-section summary / edit toggle ---- */
-        #realtimeAmbilightConfigurationPage .raSummary[hidden], #realtimeAmbilightConfigurationPage .raEdit[hidden] { display: none; }
-        #realtimeAmbilightConfigurationPage .raSummary { border: 1px solid rgba(127, 127, 127, .35); border-radius: .7em; padding: 1em 1.2em; margin-bottom: 1.3em; }
+        /* ---- a card's own inline detail, expanded in place -- no navigation away ---- */
+        #realtimeAmbilightConfigurationPage .raCardDetail[hidden] { display: none; }
+        #realtimeAmbilightConfigurationPage .raCardDetail { margin-top: 1em; padding-top: 1em; border-top: 1px solid rgba(127, 127, 127, .25); display: flex; flex-direction: column; }
         #realtimeAmbilightConfigurationPage .raSummaryRow { display: flex; justify-content: space-between; gap: 1.5em; padding: .35em 0; border-top: 1px solid rgba(127, 127, 127, .18); font-size: .92em; }
         #realtimeAmbilightConfigurationPage .raSummaryRow:first-child { border-top: none; padding-top: 0; }
         #realtimeAmbilightConfigurationPage .raSummaryRow .raK { opacity: .75; }
         #realtimeAmbilightConfigurationPage .raSummaryRow .raV { font-weight: 600; text-align: right; }
-        #realtimeAmbilightConfigurationPage .raEditToggle { margin-top: .8em; }
+        #realtimeAmbilightConfigurationPage .raEditToggle { margin-top: .8em; align-self: flex-start; }
+
+        /* ---- the one combined "all settings" page every card's Edit button opens ---- */
+        #realtimeAmbilightConfigurationPage .raEditAllPanel[hidden] { display: none; }
+        #realtimeAmbilightConfigurationPage .raEditAllPanel > .verticalSection:not(:first-of-type) { margin-top: 2.2em; padding-top: 1.6em; border-top: 1px solid rgba(127, 127, 127, .25); }
 
         /* ---- FPS chain ---- */
         #realtimeAmbilightConfigurationPage .raFpsChain { display: flex; align-items: center; gap: .5em; flex-wrap: wrap; font-size: .88em; margin: .6em 0; }
@@ -56,22 +66,59 @@
         </div>
 
         <div class="raOverviewGrid" id="raOverviewGrid">
-            <button type="button" class="raCard" data-open-tab="tv">
-                <div class="raCardTitle"><span>TV</span><span class="raPill" id="raCardTvPill">&nbsp;</span></div>
-                <div class="raCardMeta" id="raCardTvMeta">&nbsp;</div>
-            </button>
-            <button type="button" class="raCard" data-open-tab="wled">
-                <div class="raCardTitle"><span>WLED</span><span class="raPill" id="raCardWledPill">&nbsp;</span></div>
-                <div class="raCardMeta" id="raCardWledMeta">&nbsp;</div>
-            </button>
-            <button type="button" class="raCard" data-open-tab="ambilight">
-                <div class="raCardTitle"><span>Ambilight</span><span class="raPill" id="raCardAmbilightPill">&nbsp;</span></div>
-                <div class="raCardMeta" id="raCardAmbilightMeta">&nbsp;</div>
-            </button>
-            <button type="button" class="raCard" data-open-tab="hue">
-                <div class="raCardTitle"><span>Hue</span><span class="raPill" id="raCardHuePill">&nbsp;</span></div>
-                <div class="raCardMeta" id="raCardHueMeta">&nbsp;</div>
-            </button>
+            <div class="raCard" id="raCard-tv">
+                <button type="button" class="raCardHeader" data-toggle-card="tv">
+                    <div class="raCardTitle"><span>TV</span><span class="raPill" id="raCardTvPill">&nbsp;</span></div>
+                    <div class="raCardMeta" id="raCardTvMeta">&nbsp;</div>
+                </button>
+                <div class="raCardDetail" id="tvCardDetail" hidden>
+                    <div class="raSummaryRow"><span class="raK">Playback device</span><span class="raV" id="tvSummaryDevice">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Ambilight</span><span class="raV" id="tvSummaryEnabled">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Sampling</span><span class="raV" id="tvSummarySampling">&nbsp;</span></div>
+                    <button is="emby-button" type="button" class="raised raEditToggle" data-open-edit-all="tv">Edit all settings</button>
+                </div>
+            </div>
+            <div class="raCard" id="raCard-wled">
+                <button type="button" class="raCardHeader" data-toggle-card="wled">
+                    <div class="raCardTitle"><span>WLED</span><span class="raPill" id="raCardWledPill">&nbsp;</span></div>
+                    <div class="raCardMeta" id="raCardWledMeta">&nbsp;</div>
+                </button>
+                <div class="raCardDetail" id="wledCardDetail" hidden>
+                    <div class="raSummaryRow"><span class="raK">Controller</span><span class="raV" id="wledSummaryHost">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">LEDs around the TV</span><span class="raV" id="wledSummaryLeds">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">White signal (RGBW)</span><span class="raV" id="wledSummaryRgbw">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Update rate / delay</span><span class="raV" id="wledSummaryTiming">&nbsp;</span></div>
+                    <button is="emby-button" type="button" class="raised raEditToggle" data-open-edit-all="wled">Edit all settings</button>
+                </div>
+            </div>
+            <div class="raCard" id="raCard-ambilight">
+                <button type="button" class="raCardHeader" data-toggle-card="ambilight">
+                    <div class="raCardTitle"><span>Ambilight</span><span class="raPill" id="raCardAmbilightPill">&nbsp;</span></div>
+                    <div class="raCardMeta" id="raCardAmbilightMeta">&nbsp;</div>
+                </button>
+                <div class="raCardDetail" id="ambilightCardDetail" hidden>
+                    <div class="raSummaryRow"><span class="raK">Calibration</span><span class="raV"><span class="raPill" id="ambilightSummaryCalibrated">&nbsp;</span></span></div>
+                    <div class="raSummaryRow"><span class="raK">Brightness</span><span class="raV" id="ambilightSummaryBrightness">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Colour intensity</span><span class="raV" id="ambilightSummarySaturation">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Smoothing</span><span class="raV" id="ambilightSummarySmoothing">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Colour deviation</span><span class="raV" id="ambilightSummaryDeviationCount">&nbsp;</span></div>
+                    <div class="raColourColumns" id="ambilightSummaryDeviation"></div>
+                    <button is="emby-button" type="button" class="raised raEditToggle" data-open-edit-all="ambilight">Edit all settings</button>
+                </div>
+            </div>
+            <div class="raCard" id="raCard-hue">
+                <button type="button" class="raCardHeader" data-toggle-card="hue">
+                    <div class="raCardTitle"><span>Hue</span><span class="raPill" id="raCardHuePill">&nbsp;</span></div>
+                    <div class="raCardMeta" id="raCardHueMeta">&nbsp;</div>
+                </button>
+                <div class="raCardDetail" id="hueCardDetail" hidden>
+                    <div class="raSummaryRow"><span class="raK">Bridge</span><span class="raV" id="hueSummaryBridge">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Entertainment area</span><span class="raV" id="hueSummaryArea">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Brightness</span><span class="raV" id="hueSummaryBrightness">&nbsp;</span></div>
+                    <div class="raSummaryRow"><span class="raK">Responsivity / intensity</span><span class="raV" id="hueSummaryResponsivity">&nbsp;</span></div>
+                    <button is="emby-button" type="button" class="raised raEditToggle" data-open-edit-all="hue">Edit all settings</button>
+                </div>
+            </div>
         </div>
 
         <!-- Not a device card: this is the shared decode/sample/send pipeline behind
@@ -96,15 +143,16 @@
 
         <form id="realtimeAmbilightConfigurationForm">
 
-            <div class="raTabPanel" data-tab-panel="tv" hidden>
-                <button type="button" class="raBackLink" data-open-overview="1">&#9664; Overview</button>
-                <div class="raSummary" id="tvSummary">
-                    <div class="raSummaryRow"><span class="raK">Playback device</span><span class="raV" id="tvSummaryDevice">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Ambilight</span><span class="raV" id="tvSummaryEnabled">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Sampling</span><span class="raV" id="tvSummarySampling">&nbsp;</span></div>
-                    <button is="emby-button" type="button" class="raised raEditToggle" data-edit-toggle="tv">Edit</button>
+            <!-- Every card's own "Edit all settings" button opens this one page, scrolled
+                 to the section it was opened from -- there is only ever one destination
+                 for editing, never a per-section edit view, so a change made anywhere is
+                 always made alongside every other setting rather than in an isolated tab. -->
+            <div class="raEditAllPanel" id="raEditAllPanel" hidden>
+                <button type="button" class="raBackLink" data-close-edit-all="1">&#9664; Back to overview</button>
+
+                <div class="verticalSection" id="editSection-tv">
+                    <h2 class="sectionTitle">TV</h2>
                 </div>
-                <div class="raEdit" id="tvEdit" hidden>
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Which TV do these LEDs belong to?</h3>
                     <div class="selectContainer">
@@ -164,19 +212,10 @@
                     </label>
                     <div class="fieldDescription">Prevents wide-screen black bars from turning the LEDs off. <strong>Default: on.</strong></div>
                 </div>
-                </div>
-            </div>
 
-            <div class="raTabPanel" data-tab-panel="wled" hidden>
-                <button type="button" class="raBackLink" data-open-overview="1">&#9664; Overview</button>
-                <div class="raSummary" id="wledSummary">
-                    <div class="raSummaryRow"><span class="raK">Controller</span><span class="raV" id="wledSummaryHost">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">LEDs around the TV</span><span class="raV" id="wledSummaryLeds">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">White signal (RGBW)</span><span class="raV" id="wledSummaryRgbw">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Update rate / delay</span><span class="raV" id="wledSummaryTiming">&nbsp;</span></div>
-                    <button is="emby-button" type="button" class="raised raEditToggle" data-edit-toggle="wled">Edit</button>
+                <div class="verticalSection" id="editSection-wled">
+                    <h2 class="sectionTitle">WLED</h2>
                 </div>
-                <div class="raEdit" id="wledEdit" hidden>
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Which WLED controller?</h3>
                     <p class="fieldDescription">Finds WLED controllers on your network.</p>
@@ -358,21 +397,10 @@
                     </label>
                     <div class="fieldDescription">Used when automatic detection is unavailable. <strong>Default: on.</strong></div>
                 </div>
-                </div>
-            </div>
 
-            <div class="raTabPanel" data-tab-panel="ambilight" hidden>
-                <button type="button" class="raBackLink" data-open-overview="1">&#9664; Overview</button>
-                <div class="raSummary" id="ambilightSummary">
-                    <div class="raSummaryRow"><span class="raK">Calibration</span><span class="raV"><span class="raPill" id="ambilightSummaryCalibrated">&nbsp;</span></span></div>
-                    <div class="raSummaryRow"><span class="raK">Brightness</span><span class="raV" id="ambilightSummaryBrightness">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Colour intensity</span><span class="raV" id="ambilightSummarySaturation">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Smoothing</span><span class="raV" id="ambilightSummarySmoothing">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Colour deviation</span><span class="raV" id="ambilightSummaryDeviationCount">&nbsp;</span></div>
-                    <div class="raColourColumns" id="ambilightSummaryDeviation"></div>
-                    <button is="emby-button" type="button" class="raised raEditToggle" data-edit-toggle="ambilight" style="margin-top:1em">Edit</button>
+                <div class="verticalSection" id="editSection-ambilight">
+                    <h2 class="sectionTitle">Ambilight</h2>
                 </div>
-                <div class="raEdit" id="ambilightEdit" hidden>
                 <div class="verticalSection" id="calibrationSection">
                     <h3 class="sectionTitle">Color calibration</h3>
                     <p class="fieldDescription">Start with the picture as recorded, then adjust only what this room needs. One continuous strip usually runs the whole way round the TV, so the wizard below tunes all four sides together, not one at a time.</p>
@@ -477,19 +505,10 @@
                     </details>
                     </div>
                 </div>
-                </div>
-            </div>
 
-            <div class="raTabPanel" data-tab-panel="hue" hidden>
-                <button type="button" class="raBackLink" data-open-overview="1">&#9664; Overview</button>
-                <div class="raSummary" id="hueSummary">
-                    <div class="raSummaryRow"><span class="raK">Bridge</span><span class="raV" id="hueSummaryBridge">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Entertainment area</span><span class="raV" id="hueSummaryArea">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Brightness</span><span class="raV" id="hueSummaryBrightness">&nbsp;</span></div>
-                    <div class="raSummaryRow"><span class="raK">Responsivity / intensity</span><span class="raV" id="hueSummaryResponsivity">&nbsp;</span></div>
-                    <button is="emby-button" type="button" class="raised raEditToggle" data-edit-toggle="hue">Edit</button>
+                <div class="verticalSection" id="editSection-hue">
+                    <h2 class="sectionTitle">Hue</h2>
                 </div>
-                <div class="raEdit" id="hueEdit" hidden>
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Philips Hue Entertainment (optional)</h3>
                     <p class="fieldDescription">
@@ -558,15 +577,18 @@
                     </label>
                     <div class="fieldDescription">Starts automatically when the bound TV plays, same as WLED. <strong>Default: off.</strong> Saved together with the rest of this page -- use the <strong>Save</strong> button at the very bottom.</div>
                 </div>
-                </div>
-            </div>
 
-            <div class="verticalSection">
-                <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
-                <button is="emby-button" type="button" id="resetConfiguration" class="raised block" style="margin-top:.8em">Reset to defaults</button>
-                <div class="fieldDescription" style="margin-top:.4em">
-                    Puts every setting on this page back to its factory default and saves immediately -- asks for
-                    confirmation first. Does not unlink a paired Hue bridge; use "Unlink this bridge" on the Hue tab for that.
+                <div class="verticalSection">
+                    <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
+                    <button is="emby-button" type="button" id="resetConfiguration" class="raised block" style="margin-top:.8em">Reset to defaults</button>
+                    <div class="fieldDescription" style="margin-top:.4em">
+                        Puts every setting on this page back to its factory default and saves immediately -- asks for
+                        confirmation first. Does not unlink a paired Hue bridge; use "Unlink this bridge" above for that.
+                    </div>
+                    <!-- A second "Back to overview" here, not just the one at the very top of this
+                         (long, scrollable) page: opening straight into a section further down --
+                         e.g. Hue -- leaves the top one scrolled out of reach until this one is used. -->
+                    <button type="button" class="raBackLink" data-close-edit-all="1" style="margin-top:1.2em">&#9664; Back to overview</button>
                 </div>
             </div>
 
