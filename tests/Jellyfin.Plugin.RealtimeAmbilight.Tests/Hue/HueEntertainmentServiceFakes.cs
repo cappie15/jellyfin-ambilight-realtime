@@ -42,6 +42,8 @@ internal sealed class FakeHueLightControl : IHueLightControl
 
     public ConcurrentQueue<Guid> TurnedOnLightIds { get; } = new();
 
+    public ConcurrentQueue<Guid> TurnedOffLightIds { get; } = new();
+
     public ConcurrentQueue<Guid> WarmWhiteDimmedLightIds { get; } = new();
 
     public ConcurrentQueue<HueLightSnapshotEntry> RestoredEntries { get; } = new();
@@ -52,6 +54,12 @@ internal sealed class FakeHueLightControl : IHueLightControl
     public Task TurnOnAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken)
     {
         TurnedOnLightIds.Enqueue(lightId);
+        return Task.CompletedTask;
+    }
+
+    public Task TurnOffAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken)
+    {
+        TurnedOffLightIds.Enqueue(lightId);
         return Task.CompletedTask;
     }
 

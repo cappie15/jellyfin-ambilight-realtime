@@ -83,7 +83,7 @@ export default function (view) {
     // blue, soft clay) -- not swatches sampled evenly across the full colour
     // wheel. Saturated primaries are deliberately absent.
     const wallColourPresets = [
-        { label: "White — no correction", hex: "#ffffff" },
+        { label: "White, no correction", hex: "#ffffff" },
         { label: "Warm white / cream", hex: "#f2ede1" },
         { label: "Soft greige", hex: "#cabfaf" },
         { label: "Light grey", hex: "#c7c4bd" },
@@ -316,11 +316,20 @@ export default function (view) {
         byId("ambilightCap").textContent = `intensity ${byId("saturationPercent").value}% · ${deviationSummary}`;
         const smoothingMs = Number(byId("wledSmoothingMilliseconds").value) || 0;
         byId("ambilightSub").textContent = smoothingMs === 0 ? "Smoothing off (fully reactive)" : `Smoothing ${smoothingMs} ms`;
+        // The curve chart is always visible now (not behind a click), so it
+        // needs to already be current whenever this card/modal is opened, not
+        // only once the wizard itself reaches its last step.
+        if (!wizardStarted) {
+            renderCurveChart();
+        }
+
+        byId("startCalibrationWizard").textContent = calibrated ? "Restart calibration" : "Start calibration";
     };
 
     sectionSummarisers.hue = function summariseHue() {
         const bridgeHost = loadedConfig?.HueBridgeHost || "";
         const enabled = byId("hueEnabled").checked;
+        byId("hueSelectionSection").classList.toggle("raDimmed", !enabled);
         const paired = Boolean(bridgeHost);
         const configured = enabled && paired;
         const streaming = isHueStreaming();
@@ -379,6 +388,15 @@ export default function (view) {
                 setStage("stage-smooth", "stageSmooth", "inline", active);
                 setStage("stage-wled", "fpsWled", active ? format(wled) : "Ready", active);
                 setStage("stage-hue", "fpsHue", hueActive ? format(hue) : "Ready", hueActive);
+
+                // Each wire is "on" only once both stages it joins are live,
+                // so the colour reads as one signal actually reaching that
+                // point in the chain, not a decoration next to it.
+                for (let index = 1; index <= 6; index++) {
+                    byId(`connector-${index}`).className = `raConnector${active ? " raOk" : ""}`;
+                }
+
+                byId("connector-7").className = `raConnector${active && hueActive ? " raOk" : ""}`;
 
                 byId("fpsHint").innerHTML = active
                     ? ""
@@ -443,6 +461,7 @@ export default function (view) {
         ]).then(([wled, hue]) => {
             latestPings = { wled, hue };
             refreshOverviewCards();
+            renderWledLiveStatus();
         });
     }
 
@@ -452,7 +471,7 @@ export default function (view) {
     function refreshActivityLog() {
         return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Activity"))
             .then(entries => {
-                const list = Array.isArray(entries) ? entries : [];
+                const list = Array.isArray(entries) ? [...entries].reverse() : [];
                 show("raActivityEmpty", list.length === 0);
                 byId("raActivityList").innerHTML = list.map(entry => {
                     const timestamp = entry.Timestamp ?? entry.timestamp;
@@ -527,12 +546,16 @@ export default function (view) {
         };
 
         const button = (label, direction) => {
-            const el = document.createElement("button");
+            // The is="emby-button" upgrade has to happen at creation time --
+            // setting it afterward via setAttribute does not upgrade a
+            // customized built-in element -- otherwise this renders as a bare
+            // unstyled browser button next to every other properly-upgraded
+            // control on the page.
+            const el = document.createElement("button", { is: "emby-button" });
             el.type = "button";
-            el.className = "raised";
+            el.className = "raised raStepBtn";
             el.textContent = label;
             el.setAttribute("aria-label", `${label === "−" ? "Decrease" : "Increase"} ${range.getAttribute("label") || "value"}`);
-            el.style.cssText = "flex:0 0 auto;min-width:2.6em;padding:.3em .6em";
             el.addEventListener("click", () => nudge(direction));
             return el;
         };
@@ -742,11 +765,6 @@ export default function (view) {
         container.innerHTML = svg;
     }
 
-    function toggleCurveChart() {
-        renderCurveChart();
-        byId("wizardCurveChartContainer").hidden = !byId("wizardCurveChartContainer").hidden;
-    }
-
     function describeStatus(state) {
         const active = state.PreviewActive ?? state.previewActive;
         const tvConnected = state.TvConnected ?? state.tvConnected;
@@ -754,7 +772,7 @@ export default function (view) {
             return "Waiting for the TV to open the link above…";
         }
         return active
-            ? "Live — adjust the sliders below."
+            ? "Live, adjust the sliders below."
             : "TV connected; waiting for it to load this step's photo…";
     }
 
@@ -769,8 +787,8 @@ export default function (view) {
         wizardPhotoIndex = state.PhotoIndex ?? state.photoIndex ?? 0;
         wizardPhotoCount = photoCount;
         byId("wizardStepLabel").textContent = isConfirmation
-            ? `Confirmation ${stepIndex - wizardTuningStepCount + 1} of ${stepCount - wizardTuningStepCount} — ${colourName}`
-            : `${stepIndex + 1} of ${wizardTuningStepCount} — ${colourName} tuning`;
+            ? `Confirmation ${stepIndex - wizardTuningStepCount + 1} of ${stepCount - wizardTuningStepCount}, ${colourName}`
+            : `${stepIndex + 1} of ${wizardTuningStepCount}, ${colourName} tuning`;
         renderStepControls(colourName);
         byId("wizardPrev").disabled = stepIndex === 0;
         byId("wizardNext").disabled = isLastStep;
@@ -779,11 +797,10 @@ export default function (view) {
         // affordance the operator otherwise keeps running into on almost
         // every step (only White currently has more than one photo).
         show("wizardAnotherPhoto", photoCount > 1);
-        byId("finishCalibrationWizard").textContent = isLastStep ? "✓ Done — finish calibration" : "Stop & release LEDs";
+        byId("finishCalibrationWizard").textContent = isLastStep ? "✓ Done, finish calibration" : "Stop & release LEDs";
         byId("calibrationPreviewStatus").textContent = describeStatus(state);
         if (isLastStep) {
             renderCurveChart();
-            byId("wizardCurveChartContainer").hidden = false;
         }
     }
 
@@ -905,7 +922,7 @@ export default function (view) {
     function selectAnalysisWidth(width) {
         const select = byId("analysisWidth");
         if (![...select.options].some(option => Number(option.value) === width)) {
-            select.add(new Option(`${width} × ${Math.round((width * 9) / 16)} — custom`, String(width)));
+            select.add(new Option(`${width} × ${Math.round((width * 9) / 16)}, custom`, String(width)));
         }
         select.value = String(width);
     }
@@ -945,18 +962,14 @@ export default function (view) {
     function setLedTotal() {
         const total = ledCountFields.reduce((sum, field) => sum + (Number(byId(field).value) || 0), 0);
         byId("ledTotalValue").textContent = `${total} LEDs`;
-        // The layout section collapses, so its summary has to carry the answer.
-        byId("ledLayoutSummary").textContent = ledCountFields
-            .map(field => Number(byId(field).value) || 0)
-            .join(" / ") + ` — ${total} LEDs in total`;
 
         const selected = discoveredControllers.find(candidate => candidate.Host === byId("wledCandidates").value);
         const reported = selected?.LedCount ?? 0;
         byId("ledTotalCheck").textContent = reported <= 0 || total === 0
             ? ""
             : total === reported
-                ? " — matches the selected controller."
-                : ` — but the selected controller reports ${reported} LEDs, so these numbers are wrong.`;
+                ? ", matches the selected controller."
+                : `, but the selected controller reports ${reported} LEDs, so these numbers are wrong.`;
         updateLayoutDiagram();
     }
 
@@ -1013,7 +1026,7 @@ export default function (view) {
     }
 
     function deviceLabel(device) {
-        const app = device.app ? ` — ${device.app}` : "";
+        const app = device.app ? ` (${device.app})` : "";
         const when = device.connected ? "connected now" : lastUsedLabel(device.lastUsed);
         return `${device.name}${app} (${when})`;
     }
@@ -1022,7 +1035,7 @@ export default function (view) {
         knownDevices = devices;
         const select = byId("targetDeviceId");
         select.textContent = "";
-        select.add(new Option("All devices — not bound", ""));
+        select.add(new Option("All devices, not bound", ""));
         devices.forEach(device => {
             const option = new Option(deviceLabel(device), device.id);
             option.dataset.deviceName = device.name;
@@ -1030,9 +1043,14 @@ export default function (view) {
         });
 
         if (selectedDeviceId && !devices.some(device => device.id === selectedDeviceId)) {
-            // Keep a binding to a device Jellyfin has since forgotten visible and
-            // intact, instead of silently resetting it to "all devices" on save.
-            const saved = new Option("Saved device (no longer known to Jellyfin)", selectedDeviceId);
+            // Keep a binding to a device Jellyfin does not currently list visible
+            // and intact, instead of silently resetting it to "all devices" on
+            // save -- named after the device itself (already known from its own
+            // saved name), not a generic "unknown device" that reads as broken
+            // for a TV that is still used every day, just not in /Devices or
+            // /Sessions at this exact moment.
+            const savedName = loadedConfig?.TargetDeviceName || "Saved device";
+            const saved = new Option(`${savedName} (not currently connected)`, selectedDeviceId);
             saved.dataset.deviceName = loadedConfig?.TargetDeviceName || "";
             select.add(saved);
         }
@@ -1065,7 +1083,7 @@ export default function (view) {
         candidates.forEach(candidate => {
             const leds = candidate.LedCount > 0 ? `, ${candidate.LedCount} leds` : "";
             const version = candidate.Version ? `, WLED ${candidate.Version}` : "";
-            select.add(new Option(`${candidate.Name} — ${candidate.Host}${leds}${version}`, candidate.Host));
+            select.add(new Option(`${candidate.Name} (${candidate.Host})${leds}${version}`, candidate.Host));
         });
 
         if (candidates.length > 0) {
@@ -1120,7 +1138,7 @@ export default function (view) {
                 show("maxBrightnessWarning", Boolean(settings && settings.ForcesMaxBrightness));
                 const maxPower = settings?.MaxPowerMilliamps ?? settings?.maxPowerMilliamps;
                 abl.textContent = maxPower > 0
-                    ? `Power limit (ABL) on WLED: ${maxPower} mA — read-only, this plugin never changes it.`
+                    ? `Power limit (ABL) on WLED: ${maxPower} mA, read-only, this plugin never changes it.`
                     : "";
                 // Detection only ever suggests turning the checkbox on; it
                 // never flips it itself, so an operator's own choice (on or
@@ -1132,7 +1150,7 @@ export default function (view) {
                 const outputFps = Number(byId("outputFramesPerSecond").value) || 30;
                 fpsCap.textContent = ledFps
                     ? outputFps > ledFps
-                        ? `WLED's own refresh cap: ${ledFps} fps — lower than the ${outputFps} fps this plugin is sending; raising "LED updates per second" further will not help.`
+                        ? `WLED's own refresh cap: ${ledFps} fps, lower than the ${outputFps} fps this plugin is sending; raising "LED updates per second" further will not help.`
                         : `WLED's own refresh cap: ${ledFps} fps.`
                     : "";
 
@@ -1242,31 +1260,53 @@ export default function (view) {
         }).finally(() => { byId("fixForceMaxBrightness").disabled = false; });
     }
 
+    // Same dot-plus-ping language as the overview card, not a plain text
+    // line -- and combines both signals this modal already has: WLED's own
+    // reported online/realtime state (from checkControllerStatus, below)
+    // and the TCP round trip (from refreshPings, already polling every 5 s).
+    function renderWledLiveStatus() {
+        const el = byId("wledLiveStatus");
+        if (!el) {
+            return;
+        }
+
+        if (!currentWledConnection()) {
+            el.innerHTML = `<span class="raDot raDotDead"></span><span class="raDeadLabel">Choose or enter a WLED address.</span>`;
+            return;
+        }
+
+        const online = latestWledStatus?.IsOnline ?? latestWledStatus?.isOnline;
+        const realtime = latestWledStatus?.IsRealtimeActive ?? latestWledStatus?.isRealtimeActive;
+        if (!online) {
+            el.innerHTML = `<span class="raDot raDotDead"></span><span class="raDeadLabel">Not reachable. Check address, port and network.</span>`;
+            return;
+        }
+
+        const ping = latestPings.wled;
+        const pingText = ping?.reachable
+            ? ` · <span class="${ping.milliseconds > SlowPingThresholdMs ? "raMsWarn" : "raMsOk"}">${ping.milliseconds.toFixed(1)} ms</span>`
+            : "";
+        el.innerHTML = `<span class="raDot raDotLive"></span>${realtime ? "Realtime Ambilight active" : "WLED is ready"}${pingText}`;
+    }
+
     function checkControllerStatus() {
         const connection = currentWledConnection();
-        const status = byId("wledLiveStatus");
         if (!connection) {
-            status.textContent = "Controller status: choose or enter a WLED address.";
+            latestWledStatus = null;
+            renderWledLiveStatus();
             return Promise.resolve();
         }
 
-        status.textContent = "Controller status: checking…";
         return window.ApiClient
             .getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Status", connection))
             .then(result => {
                 latestWledStatus = result;
-                const online = result?.IsOnline ?? result?.isOnline;
-                const realtime = result?.IsRealtimeActive ?? result?.isRealtimeActive;
-                status.textContent = online
-                    ? realtime
-                        ? "● Online — realtime Ambilight is active."
-                        : "● Online — WLED is ready."
-                    : "● Not reachable — check address, port and network.";
+                renderWledLiveStatus();
                 refreshOverviewCards();
             })
             .catch(() => {
                 latestWledStatus = null;
-                status.textContent = "● Not reachable — check address, port and network.";
+                renderWledLiveStatus();
             });
     }
 
@@ -1423,6 +1463,7 @@ export default function (view) {
             .then(result => {
                 loadedConfig = config;
                 refreshOverviewCards();
+                closeEditModal();
                 return Dashboard.processPluginConfigurationUpdateResult(result);
             })
             .finally(() => Dashboard.hideLoadingMsg());
@@ -1502,10 +1543,9 @@ export default function (view) {
     function resetConfiguration() {
         const confirmed = window.confirm(
             "Reset every Ambilight setting on this page to its factory default?\n\n" +
-            "This clears the bound TV, WLED controller address, LED layout, all colour " +
-            "calibration and every WLED/Hue preference, and saves immediately. A paired " +
-            "Hue bridge stays paired -- use \"Unlink this bridge\" separately for that. " +
-            "This cannot be undone."
+            "Clears the bound TV, WLED address, LED layout and all colour calibration, " +
+            "and saves immediately. A paired Hue bridge stays paired; use " +
+            "\"Unlink this bridge\" separately for that. This cannot be undone."
         );
         if (!confirmed) {
             return;
@@ -1608,7 +1648,7 @@ export default function (view) {
                 candidates.forEach(candidate => {
                     const host = candidate.Host ?? candidate.host;
                     const bridgeId = candidate.BridgeId ?? candidate.bridgeId;
-                    select.add(new Option(`${host} — ${bridgeId}`, host));
+                    select.add(new Option(`${host} (${bridgeId})`, host));
                 });
                 if (candidates.length > 0) {
                     hueSelectedBridgeHost = candidates[0].Host ?? candidates[0].host;
@@ -1771,7 +1811,17 @@ export default function (view) {
             closeEditModal();
         }
     });
-    setInterval(refreshFpsChain, 2000);
+    // The rail only scrolls once it actually overflows its own width (varies
+    // with the sidebar/viewport), so the fade hint at the right edge is only
+    // added then -- otherwise it would needlessly dim the last stage.
+    const stageRailWrap = byId("raStageGrid").closest(".raStageRailWrap");
+    const updateStageRailScrollHint = () => {
+        stageRailWrap.classList.toggle("raScrollable", stageRailWrap.scrollWidth > stageRailWrap.clientWidth + 1);
+    };
+    new ResizeObserver(updateStageRailScrollHint).observe(stageRailWrap);
+    updateStageRailScrollHint();
+
+    setInterval(refreshFpsChain, 1000);
     // Every 5 s: a real network round trip to WLED/Hue (status + ping), not
     // just a cheap in-process counter read like refreshFpsChain -- but still
     // often enough for the cards to feel genuinely live.
@@ -1795,12 +1845,8 @@ export default function (view) {
     });
     byId("findWled").addEventListener("click", findWled);
     byId("refreshDevices").addEventListener("click", () => loadDevices(byId("targetDeviceId").value));
-    byId("refreshWledStatus").addEventListener("click", () => {
-        checkControllerSettings();
-        checkControllerStatus();
-    });
-    byId("wledHost").addEventListener("change", checkControllerStatus);
-    byId("wledHttpPort").addEventListener("change", checkControllerStatus);
+    byId("wledHost").addEventListener("change", () => { checkControllerSettings(); checkControllerStatus(); });
+    byId("wledHttpPort").addEventListener("change", () => { checkControllerSettings(); checkControllerStatus(); });
     byId("startCalibrationWizard").addEventListener("click", startWizard);
     byId("wizardPrev").addEventListener("click", () => moveWizard(wizardStepIndex - 1, 0));
     byId("wizardNext").addEventListener("click", () => moveWizard(wizardStepIndex + 1, 0));
@@ -1816,7 +1862,6 @@ export default function (view) {
         }
     });
     byId("finishCalibrationWizard").addEventListener("click", finishWizard);
-    byId("showCurveChart").addEventListener("click", toggleCurveChart);
     byId("wallColourPreset").addEventListener("change", () => {
         const value = byId("wallColourPreset").value;
         if (value === "custom") {
@@ -1833,6 +1878,9 @@ export default function (view) {
         byId("allowWledControlSummary").textContent = byId("allowWledControl").checked
             ? "This plugin may fix WLED settings for you. Save to keep it that way."
             : "This plugin only reads WLED until you turn this on.";
+    });
+    byId("hueEnabled").addEventListener("change", () => {
+        byId("hueSelectionSection").classList.toggle("raDimmed", !byId("hueEnabled").checked);
     });
     byId("fixForceMaxBrightness").addEventListener("click", fixForceMaxBrightness);
     byId("fixRgbwMode").addEventListener("click", fixRgbwMode);

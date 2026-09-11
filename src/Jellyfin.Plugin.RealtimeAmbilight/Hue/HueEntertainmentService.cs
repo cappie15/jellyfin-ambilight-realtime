@@ -556,6 +556,12 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                     .RestoreAsync(configuration.HueBridgeHost, credentials.CertificateThumbprintSha256, credentials.ApplicationKey, entry, _shutdown.Token)
                     .ConfigureAwait(false);
             }
+            else if (configuration.HueEndBehaviour == Core.Hue.HueEndBehaviour.TurnOff)
+            {
+                await _lightControl
+                    .TurnOffAsync(configuration.HueBridgeHost, credentials.CertificateThumbprintSha256, credentials.ApplicationKey, lightId, _shutdown.Token)
+                    .ConfigureAwait(false);
+            }
             else
             {
                 await _lightControl

@@ -18,6 +18,8 @@ public interface IHueLightControl
 
     Task TurnOnAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken);
 
+    Task TurnOffAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken);
+
     Task ApplyWarmWhiteDimAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken);
 
     Task RestoreAsync(string host, string certificateThumbprint, string applicationKey, HueLightSnapshotEntry entry, CancellationToken cancellationToken);
@@ -126,6 +128,10 @@ public sealed class HueLightControl : IHueLightControl
     /// </summary>
     public Task TurnOnAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken)
         => PutAsync(host, certificateThumbprint, applicationKey, lightId, """{"on":{"on":true}}""", cancellationToken);
+
+    /// <summary>The <see cref="Core.Hue.HueEndBehaviour.TurnOff"/> end-of-session behaviour: off, regardless of what the light was doing before the session.</summary>
+    public Task TurnOffAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken)
+        => PutAsync(host, certificateThumbprint, applicationKey, lightId, """{"on":{"on":false}}""", cancellationToken);
 
     public Task ApplyWarmWhiteDimAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken)
         => PutAsync(

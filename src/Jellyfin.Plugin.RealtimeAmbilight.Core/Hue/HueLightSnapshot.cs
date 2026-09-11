@@ -38,4 +38,7 @@ public enum HueEndBehaviour
 
     /// <summary>Restore each light's own <see cref="HueSessionSnapshot"/> entry.</summary>
     RestorePreviousState,
+
+    /// <summary>Turn each light off, regardless of what it was doing before the session.</summary>
+    TurnOff,
 }

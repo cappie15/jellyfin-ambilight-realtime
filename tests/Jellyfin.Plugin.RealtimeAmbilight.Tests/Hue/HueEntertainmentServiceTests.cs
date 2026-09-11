@@ -155,6 +155,30 @@ public sealed class HueEntertainmentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task EndOfSessionTurnsLightsOffWhenConfiguredTo()
+    {
+        var lightId = Guid.NewGuid();
+        var (service, bridge, lightControl, credentialStore, _) = CreateHarness(out var coordinator);
+        var configurationId = ConfigureSinglePairedLight(bridge, lightId);
+        lightControl.StateByLightId[lightId] = new HueLightSnapshotEntry(lightId, On: true, null, null, null, null, null);
+        credentialStore.Credentials = new HueCredentials("bridge-1", "app-key", "client-key", "thumb");
+        _configuration.HueEnabled = true;
+        _configuration.HueEntertainmentConfigurationId = configurationId;
+        _configuration.HueEndBehaviour = HueEndBehaviour.TurnOff;
+
+        await service.StartAsync(CancellationToken.None);
+        coordinator.TryPost(new PlaybackStarted("session-1", 0));
+        await WaitForStateAsync(service, HueEntertainmentState.Streaming);
+
+        coordinator.TryPost(new PlaybackStopped("session-1"));
+        await WaitForStateAsync(service, HueEntertainmentState.Ready);
+
+        Assert.Equal(lightId, Assert.Single(lightControl.TurnedOffLightIds));
+        Assert.Empty(lightControl.WarmWhiteDimmedLightIds);
+        Assert.Empty(lightControl.RestoredEntries);
+    }
+
+    [Fact]
     public async Task ReconnectsAfterASessionWhoseChannelThrewOnClose()
     {
         var lightId = Guid.NewGuid();

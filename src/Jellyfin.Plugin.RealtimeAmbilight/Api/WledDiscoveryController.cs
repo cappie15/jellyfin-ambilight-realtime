@@ -338,7 +338,7 @@ public sealed class CalibrationController : ControllerBase
                 const phase = isConfirmation
                   ? `Confirmation ${stepIndex - tuningCount + 1} of ${stepCount - tuningCount}`
                   : `Step ${stepIndex + 1} of ${tuningCount}`;
-                label.textContent = `${phase} — ${pick(state, "ColourName")}`;
+                label.textContent = `${phase}, ${pick(state, "ColourName")}`;
               }
               async function tick() {
                 try {

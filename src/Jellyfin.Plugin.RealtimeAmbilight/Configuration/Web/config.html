@@ -5,9 +5,14 @@
         /* Square top on purpose: this bar has to read as one unbroken straight
            line across all four cards, not four separate rounded edges.
            Rounded corners live on the bottom of the rack instead. */
-        #realtimeAmbilightConfigurationPage .raRackBar { height: 4px; position: relative; overflow: hidden; background: #173322; }
+        #realtimeAmbilightConfigurationPage .raRackBar { height: 4px; position: relative; overflow: visible; background: #173322; }
         #realtimeAmbilightConfigurationPage .raRackBar.raRackOff { background: #2a2d33; }
         #realtimeAmbilightConfigurationPage .raRackBarFill { position: absolute; inset: 0; background: #3ddc84; }
+        /* The crisp 4px bar's own colour, bled downward onto the card grid so the
+           light genuinely looks like it is shining onto the cards rather than
+           merely sitting in a line above them. Same class list as the bar
+           itself, so every state (off/on/sweep) recolours both at once. */
+        #realtimeAmbilightConfigurationPage .raRackBarGlow { top: 0; height: 22px; z-index: 1; filter: blur(9px); opacity: .5; pointer-events: none; -webkit-mask-image: linear-gradient(#000, transparent); mask-image: linear-gradient(#000, transparent); }
         #realtimeAmbilightConfigurationPage .raRackBar.raRackOff .raRackBarFill { background: #55595f; }
         /* Calm solid green at rest; a slow rotating Ambilight-style colour
            sweep only while something is actually streaming right now -- the
@@ -20,7 +25,12 @@
            than the rack's own actual bottom-left/bottom-right corner.
            Clipping the container itself always rounds the true outer
            silhouette, however many rows the cards wrap into. */
-        #realtimeAmbilightConfigurationPage .raRackGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(19em, 1fr)); gap: 1px; background: #22262c; border-radius: 0 0 1em 1em; overflow: hidden; }
+        /* Exactly 4 cards, always: fixed 2x2/1x4/4x1 breakpoints rather than
+           auto-fit, which can compute 3 columns for 4 items and strand the
+           4th alone on its own row. */
+        #realtimeAmbilightConfigurationPage .raRackGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: #22262c; border-radius: 0 0 1em 1em; overflow: hidden; }
+        @media (min-width: 78em) { #realtimeAmbilightConfigurationPage .raRackGrid { grid-template-columns: repeat(4, 1fr); } }
+        @media (max-width: 38em) { #realtimeAmbilightConfigurationPage .raRackGrid { grid-template-columns: 1fr; } }
         /* A fixed number of identical slots (top / stat / cap / sub-or-ping /
            action) in every one of the four cards -- not a fixed pixel height
            -- is what actually keeps every card the same size and every
@@ -65,6 +75,15 @@
         #realtimeAmbilightConfigurationPage .raModalBody { padding: 1.2em 1.3em; overflow-y: auto; flex: 1 1 auto; }
         #realtimeAmbilightConfigurationPage .raModalFooter { padding: 1em 1.3em; border-top: 1px solid #22262c; flex: none; }
 
+        /* ---- modernized sliders + step buttons inside every modal ---- */
+        #realtimeAmbilightConfigurationPage .raModalBody input[type="range"] { accent-color: #3ddc84; height: 1.4em; }
+        #realtimeAmbilightConfigurationPage .raStepBtn { flex: 0 0 auto; min-width: 2.2em; padding: .2em .5em; font: 600 .95em/1 "IBM Plex Mono", monospace; }
+
+        /* ---- greyed out while its own "enable" checkbox is off, e.g. the Hue
+           entertainment-area section ---- */
+        #realtimeAmbilightConfigurationPage .raDimmable { transition: opacity .15s ease; }
+        #realtimeAmbilightConfigurationPage .raDimmable.raDimmed { opacity: .4; }
+
         /* ---- reachability dot + ping figure, shared by the WLED/Hue cards ---- */
         #realtimeAmbilightConfigurationPage .raDot { width: .62em; height: .62em; border-radius: 50%; flex: none; display: inline-block; }
         #realtimeAmbilightConfigurationPage .raDot.raDotLive { background: #3ddc84; box-shadow: 0 0 0 0 rgba(61, 220, 132, .6); animation: raDotPulse 1.8s ease-out infinite; }
@@ -73,8 +92,22 @@
         #realtimeAmbilightConfigurationPage .raMsOk { color: #3ddc84; }
         #realtimeAmbilightConfigurationPage .raMsWarn { color: #f5a623; }
         #realtimeAmbilightConfigurationPage .raDeadLabel { color: #ff5a5a; font-weight: 600; }
+
+        /* ---- one small load-in per block, not per data refresh: the page now
+           loads fast enough that content used to just pop in with nothing to
+           tell the eye it had actually loaded ---- */
+        @keyframes raFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+        #realtimeAmbilightConfigurationPage .raRack, #realtimeAmbilightConfigurationPage .raPanel { animation: raFadeIn .3s ease-out both; }
+        #realtimeAmbilightConfigurationPage .raRackGrid .raCard:nth-child(2) { animation: raFadeIn .3s ease-out .03s both; }
+        #realtimeAmbilightConfigurationPage .raRackGrid .raCard:nth-child(3) { animation: raFadeIn .3s ease-out .06s both; }
+        #realtimeAmbilightConfigurationPage .raRackGrid .raCard:nth-child(4) { animation: raFadeIn .3s ease-out .09s both; }
+        #realtimeAmbilightConfigurationPage .raRackGrid .raCard:first-child { animation: raFadeIn .3s ease-out both; }
+        #realtimeAmbilightConfigurationPage .raPanel + .raPanel { animation-delay: .08s; }
+
         @media (prefers-reduced-motion: reduce) {
             #realtimeAmbilightConfigurationPage .raDot.raDotLive, #realtimeAmbilightConfigurationPage .raRackBar.raRackSweep .raRackBarFill { animation: none; }
+            #realtimeAmbilightConfigurationPage .raRack, #realtimeAmbilightConfigurationPage .raPanel, #realtimeAmbilightConfigurationPage .raRackGrid .raCard { animation: none; }
+            #realtimeAmbilightConfigurationPage .raStage.raOk, #realtimeAmbilightConfigurationPage .raConnector.raOk { animation: none; }
         }
 
         /* ---- panels below the overview cards (signal chain, live activity) --
@@ -86,16 +119,35 @@
 
         /* ---- signal chain: eight real stages, not just the three with their
            own independent counter -- 4/5/6 are genuinely inline with 2/3/7 so
-           they show "inline" rather than a fabricated rate of their own. ---- */
-        #realtimeAmbilightConfigurationPage .raStageGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6em; }
-        #realtimeAmbilightConfigurationPage .raStage { position: relative; border: 1px solid #3a3f47; border-radius: .6em; padding: .6em .7em; background: rgba(255, 255, 255, .015); }
-        #realtimeAmbilightConfigurationPage .raStage.raOk { border-color: #3ddc84; }
-        #realtimeAmbilightConfigurationPage .raStage.raWarn { border-color: #f5a623; }
-        #realtimeAmbilightConfigurationPage .raStage.raDead { border-color: #ff5a5a; }
+           they show "inline" rather than a fabricated rate of their own. All
+           eight sit in one row, connected end to end, rather than wrapping
+           into an unrelated 4x2 grid -- the point is to see the whole chain
+           at once. Narrow viewports scroll horizontally instead of wrapping:
+           a wrapped connector would no longer connect anything. ---- */
+        #realtimeAmbilightConfigurationPage .raStageRailWrap { overflow-x: auto; padding-bottom: .1em; }
+        /* Only added once JS confirms the row actually overflows -- a fade
+           that is always on would dim the last stage even when everything
+           already fits. */
+        #realtimeAmbilightConfigurationPage .raStageRailWrap.raScrollable { -webkit-mask-image: linear-gradient(to right, #000 92%, transparent); mask-image: linear-gradient(to right, #000 92%, transparent); }
+        #realtimeAmbilightConfigurationPage .raStageGrid { display: flex; align-items: stretch; width: max-content; min-width: 100%; }
+        #realtimeAmbilightConfigurationPage .raStage { position: relative; flex: 1 1 6.5em; min-width: 6.5em; border: 1px solid transparent; border-radius: .6em; padding: .55em .55em; background: linear-gradient(#0d0f12, #0d0f12) padding-box, linear-gradient(#3a3f47, #3a3f47) border-box; }
+        /* Rolling through the same rainbow the rack bar and connectors use,
+           only while this stage is genuinely active right now -- a solid
+           amber/red border still means trouble, exactly as everywhere else
+           in this design, so only .raOk gets the animated treatment. */
+        #realtimeAmbilightConfigurationPage .raStage.raOk { background: linear-gradient(#0d0f12, #0d0f12) padding-box, linear-gradient(90deg, #ff5f6d, #ffc371, #3ddc84, #6dd5ed, #a78bfa, #ff5f6d) border-box; background-size: 300% 100%; animation: raRackSweepMove 6s linear infinite; }
+        #realtimeAmbilightConfigurationPage .raStage.raWarn { background: linear-gradient(#0d0f12, #0d0f12) padding-box, linear-gradient(#f5a623, #f5a623) border-box; }
+        #realtimeAmbilightConfigurationPage .raStage.raDead { background: linear-gradient(#0d0f12, #0d0f12) padding-box, linear-gradient(#ff5a5a, #ff5a5a) border-box; }
         #realtimeAmbilightConfigurationPage .raStageNum { position: absolute; top: .5em; right: .6em; font: 600 .65em/1 "IBM Plex Mono", monospace; color: #55595f; }
-        #realtimeAmbilightConfigurationPage .raStageLabel { font-size: .72em; color: #8a929c; margin-bottom: .35em; padding-right: 1.2em; }
-        #realtimeAmbilightConfigurationPage .raStageValue { font: 600 .95em/1 "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; color: #e7e9ec; }
+        #realtimeAmbilightConfigurationPage .raStageLabel { font-size: .68em; color: #8a929c; margin-bottom: .35em; padding-right: 1.1em; }
+        #realtimeAmbilightConfigurationPage .raStageValue { font: 600 .95em/1 "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; color: #e7e9ec; white-space: nowrap; }
         #realtimeAmbilightConfigurationPage .raStage:not(.raOk):not(.raWarn):not(.raDead) .raStageValue { color: #6d747d; }
+        /* The short wires between stages: grey at rest, the same travelling
+           gradient as the boxes and the rack bar once both stages either
+           side of it are actually live, so the colour reads as one signal
+           moving left to right through the whole chain. */
+        #realtimeAmbilightConfigurationPage .raConnector { flex: 0 0 .8em; align-self: center; height: 3px; border-radius: 2px; background: #2a2d33; }
+        #realtimeAmbilightConfigurationPage .raConnector.raOk { background: linear-gradient(90deg, #ff5f6d, #ffc371, #3ddc84, #6dd5ed, #a78bfa, #ff5f6d); background-size: 300% 100%; animation: raRackSweepMove 6s linear infinite; }
 
         #realtimeAmbilightConfigurationPage .raActivityList { max-height: 13em; overflow-y: auto; font-size: .85em; display: flex; flex-direction: column-reverse; gap: .25em; font-family: "IBM Plex Mono", monospace; }
         #realtimeAmbilightConfigurationPage .raActivityRow { display: flex; gap: .7em; padding: .2em 0; }
@@ -116,6 +168,15 @@
            even the shortened text does not fit. */
         #realtimeAmbilightConfigurationPage .raColourCell { padding: .18em 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         #realtimeAmbilightConfigurationPage .raColourDot { display: inline-block; width: .8em; height: .8em; border-radius: 50%; margin-right: .4em; vertical-align: middle; border: 1px solid rgba(127, 127, 127, .45); }
+
+        /* ---- LED layout: the four side counts live right next to the edge
+           they describe, instead of a long stacked list below the diagram ---- */
+        #realtimeAmbilightConfigurationPage .raLedGrid { display: grid; grid-template-columns: 7em minmax(14em, 26em) 7em; grid-template-areas: ". top ." "left diagram right" ". bottom ."; gap: .6em 1em; align-items: center; max-width: 40em; margin: 1em auto; }
+        #realtimeAmbilightConfigurationPage .raLedGridTop { grid-area: top; }
+        #realtimeAmbilightConfigurationPage .raLedGridLeft { grid-area: left; }
+        #realtimeAmbilightConfigurationPage .raLedGridRight { grid-area: right; }
+        #realtimeAmbilightConfigurationPage .raLedGridBottom { grid-area: bottom; }
+        #realtimeAmbilightConfigurationPage .raLedGridDiagram { grid-area: diagram; }
     </style>
     <div class="content-primary">
         <div class="verticalSection">
@@ -124,7 +185,7 @@
         </div>
 
         <div class="raRack" id="raOverviewGrid">
-            <div class="raRackBar" id="raRackBar"><div class="raRackBarFill"></div></div>
+            <div class="raRackBar" id="raRackBar"><div class="raRackBarFill"></div><div class="raRackBarFill raRackBarGlow" aria-hidden="true"></div></div>
             <div class="raRackGrid">
                 <div class="raCard" id="raCard-tv">
                     <div class="raCardTop"><span>TV</span><span class="raCardState" id="tvState"><span class="raSkel"></span></span></div>
@@ -163,15 +224,24 @@
              that happen to have their own independent throughput counter. -->
         <div class="raPanel" id="raPipelinePanel">
             <div class="raPanelTop"><span>Signal chain</span><span class="raCardState" id="pipelineState">&nbsp;</span></div>
+            <div class="raStageRailWrap">
             <div class="raStageGrid" id="raStageGrid">
                 <div class="raStage" id="stage-playback"><span class="raStageNum">1</span><div class="raStageLabel">Playback</div><div class="raStageValue" id="stagePlayback">–</div></div>
+                <div class="raConnector" id="connector-1"></div>
                 <div class="raStage" id="stage-decode"><span class="raStageNum">2</span><div class="raStageLabel">FFmpeg decode</div><div class="raStageValue" id="fpsAnalyse">–</div></div>
+                <div class="raConnector" id="connector-2"></div>
                 <div class="raStage" id="stage-sample"><span class="raStageNum">3</span><div class="raStageLabel">Edge sampling</div><div class="raStageValue" id="fpsSample">–</div></div>
+                <div class="raConnector" id="connector-3"></div>
                 <div class="raStage" id="stage-colour"><span class="raStageNum">4</span><div class="raStageLabel">Colour &amp; HDR</div><div class="raStageValue" id="stageColour">inline</div></div>
+                <div class="raConnector" id="connector-4"></div>
                 <div class="raStage" id="stage-interp"><span class="raStageNum">5</span><div class="raStageLabel">LED mapping</div><div class="raStageValue" id="stageInterp">inline</div></div>
+                <div class="raConnector" id="connector-5"></div>
                 <div class="raStage" id="stage-smooth"><span class="raStageNum">6</span><div class="raStageLabel">Smoothing</div><div class="raStageValue" id="stageSmooth">inline</div></div>
+                <div class="raConnector" id="connector-6"></div>
                 <div class="raStage" id="stage-wled"><span class="raStageNum">7</span><div class="raStageLabel">Sent to WLED</div><div class="raStageValue" id="fpsWled">–</div></div>
+                <div class="raConnector" id="connector-7"></div>
                 <div class="raStage" id="stage-hue"><span class="raStageNum">8</span><div class="raStageLabel">Sent to Hue</div><div class="raStageValue" id="fpsHue">–</div></div>
+            </div>
             </div>
             <div class="fieldDescription" id="fpsHint">Live only while something is playing on the bound device.</div>
         </div>
@@ -179,7 +249,7 @@
         <div class="raPanel">
             <div class="raPanelTop"><span>Live activity</span></div>
             <div class="raActivityList" id="raActivityList"></div>
-            <div class="fieldDescription" id="raActivityEmpty">Nothing yet -- this fills in as WLED, Hue or the TV connect, disconnect, or need attention.</div>
+            <div class="fieldDescription" id="raActivityEmpty">Nothing yet. This fills in as WLED, Hue or the TV connect, disconnect, or need attention.</div>
         </div>
 
         <form id="realtimeAmbilightConfigurationForm">
@@ -217,12 +287,12 @@
                         <div style="flex:1 1 20em;min-width:18em">
                             <div class="selectContainer">
                                 <select is="emby-select" id="analysisWidth" label="Sampling resolution">
-                                    <option value="96">96 × 54 — lightest</option>
-                                    <option value="128">128 × 72 — light</option>
-                                    <option value="160">160 × 90 — recommended</option>
-                                    <option value="240">240 × 135 — more detail</option>
-                                    <option value="320">320 × 180 — high</option>
-                                    <option value="480">480 × 270 — highest</option>
+                                    <option value="96">96 × 54, lightest</option>
+                                    <option value="128">128 × 72, light</option>
+                                    <option value="160">160 × 90, recommended</option>
+                                    <option value="240">240 × 135, more detail</option>
+                                    <option value="320">320 × 180, high</option>
+                                    <option value="480">480 × 270, highest</option>
                                 </select>
                                 <div class="fieldDescription"><strong>Default: 160 × 90.</strong> Lower saves CPU; higher adds detail.</div>
                             </div>
@@ -247,9 +317,9 @@
                         <input is="emby-checkbox" id="ignoreBlackBorders" type="checkbox" />
                         <span>Ignore black borders</span>
                     </label>
-                    <div class="fieldDescription">Prevents wide-screen black bars from turning the LEDs off. <strong>Default: on.</strong></div>
+                    <div class="fieldDescription">Keeps letterbox bars (wide-screen film) and pillarbox bars (4:3 content) from turning the LEDs off. <strong>Default: on.</strong></div>
                 </div>
-                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save</span></button></div>
+                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save and Close</span></button></div>
                 </div>
             </div>
 
@@ -258,26 +328,25 @@
                 <div class="raModalBody">
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Which WLED controller?</h3>
-                    <p class="fieldDescription">Finds WLED controllers on your network.</p>
                     <button is="emby-button" type="button" id="findWled" class="raised">Scan the network for WLED</button>
 
                     <div id="wledCandidatesContainer" class="selectContainer" style="display:none">
-                        <select is="emby-select" id="wledCandidates" label="Discovered WLED controller"></select>
+                        <select is="emby-select" id="wledCandidates" label="Selected WLED controller"></select>
                         <div class="fieldDescription">The LED count helps identify the controller.</div>
                     </div>
 
                     <div id="manualWledContainer" style="display:none">
                         <div class="inputContainer">
                             <input is="emby-input" id="wledHost" type="text" label="WLED address" />
-                            <div class="fieldDescription">Use only when scanning finds nothing. Example: <code>10.0.0.8</code>.</div>
+                            <div class="fieldDescription">Only if scanning finds nothing. Example: <code>10.0.0.8</code>.</div>
                         </div>
                         <div class="inputContainer">
                             <input is="emby-input" id="wledHttpPort" type="number" min="1" max="65535" label="WLED HTTP port" />
-                            <div class="fieldDescription">Only change this for a non-standard WLED web port. <strong>Default: 80.</strong></div>
+                            <div class="fieldDescription">Default: 80.</div>
                         </div>
                     </div>
                     <div id="wledFinderStatus" class="fieldDescription" aria-live="polite"></div>
-                    <div id="wledLiveStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em"></div>
+                    <div id="wledLiveStatus" class="raCardPing" aria-live="polite" style="margin-top:.7em"></div>
                     <div id="wledAblStatus" class="fieldDescription"></div>
                     <div id="wledFpsCapStatus" class="fieldDescription"></div>
                     <div id="wledTimeoutStatus" class="fieldDescription"></div>
@@ -298,16 +367,13 @@
                     <div id="wledNightlightWarning" class="fieldDescription" style="display:none;border-left:3px solid currentColor;padding-left:.8em;margin-top:1em">
                         <strong>WLED's nightlight is currently active</strong>, and "force max brightness" is off, so nightlight's fading brightness is scaling this plugin's realtime output on top of everything else. Turn off the nightlight timer in WLED, or turn "force max brightness" back on.
                     </div>
-                    <button is="emby-button" type="button" id="refreshWledStatus" class="raised">Refresh controller status</button>
                 </div>
 
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Does your strip have a white LED?</h3>
                     <p class="fieldDescription">
-                        Some strips (RGBW) have a fourth, dedicated white LED alongside red, green and blue. Turning
-                        this on sends it a real white signal instead of mixing white from red, green and blue — worth
-                        it if white looks tinted or the strip draws more current than expected on white scenes. Leave
-                        it off if your strip is plain RGB; not every strip has this fourth channel.
+                        RGBW strips have a fourth, dedicated white LED. Turn this on to use it for white instead of
+                        mixing red+green+blue, worth it if white looks tinted. Leave off for a plain RGB strip.
                     </p>
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" id="sendWhiteChannel" type="checkbox" />
@@ -331,9 +397,8 @@
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Controlling WLED from here</h3>
                     <p class="fieldDescription">
-                        Normally this plugin only reads WLED, so it never needs a separate login. With the box below
-                        checked, it may also fix the one WLED setting that fights the sliders on the Ambilight tab.
-                        It will never touch the power limit (ABL) shown above — that stays whatever you set in WLED.
+                        This plugin only reads WLED by default. Checking the box below lets it fix one setting that
+                        fights the Ambilight sliders. It never touches the power limit (ABL) shown above.
                     </p>
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" id="allowWledControl" type="checkbox" />
@@ -350,43 +415,26 @@
                 </div>
 
                 <div class="verticalSection">
-                    <details id="ledLayoutSection">
-                        <summary style="cursor:pointer;list-style:revert">
-                            <span class="sectionTitle" style="display:inline">How are the LEDs arranged around your TV?</span>
-                            <div class="fieldDescription" style="margin-top:.3em">Set once, then left alone. <strong id="ledLayoutSummary"></strong></div>
-                        </summary>
-                    <div style="padding:.8em 0 0 1.25em">
-                    <p class="fieldDescription">Count clockwise from top-left: top, right, bottom, left. Total must match the strip. Restart after changing.</p>
+                    <h3 class="sectionTitle">How are the LEDs arranged around your TV?</h3>
+                    <p class="fieldDescription">Count clockwise from top-left; the total must match the strip. Restart after changing. Orange is the sampled edge range.</p>
                     <div class="fieldDescription">Total: <strong id="ledTotalValue"></strong><span id="ledTotalCheck"></span></div>
-                    <div style="max-width:34em;margin:1em auto 1.3em">
-                        <div id="ledLayoutDiagram" role="img" aria-label="16 by 9 TV LED layout" style="--sampling-inset:10%;position:relative;aspect-ratio:16/9;background:#111;border:3px solid #777;border-radius:.25em;overflow:hidden;color:#fff;font:600 12px system-ui,sans-serif;text-shadow:0 1px 2px #000">
-                            <div id="samplingArea" style="position:absolute;inset:var(--sampling-inset);border:1px dashed rgba(255,255,255,.75);box-shadow:0 0 0 100vmax rgba(234,142,26,.26);pointer-events:none"></div>
-                            <div id="topLedDiagramLabel" style="position:absolute;top:.45em;left:50%;transform:translateX(-50%);white-space:nowrap"></div>
-                            <div id="rightLedDiagramLabel" style="position:absolute;right:.45em;top:50%;transform:translateY(-50%);writing-mode:vertical-rl;white-space:nowrap"></div>
-                            <div id="bottomLedDiagramLabel" style="position:absolute;bottom:.45em;left:50%;transform:translateX(-50%);white-space:nowrap"></div>
-                            <div id="leftLedDiagramLabel" style="position:absolute;left:.45em;top:50%;transform:translateY(-50%) rotate(180deg);writing-mode:vertical-rl;white-space:nowrap"></div>
-                            <div style="position:absolute;inset:50% auto auto 50%;transform:translate(-50%,-50%);color:#bbb;text-align:center;font-weight:400;white-space:nowrap">16 : 9<br /><span id="samplingDiagramLabel"></span></div>
+                    <div class="raLedGrid">
+                        <div class="raLedGridTop"><input is="emby-input" id="topLedCount" type="number" min="1" label="Top" /></div>
+                        <div class="raLedGridLeft"><input is="emby-input" id="leftLedCount" type="number" min="1" label="Left" /></div>
+                        <div class="raLedGridDiagram">
+                            <div id="ledLayoutDiagram" role="img" aria-label="16 by 9 TV LED layout" style="--sampling-inset:10%;position:relative;aspect-ratio:16/9;background:#111;border:3px solid #777;border-radius:.25em;overflow:hidden;color:#fff;font:600 12px system-ui,sans-serif;text-shadow:0 1px 2px #000">
+                                <div id="samplingArea" style="position:absolute;inset:var(--sampling-inset);border:1px dashed rgba(255,255,255,.75);box-shadow:0 0 0 100vmax rgba(234,142,26,.26);pointer-events:none"></div>
+                                <div id="topLedDiagramLabel" style="position:absolute;top:.45em;left:50%;transform:translateX(-50%);white-space:nowrap"></div>
+                                <div id="rightLedDiagramLabel" style="position:absolute;right:.45em;top:50%;transform:translateY(-50%);writing-mode:vertical-rl;white-space:nowrap"></div>
+                                <div id="bottomLedDiagramLabel" style="position:absolute;bottom:.45em;left:50%;transform:translateX(-50%);white-space:nowrap"></div>
+                                <div id="leftLedDiagramLabel" style="position:absolute;left:.45em;top:50%;transform:translateY(-50%) rotate(180deg);writing-mode:vertical-rl;white-space:nowrap"></div>
+                                <div style="position:absolute;inset:50% auto auto 50%;transform:translate(-50%,-50%);color:#bbb;text-align:center;font-weight:400;white-space:nowrap">16 : 9<br /><span id="samplingDiagramLabel"></span></div>
+                            </div>
                         </div>
-                        <div class="fieldDescription" style="text-align:center;margin-top:.5em">Orange is the sampled edge range.</div>
+                        <div class="raLedGridRight"><input is="emby-input" id="rightLedCount" type="number" min="1" label="Right" /></div>
+                        <div class="raLedGridBottom"><input is="emby-input" id="bottomLedCount" type="number" min="1" label="Bottom" /></div>
                     </div>
-                    <div class="inputContainer">
-                        <input is="emby-input" id="topLedCount" type="number" min="1" label="LEDs along the top" />
-                        <div class="fieldDescription"><strong>Default: 265.</strong></div>
-                    </div>
-                    <div class="inputContainer">
-                        <input is="emby-input" id="rightLedCount" type="number" min="1" label="LEDs down the right side" />
-                        <div class="fieldDescription"><strong>Default: 150.</strong></div>
-                    </div>
-                    <div class="inputContainer">
-                        <input is="emby-input" id="bottomLedCount" type="number" min="1" label="LEDs along the bottom" />
-                        <div class="fieldDescription"><strong>Default: 266.</strong> It need not match the top: count what is actually there.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <input is="emby-input" id="leftLedCount" type="number" min="1" label="LEDs up the left side" />
-                        <div class="fieldDescription"><strong>Default: 150.</strong> Together with the other three that makes 831 LEDs.</div>
-                    </div>
-                    </div>
-                    </details>
+                    <div class="fieldDescription" style="text-align:center">Defaults: 265 / 150 / 266 / 150 (top/right/bottom/left), 831 LEDs total.</div>
                 </div>
 
                 <div class="verticalSection">
@@ -437,7 +485,7 @@
                     </label>
                     <div class="fieldDescription">Used when automatic detection is unavailable. <strong>Default: on.</strong></div>
                 </div>
-                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save</span></button></div>
+                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save and Close</span></button></div>
                 </div>
             </div>
 
@@ -446,14 +494,21 @@
                 <div class="raModalBody">
                 <div class="verticalSection" id="calibrationSection">
                     <h3 class="sectionTitle">Color calibration</h3>
-                    <p class="fieldDescription">Start with the picture as recorded, then adjust only what this room needs. One continuous strip usually runs the whole way round the TV, so the wizard below tunes all four sides together, not one at a time.</p>
+                    <p class="fieldDescription">Start with the picture as recorded, then adjust only what this room needs. One strip usually runs all the way round, so the wizard tunes all four sides together.</p>
 
-                    <div class="inputContainer">
+                    <div id="wizardCurveChartContainer">
+                        <div class="fieldDescription">Your colour correction, over the full colour wheel:</div>
+                        <div id="wizardCurveChart"></div>
+                        <div class="fieldDescription" style="margin-top:.6em">Deviation from the default curve, per colour: <strong id="ambilightSummaryDeviationCount"></strong></div>
+                        <div class="raColourColumns" id="ambilightSummaryDeviation"></div>
+                    </div>
+
+                    <div class="inputContainer" style="margin-top:1em">
                         <input is="emby-input" id="calibrationPatternUrl" type="text" readonly="readonly" label="TV link" />
                         <button is="emby-button" type="button" id="copyCalibrationUrl" class="raised">Copy link</button>
                         <a is="emby-linkbutton" id="openCalibrationPattern" target="_blank" rel="noopener" style="margin-left:.7em">Open here</a>
                     </div>
-                    <div class="fieldDescription">Type it exactly as shown, <strong>including <code>http://</code></strong> -- left to guess, some TV browsers try <code>https://</code> first, which fails on a plain local address like this one. <strong>Only reachable while a calibration below is started</strong> -- otherwise it answers as if it did not exist, so leaving Jellyfin reachable from the internet does not leave this page open too.</div>
+                    <div class="fieldDescription">Use <code>http://</code>, not <code>https://</code>. Only reachable while a calibration is running.</div>
 
                     <div style="border:1px solid rgba(127,127,127,.35);border-radius:.6em;padding:1em 1.2em;margin-top:1em">
                         <div id="wizardNotStarted">
@@ -461,7 +516,7 @@
                             <div class="fieldDescription" style="margin-top:.5em">Opens the TV link above and begins the seven-step wizard.</div>
                         </div>
                         <div id="wizardActive" hidden>
-                            <div class="fieldDescription">Step <strong id="wizardStepLabel">1 of 7 — White tuning</strong></div>
+                            <div class="fieldDescription">Step <strong id="wizardStepLabel">1 of 7, White tuning</strong></div>
                             <div id="wizardStepControls" style="margin-top:.6em"></div>
                             <div style="display:flex;gap:.7em;flex-wrap:wrap;align-items:center;margin-top:.6em">
                                 <button is="emby-button" type="button" id="wizardPrev" class="raised">&#9664; Back</button>
@@ -471,24 +526,16 @@
                             </div>
                             <div id="calibrationPreviewStatus" class="fieldDescription" aria-live="polite" style="margin-top:.7em">Waiting for the TV to open the link above…</div>
                         </div>
-                        <div id="wizardCurveChartContainer" style="margin-top:1em" hidden>
-                            <div class="fieldDescription">Your calibrated colour correction, over the full colour wheel:</div>
-                            <div id="wizardCurveChart"></div>
-                        </div>
                     </div>
-                    <button is="emby-button" type="button" id="showCurveChart" class="raised" style="margin-top:.7em">Show my colour calibration</button>
-
-                    <div class="fieldDescription" style="margin-top:1.2em">Deviation from the default curve, per colour: <strong id="ambilightSummaryDeviationCount"></strong></div>
-                    <div class="raColourColumns" id="ambilightSummaryDeviation"></div>
 
                     <div class="inputContainer" style="margin-top:1.2em">
                         <input is="emby-input" id="brightnessPercent" type="range" min="1" max="200" step="1" label="LED brightness" />
-                        <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. Above 100% pushes already-dim scenes brighter than the source picture -- physical LEDs next to a bright HDR screen otherwise always read as dim. <strong>Default: 100%.</strong></div>
+                        <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. Above 100% pushes already-dim scenes brighter than the source picture, since physical LEDs next to a bright HDR screen otherwise read as dim. <strong>Default: 100%.</strong></div>
                     </div>
 
                     <div class="inputContainer">
                         <input is="emby-input" id="wledSmoothingMilliseconds" type="range" min="0" max="500" step="10" label="Smoothing" />
-                        <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED toward a newly sampled colour instead of jumping straight to it -- lower is more reactive/intense, higher lets colour flow smoothly into the next, most noticeable as fewer visible little steps at low brightness. A real cut or fast pan still catches up within a few times this value. <strong>Default: 0 ms (off, fully reactive).</strong></div>
+                        <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED into its new colour; lower is more reactive, higher is calmer. A real cut still catches up quickly. <strong>Default: 0 ms (off, fully reactive).</strong></div>
                     </div>
 
                     <div class="inputContainer">
@@ -500,7 +547,7 @@
                     <details id="advancedColourControls">
                         <summary style="cursor:pointer;list-style:revert">
                             <span class="sectionTitle" style="display:inline">All colour controls (advanced)</span>
-                            <div class="fieldDescription" style="margin-top:.3em">Colour intensity, black level floor, raw white balance and the wall colour -- the wizard above already adjusts the ones that matter per step.</div>
+                            <div class="fieldDescription" style="margin-top:.3em">Colour intensity, black level floor, raw white balance and the wall colour. The wizard above already adjusts the ones that matter per step.</div>
                         </summary>
                         <div style="padding:.8em 0 0 1.25em">
                         <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
@@ -542,7 +589,7 @@
                     <details id="perSideFineTuning">
                         <summary style="cursor:pointer;list-style:revert">
                             <span class="sectionTitle" style="display:inline">Fine-tune each side separately (advanced, rarely needed)</span>
-                            <div class="fieldDescription" style="margin-top:.3em">Only if one edge still looks off after the wizard above -- most strips do not need this.</div>
+                            <div class="fieldDescription" style="margin-top:.3em">Only if one edge still looks off after the wizard above. Most strips do not need this.</div>
                         </summary>
                         <div style="padding:.8em 0 0 1.25em">
                         <p class="fieldDescription"><strong>Side trims.</strong> Start at 100%. Adjust brightness or RGB until the glow matches the TV edge; save when finished.</p>
@@ -551,7 +598,7 @@
                     </details>
                     </div>
                 </div>
-                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save</span></button></div>
+                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save and Close</span></button></div>
                 </div>
             </div>
 
@@ -561,11 +608,14 @@
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Philips Hue Entertainment (optional)</h3>
                     <p class="fieldDescription">
-                        Adds Hue lights as a second, independent Ambilight output alongside WLED, following the same
-                        picture on the same bound TV. Off by default; nothing here changes WLED. Version 1: one bridge,
-                        one entertainment area, automatic room-shaped mapping from the area you already set up in the
-                        Hue app -- this plugin never creates or edits lights, rooms, or entertainment areas itself.
+                        A second Ambilight output, following the same picture as WLED. One bridge, one entertainment
+                        area, set up in the Hue app itself.
                     </p>
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="hueEnabled" type="checkbox" />
+                        <span>Enable Hue Entertainment</span>
+                    </label>
+                    <div class="fieldDescription">Starts with the bound TV, same as WLED. <strong>Default: off.</strong></div>
                     <div style="display:flex;align-items:baseline;gap:.6em;flex-wrap:wrap;margin:.5em 0">
                         <span id="hueStatusLine" class="fieldDescription" aria-live="polite"></span>
                         <a href="#" id="hueUnlink" style="display:none">Unlink this bridge</a>
@@ -592,9 +642,9 @@
                     </div>
                 </div>
 
-                <div class="verticalSection" id="hueSelectionSection" style="display:none">
+                <div class="verticalSection raDimmable" id="hueSelectionSection" style="display:none">
                     <h3 class="sectionTitle">2. Choose an entertainment area</h3>
-                    <p class="fieldDescription">Only areas that already exist in the Hue app are listed; none are created here.</p>
+                    <p class="fieldDescription">Only areas already set up in the Hue app are listed.</p>
                     <div class="selectContainer">
                         <select is="emby-select" id="hueEntertainmentConfig" label="Entertainment area"></select>
                     </div>
@@ -603,30 +653,24 @@
                     <br /><br />
                     <div class="inputContainer">
                         <input is="emby-input" id="hueBrightnessPercent" type="range" min="1" max="200" step="1" label="Overall Hue brightness" />
-                        <div class="fieldDescription">Now: <strong id="hueBrightnessValue"></strong>. A 1% minimum stays on underneath this while synchronised, even at a dark scene. Above 100% pushes already-dim scenes brighter than the source picture -- different content (SDR, HDR10, tonemapped) never reaches the same peak brightness, so this compensates without needing a different setting per pipe. <strong>Default: 100%.</strong></div>
+                        <div class="fieldDescription">Now: <strong id="hueBrightnessValue"></strong>. A 1% minimum always stays on; above 100% boosts scenes that never reach peak source brightness. <strong>Default: 100%.</strong></div>
                     </div>
 
                     <div class="inputContainer">
                         <input is="emby-input" id="hueResponsePercent" type="range" min="0" max="100" step="1" label="Responsivity / intensity (out of 100)" />
-                        <div class="fieldDescription">Now: <strong id="hueResponseValue"></strong>. Reactive tracks a cut or a flash almost instantly, like an intense Ambilight; smooth eases colour into a new scene over a second or more so the lighting stays ambience rather than something that draws the eye away from the content. <strong>Default: 40.</strong> Takes effect on the next reconnect (stop and resume playback), not mid-stream.</div>
+                        <div class="fieldDescription">Now: <strong id="hueResponseValue"></strong>. Reactive tracks a cut instantly; smooth eases in over a second or more. <strong>Default: 40.</strong> Takes effect on the next reconnect, not mid-stream.</div>
                     </div>
 
                     <div class="selectContainer">
                         <select is="emby-select" id="hueEndBehaviour" label="When playback stops">
                             <option value="0">Warm white, dim (15%, recommended)</option>
                             <option value="1">Restore each light's previous state</option>
+                            <option value="2">Turn lights off</option>
                         </select>
                         <div class="fieldDescription">Applied only to the lights in the selected entertainment area.</div>
                     </div>
-
-                    <br />
-                    <label class="checkboxContainer">
-                        <input is="emby-checkbox" id="hueEnabled" type="checkbox" />
-                        <span>Enable Hue Entertainment</span>
-                    </label>
-                    <div class="fieldDescription">Starts automatically when the bound TV plays, same as WLED. <strong>Default: off.</strong> Saved with this modal's own <strong>Save</strong> button below.</div>
                 </div>
-                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save</span></button></div>
+                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save and Close</span></button></div>
                 </div>
             </div>
 
@@ -635,8 +679,8 @@
             <div class="verticalSection">
                 <button type="button" is="emby-button" id="resetConfiguration" class="raised">Reset to defaults</button>
                 <div class="fieldDescription" style="margin-top:.4em">
-                    Puts every setting on this page back to its factory default and saves immediately -- asks for
-                    confirmation first. Does not unlink a paired Hue bridge; use "Unlink this bridge" in the Hue card for that.
+                    Restores every setting on this page to its factory default and saves immediately, after asking
+                    to confirm. Does not unlink a paired Hue bridge; use "Unlink this bridge" for that.
                 </div>
             </div>
 

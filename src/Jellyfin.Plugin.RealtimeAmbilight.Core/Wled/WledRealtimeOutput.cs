@@ -147,7 +147,11 @@ public sealed class WledRealtimeOutput : ILedFrameOutput, IDisposable
         }
     }
 
-    public void Dispose() => _sendGate.Dispose();
+    public void Dispose()
+    {
+        _sendGate.Dispose();
+        (_udpSender as IDisposable)?.Dispose();
+    }
 
     private async Task SendFrameCoreAsync(ReadOnlyMemory<byte> rgb24Frame, CancellationToken cancellationToken)
     {
