@@ -1,13 +1,11 @@
 <div data-role="page" id="realtimeAmbilightConfigurationPage" class="page type-interior pluginConfigurationPage" data-controller="__plugin/RealtimeAmbilight.js">
     <style>
         /* ---- overview cards ---- */
-        /* max-height + its own scrollbar: without a cap here, expanding two or
-           three cards at once (each now able to grow tall in place, holding
-           its own inline detail) can make this sticky block taller than the
-           viewport, which -- being pinned to the top -- then covers every
-           panel below it (Pipeline, Live activity, the edit-all page)
-           instead of merely sitting above them. */
-        #realtimeAmbilightConfigurationPage .raOverviewGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(19em, 1fr)); align-content: start; gap: 1.1em; margin: 0 0 1.8em; position: sticky; top: 0; z-index: 1; background: inherit; padding-top: .3em; max-height: 75vh; overflow-y: auto; overflow-x: hidden; }
+        /* Deliberately not position:sticky -- pinning this to the top of the
+           viewport reliably broke the page layout in practice, especially
+           once a card can grow tall by showing its own detail in place.
+           Plain, normal-flow grid; it scrolls with the rest of the page. */
+        #realtimeAmbilightConfigurationPage .raOverviewGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(19em, 1fr)); align-content: start; gap: 1.1em; margin: 0 0 1.8em; }
         #realtimeAmbilightConfigurationPage .raCard { text-align: left; border: 1px solid rgba(127, 127, 127, .35); border-radius: .9em; padding: 1.3em 1.4em; background: rgba(127, 127, 127, .05); display: flex; flex-direction: column; min-height: 7em; }
         #realtimeAmbilightConfigurationPage .raCard:hover, #realtimeAmbilightConfigurationPage .raCard:focus-within, #realtimeAmbilightConfigurationPage .raCard.raCardExpanded { border-color: currentColor; background: rgba(127, 127, 127, .12); }
         #realtimeAmbilightConfigurationPage .raCardHeader { all: unset; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; gap: .6em; cursor: pointer; font: inherit; color: inherit; }
@@ -71,7 +69,7 @@
                     <div class="raCardTitle"><span>TV</span><span class="raPill" id="raCardTvPill">&nbsp;</span></div>
                     <div class="raCardMeta" id="raCardTvMeta">&nbsp;</div>
                 </button>
-                <div class="raCardDetail" id="tvCardDetail" hidden>
+                <div class="raCardDetail" id="tvCardDetail">
                     <div class="raSummaryRow"><span class="raK">Playback device</span><span class="raV" id="tvSummaryDevice">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">Ambilight</span><span class="raV" id="tvSummaryEnabled">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">Sampling</span><span class="raV" id="tvSummarySampling">&nbsp;</span></div>
@@ -83,7 +81,7 @@
                     <div class="raCardTitle"><span>WLED</span><span class="raPill" id="raCardWledPill">&nbsp;</span></div>
                     <div class="raCardMeta" id="raCardWledMeta">&nbsp;</div>
                 </button>
-                <div class="raCardDetail" id="wledCardDetail" hidden>
+                <div class="raCardDetail" id="wledCardDetail">
                     <div class="raSummaryRow"><span class="raK">Controller</span><span class="raV" id="wledSummaryHost">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">LEDs around the TV</span><span class="raV" id="wledSummaryLeds">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">White signal (RGBW)</span><span class="raV" id="wledSummaryRgbw">&nbsp;</span></div>
@@ -96,7 +94,7 @@
                     <div class="raCardTitle"><span>Ambilight</span><span class="raPill" id="raCardAmbilightPill">&nbsp;</span></div>
                     <div class="raCardMeta" id="raCardAmbilightMeta">&nbsp;</div>
                 </button>
-                <div class="raCardDetail" id="ambilightCardDetail" hidden>
+                <div class="raCardDetail" id="ambilightCardDetail">
                     <div class="raSummaryRow"><span class="raK">Calibration</span><span class="raV"><span class="raPill" id="ambilightSummaryCalibrated">&nbsp;</span></span></div>
                     <div class="raSummaryRow"><span class="raK">Brightness</span><span class="raV" id="ambilightSummaryBrightness">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">Colour intensity</span><span class="raV" id="ambilightSummarySaturation">&nbsp;</span></div>
@@ -111,7 +109,7 @@
                     <div class="raCardTitle"><span>Hue</span><span class="raPill" id="raCardHuePill">&nbsp;</span></div>
                     <div class="raCardMeta" id="raCardHueMeta">&nbsp;</div>
                 </button>
-                <div class="raCardDetail" id="hueCardDetail" hidden>
+                <div class="raCardDetail" id="hueCardDetail">
                     <div class="raSummaryRow"><span class="raK">Bridge</span><span class="raV" id="hueSummaryBridge">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">Entertainment area</span><span class="raV" id="hueSummaryArea">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">Brightness</span><span class="raV" id="hueSummaryBrightness">&nbsp;</span></div>
