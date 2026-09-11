@@ -35,15 +35,18 @@
         #realtimeAmbilightConfigurationPage .raFpsStage .raFpsValue { font-weight: 700; font-size: 1.1em; }
         #realtimeAmbilightConfigurationPage .raFpsArrow { opacity: .5; }
 
-        /* ---- live activity log ---- */
-        #realtimeAmbilightConfigurationPage .raActivityLog { border: 1px solid rgba(127, 127, 127, .35); border-radius: .7em; padding: 1em 1.2em; margin: 0 0 1.8em; }
+        /* ---- panels below the overview cards (pipeline, live activity) ---- */
+        #realtimeAmbilightConfigurationPage .raPanel { border: 1px solid rgba(127, 127, 127, .35); border-radius: .7em; padding: 1em 1.2em; margin: 0 0 1.8em; }
         #realtimeAmbilightConfigurationPage .raActivityList { max-height: 13em; overflow-y: auto; font-size: .85em; display: flex; flex-direction: column-reverse; gap: .25em; }
         #realtimeAmbilightConfigurationPage .raActivityRow { display: flex; gap: .7em; padding: .15em 0; }
         #realtimeAmbilightConfigurationPage .raActivityRow .raActivityTime { opacity: .6; font-variant-numeric: tabular-nums; white-space: nowrap; }
         #realtimeAmbilightConfigurationPage .raActivityRow.raActivityWarning .raActivityMessage { color: #d18e1c; }
 
-        /* ---- colour deviation grid ---- */
-        #realtimeAmbilightConfigurationPage .raColourGrid { display: grid; grid-template-columns: 1fr 1fr; gap: .4em 1.4em; margin-top: .7em; font-size: .92em; }
+        /* ---- colour deviation: primary/secondary columns, right-aligned ---- */
+        #realtimeAmbilightConfigurationPage .raColourColumns { display: flex; gap: 1.8em; margin-top: .7em; font-size: .92em; }
+        #realtimeAmbilightConfigurationPage .raColourColumn { flex: 1 1 0; text-align: right; }
+        #realtimeAmbilightConfigurationPage .raColourColumnTitle { font-weight: 700; opacity: .7; font-size: .78em; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .4em; }
+        #realtimeAmbilightConfigurationPage .raColourCell { padding: .18em 0; }
         #realtimeAmbilightConfigurationPage .raColourDot { display: inline-block; width: .8em; height: .8em; border-radius: 50%; margin-right: .5em; vertical-align: middle; border: 1px solid rgba(127, 127, 127, .45); }
     </style>
     <div class="content-primary">
@@ -69,20 +72,23 @@
                 <div class="raCardTitle"><span>Hue</span><span class="raPill" id="raCardHuePill">&nbsp;</span></div>
                 <div class="raCardMeta" id="raCardHueMeta">&nbsp;</div>
             </button>
-            <div class="raCard" id="raPipelineCard" style="cursor:default">
-                <div class="raCardTitle"><span>Pipeline</span><span class="raPill" id="raCardPipelinePill">&nbsp;</span></div>
-                <div class="raFpsChain" id="wledFpsChain">
-                    <div class="raFpsStage"><div class="raFpsLabel">FFmpeg decode</div><div class="raFpsValue" id="fpsAnalyse">–</div></div>
-                    <span class="raFpsArrow">&#8594;</span>
-                    <div class="raFpsStage"><div class="raFpsLabel">Sampling</div><div class="raFpsValue" id="fpsSample">–</div></div>
-                    <span class="raFpsArrow">&#8594;</span>
-                    <div class="raFpsStage"><div class="raFpsLabel">Sent to WLED</div><div class="raFpsValue" id="fpsWled">–</div></div>
-                </div>
-                <div class="fieldDescription" id="fpsHint">Live only while something is playing on the bound device.</div>
-            </div>
         </div>
 
-        <div class="raActivityLog">
+        <!-- Not a device card: this is the shared decode/sample/send pipeline behind
+             both WLED and Hue, not something with its own address to bind or ping. -->
+        <div class="raPanel" id="raPipelinePanel">
+            <div class="raCardTitle" style="margin-bottom:.5em"><span>Pipeline</span><span class="raPill" id="raCardPipelinePill">&nbsp;</span></div>
+            <div class="raFpsChain" id="wledFpsChain">
+                <div class="raFpsStage"><div class="raFpsLabel">FFmpeg decode</div><div class="raFpsValue" id="fpsAnalyse">–</div></div>
+                <span class="raFpsArrow">&#8594;</span>
+                <div class="raFpsStage"><div class="raFpsLabel">Sampling</div><div class="raFpsValue" id="fpsSample">–</div></div>
+                <span class="raFpsArrow">&#8594;</span>
+                <div class="raFpsStage"><div class="raFpsLabel">Sent to WLED</div><div class="raFpsValue" id="fpsWled">–</div></div>
+            </div>
+            <div class="fieldDescription" id="fpsHint">Live only while something is playing on the bound device.</div>
+        </div>
+
+        <div class="raPanel">
             <div class="raCardTitle" style="margin-bottom:.5em"><span>Live activity</span></div>
             <div class="raActivityList" id="raActivityList"></div>
             <div class="fieldDescription" id="raActivityEmpty">Nothing yet -- this fills in as WLED, Hue or the TV connect, disconnect, or need attention.</div>
@@ -363,7 +369,7 @@
                     <div class="raSummaryRow"><span class="raK">Colour intensity</span><span class="raV" id="ambilightSummarySaturation">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">Smoothing</span><span class="raV" id="ambilightSummarySmoothing">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">Colour deviation</span><span class="raV" id="ambilightSummaryDeviationCount">&nbsp;</span></div>
-                    <div class="raColourGrid" id="ambilightSummaryDeviation"></div>
+                    <div class="raColourColumns" id="ambilightSummaryDeviation"></div>
                     <button is="emby-button" type="button" class="raised raEditToggle" data-edit-toggle="ambilight" style="margin-top:1em">Edit</button>
                 </div>
                 <div class="raEdit" id="ambilightEdit" hidden>

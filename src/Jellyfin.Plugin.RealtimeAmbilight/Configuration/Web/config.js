@@ -255,7 +255,7 @@ export default function (view) {
         }));
 
         const signed = value => `${value > 0 ? "+" : ""}${value}%`;
-        const rows = anchors.map(a => {
+        const cellHtml = a => {
             const parts = [];
             if (a.hue !== 0) {
                 parts.push(`${a.hue > 0 ? "+" : ""}${a.hue}°`);
@@ -268,8 +268,14 @@ export default function (view) {
             }
             const hex = wedgeColours[a.colour];
             return `<div class="raColourCell"><span class="raColourDot" style="background:${hex}" title="${hex}"></span><strong>${a.colour}</strong>: ${parts.length ? parts.join(", ") : "Default"}</div>`;
-        });
-        byId("ambilightSummaryDeviation").innerHTML = rows.join("");
+        };
+        // hueAnchorColours is ["Red", "Green", "Blue", "Yellow", "Cyan", "Magenta"]
+        // -- the first three are exactly the primaries, the last three exactly
+        // the secondaries, so a plain slice is all grouping this needs.
+        const columnHtml = (title, columnAnchors) =>
+            `<div class="raColourColumn"><div class="raColourColumnTitle">${title}</div>${columnAnchors.map(cellHtml).join("")}</div>`;
+        byId("ambilightSummaryDeviation").innerHTML =
+            columnHtml("Primary", anchors.slice(0, 3)) + columnHtml("Secondary", anchors.slice(3, 6));
 
         const adjustedCount = anchors.filter(a => a.hue !== 0 || a.brightness !== 100 || a.intensity !== 100).length;
         byId("ambilightSummaryDeviationCount").textContent = adjustedCount === 0 ? "None (default curve)" : `${adjustedCount} of 6 adjusted`;
