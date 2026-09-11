@@ -127,11 +127,15 @@ public sealed class WledDiscoveryController : ControllerBase
     }
 
     /// <summary>
-    /// Turns off WLED's "force max brightness" for realtime data, so the
-    /// operator need not log into WLED separately to fix it. The one WLED
-    /// write this plugin ever offers, and only once the operator has opted in;
-    /// the ABL power budget is never part of the request and this endpoint
-    /// cannot change it.
+    /// Turns on WLED's "force max brightness" for realtime data, so its own
+    /// brightness dial (and its nightlight timer) can never silently scale
+    /// down what this plugin sends. The one WLED write this plugin ever
+    /// offers, and only once the operator has opted in; the ABL power budget
+    /// is never part of the request and this endpoint cannot change it. Also
+    /// applied automatically once per plugin start -- see
+    /// <see cref="JellyfinWledOutputService"/>'s own remarks -- this endpoint
+    /// exists for an operator who just opted in and does not want to wait
+    /// for a restart.
     /// </summary>
     [HttpPost("FixForceMaxBrightness")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -145,7 +149,7 @@ public sealed class WledDiscoveryController : ControllerBase
         }
 
         var fixedIt = await _discoveryService
-            .TryDisableForceMaxBrightnessAsync(host, Math.Clamp(port, 1, ushort.MaxValue), cancellationToken)
+            .TryEnableForceMaxBrightnessAsync(host, Math.Clamp(port, 1, ushort.MaxValue), cancellationToken)
             .ConfigureAwait(false);
         return fixedIt
             ? NoContent()

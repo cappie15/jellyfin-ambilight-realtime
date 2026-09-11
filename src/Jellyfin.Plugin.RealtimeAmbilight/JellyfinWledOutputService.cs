@@ -160,7 +160,40 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await DetectEncodingAsync(cancellationToken).ConfigureAwait(false);
+        await EnsureForceMaxBrightnessAsync(cancellationToken).ConfigureAwait(false);
         _pump = Task.Run(RunPumpAsync, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Defaults every consenting install to WLED's own brightness dial never
+    /// affecting realtime output: checked once per plugin start (not every
+    /// session, to keep this to one HTTP round trip rather than one per
+    /// playback), and only for an operator who has already opted into this
+    /// plugin writing WLED settings at all. An operator who wants WLED's own
+    /// dial to keep mattering can turn "Allow this plugin to fix WLED
+    /// settings" off, or turn "force max brightness" back off in WLED itself
+    /// afterwards -- this only ever turns it on, never fights that choice
+    /// back on within the same run.
+    /// </summary>
+    private async Task EnsureForceMaxBrightnessAsync(CancellationToken cancellationToken)
+    {
+        var configuration = Plugin.Instance?.Configuration;
+        if (configuration is null || !configuration.AllowWledControl || string.IsNullOrWhiteSpace(configuration.WledHost))
+        {
+            return;
+        }
+
+        var port = Math.Clamp(configuration.WledHttpPort, 1, ushort.MaxValue);
+        var settings = await _discoveryService.ReadRealtimeSettingsAsync(configuration.WledHost, port, cancellationToken).ConfigureAwait(false);
+        if (settings is null || settings.ForcesMaxBrightness)
+        {
+            return;
+        }
+
+        if (await _discoveryService.TryEnableForceMaxBrightnessAsync(configuration.WledHost, port, cancellationToken).ConfigureAwait(false))
+        {
+            _activityLog.Info("WLED: turned on \"force max brightness\", so its own dial cannot dim the Ambilight output.");
+        }
     }
 
     /// <summary>

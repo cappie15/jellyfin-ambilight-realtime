@@ -406,9 +406,9 @@
                     </label>
                     <div class="fieldDescription">Off by default. <strong id="allowWledControlSummary"></strong></div>
                     <div id="maxBrightnessWarning" class="fieldDescription" style="display:none;border-left:3px solid currentColor;padding-left:.8em;margin-top:1em">
-                        <strong>WLED forces maximum realtime brightness.</strong> It ignores its own brightness slider while the Ambilight runs.
+                        <strong>WLED's own brightness dial is scaling down the Ambilight output.</strong> Applied automatically on the next Jellyfin restart; click below for right now.
                         <div style="margin-top:.6em">
-                            <button is="emby-button" type="button" id="fixForceMaxBrightness" class="raised">Turn it off in WLED</button>
+                            <button is="emby-button" type="button" id="fixForceMaxBrightness" class="raised">Turn on force max brightness</button>
                             <span id="fixForceMaxBrightnessStatus" class="fieldDescription" aria-live="polite"></span>
                         </div>
                     </div>

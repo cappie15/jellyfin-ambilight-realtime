@@ -469,13 +469,17 @@ public sealed class WledDiscoveryService
     }
 
     /// <summary>
-    /// Turns off WLED's "force max brightness" for realtime data -- the one
+    /// Turns on WLED's "force max brightness" for realtime data -- the one
     /// WLED setting this plugin can write, and only when the operator has
-    /// opted in on the settings page. The request body names nothing else, so
-    /// it cannot touch the ABL power budget or any other WLED configuration
-    /// regardless of what else the operator has set on the controller.
+    /// opted in on the settings page. With this on, WLED's own brightness
+    /// dial (and anything else scaling it, such as its nightlight timer) is
+    /// bypassed entirely for realtime frames, so the picture this plugin
+    /// sends is never silently dimmed by a setting on the controller itself.
+    /// The request body names nothing else, so it cannot touch the ABL power
+    /// budget or any other WLED configuration regardless of what else the
+    /// operator has set on the controller.
     /// </summary>
-    public async Task<bool> TryDisableForceMaxBrightnessAsync(string host, int port, CancellationToken cancellationToken)
+    public async Task<bool> TryEnableForceMaxBrightnessAsync(string host, int port, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(host);
         var authority = port == 80 ? host : string.Create(CultureInfo.InvariantCulture, $"{host}:{port}");
@@ -491,7 +495,7 @@ public sealed class WledDiscoveryService
             // body with 400 Bad Request, the same failure that once broke the
             // realtime stop call (see the deleted IWledControlClient's history).
             using var content = new StringContent(
-                """{"if":{"live":{"maxbri":false}}}""",
+                """{"if":{"live":{"maxbri":true}}}""",
                 System.Text.Encoding.UTF8,
                 "application/json");
             using var response = await client
@@ -500,19 +504,19 @@ public sealed class WledDiscoveryService
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning(
-                    "WLED {Host} rejected the request to turn off \"force max brightness\": {StatusCode}.",
+                    "WLED {Host} rejected the request to turn on \"force max brightness\": {StatusCode}.",
                     authority,
                     response.StatusCode);
                 return false;
             }
 
-            _logger.LogInformation("Turned off \"force max brightness\" on WLED {Host}.", authority);
+            _logger.LogInformation("Turned on \"force max brightness\" on WLED {Host}.", authority);
             return true;
         }
         catch (Exception exception) when (exception is HttpRequestException or UriFormatException
             || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
-            _logger.LogWarning(exception, "Could not reach WLED {Host} to turn off \"force max brightness\".", authority);
+            _logger.LogWarning(exception, "Could not reach WLED {Host} to turn on \"force max brightness\".", authority);
             return false;
         }
     }
@@ -522,7 +526,7 @@ public sealed class WledDiscoveryService
     /// the only mode this plugin's own RGBW32 output is correct under,
     /// since anything else has WLED deriving or subtracting its own white
     /// value from what this plugin already computed. Same opt-in gate and
-    /// fixed-length request body as <see cref="TryDisableForceMaxBrightnessAsync"/>.
+    /// fixed-length request body as <see cref="TryEnableForceMaxBrightnessAsync"/>.
     /// </summary>
     public async Task<bool> TryFixRgbwModeAsync(string host, int port, CancellationToken cancellationToken)
     {

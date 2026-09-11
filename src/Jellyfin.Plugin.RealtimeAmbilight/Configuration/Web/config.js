@@ -1135,7 +1135,7 @@ export default function (view) {
         return window.ApiClient
             .getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Settings", connection))
             .then(settings => {
-                show("maxBrightnessWarning", Boolean(settings && settings.ForcesMaxBrightness));
+                show("maxBrightnessWarning", Boolean(settings) && !settings.ForcesMaxBrightness);
                 const maxPower = settings?.MaxPowerMilliamps ?? settings?.maxPowerMilliamps;
                 abl.textContent = maxPower > 0
                     ? `Power limit (ABL) on WLED: ${maxPower} mA, read-only, this plugin never changes it.`
@@ -1240,7 +1240,7 @@ export default function (view) {
         }
 
         byId("fixForceMaxBrightness").disabled = true;
-        status.textContent = "Turning it off…";
+        status.textContent = "Turning it on…";
         return window.ApiClient.ajax({
             type: "POST",
             url: window.ApiClient.getUrl("RealtimeAmbilight/Discovery/FixForceMaxBrightness", connection)
@@ -1249,7 +1249,7 @@ export default function (view) {
             return checkControllerSettings();
         }).then(() => {
             if (byId("maxBrightnessWarning").style.display !== "none") {
-                status.textContent = "WLED still reports it as on; you may need to change it in WLED directly.";
+                status.textContent = "WLED still reports it as off; you may need to change it in WLED directly.";
             } else {
                 status.textContent = "Fixed.";
             }
