@@ -1,6 +1,7 @@
 #pragma warning disable CA1848, CA1873
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Color;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Decoding;
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Diagnostics;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Model;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Protocol;
@@ -50,6 +51,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     private readonly IHueBridgeClient _bridgeClient;
     private readonly IHueLightControl _lightControl;
     private readonly IHueStreamChannelFactory _channelFactory;
+    private readonly PluginActivityLog _activityLog;
     private readonly ILogger<HueEntertainmentService> _logger;
     private readonly HueEntertainmentStateMachine _stateMachine = new();
     private readonly LatestFrameBuffer<AnalysisFrame> _latestFrames;
@@ -74,6 +76,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         IHueCredentialStore credentialStore,
         IHueBridgeClient bridgeClient,
         IHueLightControl lightControl,
+        PluginActivityLog activityLog,
         ILogger<HueEntertainmentService> logger,
         IHueStreamChannelFactory? channelFactory = null)
     {
@@ -81,9 +84,24 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         _credentialStore = credentialStore ?? throw new ArgumentNullException(nameof(credentialStore));
         _bridgeClient = bridgeClient ?? throw new ArgumentNullException(nameof(bridgeClient));
         _lightControl = lightControl ?? throw new ArgumentNullException(nameof(lightControl));
+        _activityLog = activityLog ?? throw new ArgumentNullException(nameof(activityLog));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _channelFactory = channelFactory ?? new HueDtlsChannelFactory();
         _latestFrames = _coordinator.LatestFrames.Subscribe();
+        // Every real state transition, mirrored into the settings page's own
+        // "Live activity" log -- Unpaired/Ready are the two quiet, no-news
+        // states an operator does not need called out every time.
+        _stateMachine.Changed += change =>
+        {
+            if (change.State is HueEntertainmentState.Unpaired or HueEntertainmentState.Ready)
+            {
+                return;
+            }
+
+            _activityLog.Info(change.Issue == HueEntertainmentIssue.None
+                ? $"Hue: {change.State}."
+                : $"Hue: {change.State} ({change.Issue}).");
+        };
     }
 
     public HueStatus GetStatus()

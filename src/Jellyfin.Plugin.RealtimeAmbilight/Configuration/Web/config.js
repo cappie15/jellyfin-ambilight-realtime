@@ -14,6 +14,10 @@ export default function (view) {
     // they live in their own small state object instead of needing 18 hidden
     // DOM inputs just to have somewhere to read a .value from.
     const hueAnchorColours = ["Red", "Green", "Blue", "Yellow", "Cyan", "Magenta"];
+    // Each anchor's own canonical hue, shared by the colour-deviation grid's
+    // swatch dots and the curve chart's wedges/lines -- one source so the two
+    // views of the same six colours can never drift apart.
+    const wedgeColours = { Red: "#e6483c", Yellow: "#d6c22e", Green: "#4caf50", Cyan: "#26a69a", Blue: "#4a6fd6", Magenta: "#c04fb0" };
     const hueAnchorFieldsFor = colour => [`${colour}HueShiftDegrees`, `${colour}BrightnessPercent`, `${colour}IntensityPercent`];
     const hueAnchorFields = hueAnchorColours.flatMap(hueAnchorFieldsFor);
     let hueAnchors = {};
@@ -96,6 +100,9 @@ export default function (view) {
     let latestPerformance = null;
     let latestWledStatus = null;
     let latestHueStatus = null;
+    // { reachable, milliseconds } | null per device, refreshed by refreshPings()
+    // every 5 s and rendered inline in each overview card by refreshOverviewCards.
+    let latestPings = { wled: null, hue: null };
     const byId = id => view.querySelector(`#${id}`);
     const fieldKey = field => field[0].toUpperCase() + field.slice(1);
     const show = (id, visible) => { byId(id).style.display = visible ? "block" : "none"; };
@@ -229,37 +236,43 @@ export default function (view) {
         refreshFpsChain();
     };
 
-    // One row per anchor with a real deviation (hue shift, or brightness/
-    // intensity pulled down from 100%) -- omits an anchor sitting exactly at
-    // its default, so this list is only ever the colours actually touched,
-    // not all six every time.
+    // Always one cell per anchor (a fixed 2-column, 3-row grid), a small dot
+    // in that colour's own canonical hue in front of the name -- title
+    // attribute carries the hex for a plain-browser tooltip -- and every
+    // deviation from the default expressed the same way: a signed number
+    // against its own 100% baseline, never a bare absolute percentage, so
+    // "-6% intensity" always means the same kind of thing "+8°" does.
     function renderColourDeviation() {
         // Clamped to match PerimeterColourTuning.Anchor()'s own server-side
         // range (hue +-21 deg, brightness/intensity 50-100%) -- a value
         // saved outside that range by an older build would otherwise show a
         // number here that is not actually what gets applied.
-        const rows = hueAnchorColours
-            .map(colour => ({
-                colour,
-                hue: Math.max(-21, Math.min(21, hueAnchors[`${colour}HueShiftDegrees`] || 0)),
-                brightness: Math.max(50, Math.min(100, hueAnchors[`${colour}BrightnessPercent`] ?? 100)),
-                intensity: Math.max(50, Math.min(100, hueAnchors[`${colour}IntensityPercent`] ?? 100))
-            }))
-            .filter(a => a.hue !== 0 || a.brightness !== 100 || a.intensity !== 100)
-            .map(a => {
-                const parts = [];
-                if (a.hue !== 0) {
-                    parts.push(`${a.hue > 0 ? "+" : ""}${a.hue}°`);
-                }
-                if (a.brightness !== 100) {
-                    parts.push(`${a.brightness}% bright`);
-                }
-                if (a.intensity !== 100) {
-                    parts.push(`${a.intensity}% intensity`);
-                }
-                return `<div>${a.colour}: ${parts.join(", ")}</div>`;
-            });
-        byId("ambilightSummaryDeviation").innerHTML = rows.length ? rows.join("") : "None (default curve)";
+        const anchors = hueAnchorColours.map(colour => ({
+            colour,
+            hue: Math.max(-21, Math.min(21, hueAnchors[`${colour}HueShiftDegrees`] || 0)),
+            brightness: Math.max(50, Math.min(100, hueAnchors[`${colour}BrightnessPercent`] ?? 100)),
+            intensity: Math.max(50, Math.min(100, hueAnchors[`${colour}IntensityPercent`] ?? 100))
+        }));
+
+        const signed = value => `${value > 0 ? "+" : ""}${value}%`;
+        const rows = anchors.map(a => {
+            const parts = [];
+            if (a.hue !== 0) {
+                parts.push(`${a.hue > 0 ? "+" : ""}${a.hue}°`);
+            }
+            if (a.brightness !== 100) {
+                parts.push(`${signed(a.brightness - 100)} bright`);
+            }
+            if (a.intensity !== 100) {
+                parts.push(`${signed(a.intensity - 100)} intensity`);
+            }
+            const hex = wedgeColours[a.colour];
+            return `<div class="raColourCell"><span class="raColourDot" style="background:${hex}" title="${hex}"></span><strong>${a.colour}</strong>: ${parts.length ? parts.join(", ") : "Default"}</div>`;
+        });
+        byId("ambilightSummaryDeviation").innerHTML = rows.join("");
+
+        const adjustedCount = anchors.filter(a => a.hue !== 0 || a.brightness !== 100 || a.intensity !== 100).length;
+        byId("ambilightSummaryDeviationCount").textContent = adjustedCount === 0 ? "None (default curve)" : `${adjustedCount} of 6 adjusted`;
     }
 
     sectionSummarisers.ambilight = function summariseAmbilight() {
@@ -282,7 +295,7 @@ export default function (view) {
             || "Not selected";
         byId("hueSummaryBrightness").textContent = `${byId("hueBrightnessPercent").value}%`;
         const response = byId("hueResponsePercent").value;
-        byId("hueSummaryResponsivity").textContent = `${response} (0-100)`;
+        byId("hueSummaryResponsivity").textContent = `${response} (out of 100)`;
         bridgeHost && byId("hueEnabled").checked ? showSectionSummary("hue") : showSectionEdit("hue");
     };
 
@@ -308,9 +321,36 @@ export default function (view) {
                 byId("fpsHint").innerHTML = active
                     ? ""
                     : `Live only while something is playing on the bound device (${deviceLabelWithIp()}). <button type="button" class="raLink" data-open-tab="tv">Open TV settings</button>`;
+                setPill("raCardPipelinePill", !byId("enabled").checked ? "off" : active ? "streaming" : "ready");
                 refreshOverviewCards();
             })
             .catch(() => {});
+    }
+
+    // A bare TCP-connect timing to that device's own HTTP(S) port, refreshed
+    // every 5 s -- not a real ICMP ping (no raw-socket privilege here), but
+    // the same "is it there, how far away does it feel" answer a web
+    // dashboard's own ping widget gives. null means "never checked" (no host
+    // configured yet).
+    function pingLine(ping) {
+        if (!ping) {
+            return "";
+        }
+
+        return `<div>${ping.reachable ? `${Math.round(ping.milliseconds)} ms` : "Unreachable"}</div>`;
+    }
+
+    // The TV card deliberately does not get the same TCP-connect ping as
+    // WLED/Hue: those two are addressable HTTP(S) servers with a
+    // well-known port, but a smart TV / streaming client generally accepts
+    // no inbound connection at all even while very much on and playing, so
+    // a failed connect there would misleadingly read as "unreachable" for a
+    // device that is working perfectly. "Last seen" (from Jellyfin's own
+    // device registry, already loaded -- no extra network call) is the
+    // honest live signal for this one.
+    function tvLastSeenLine() {
+        const device = knownDevices.find(candidate => candidate.id === byId("targetDeviceId").value);
+        return device?.lastUsed ? `<div>Last seen ${lastUsedLabel(device.lastUsed)}</div>` : "";
     }
 
     function refreshOverviewCards() {
@@ -318,13 +358,13 @@ export default function (view) {
         const boundDevice = Boolean(byId("targetDeviceId").value);
         const streaming = isWledStreaming();
         setPill("raCardTvPill", !enabled ? "off" : streaming ? "streaming" : "ready");
-        byId("raCardTvMeta").innerHTML = `<div>${deviceLabelWithIp()}</div><div>Ambilight ${enabled ? "on" : "off"}</div>`;
+        byId("raCardTvMeta").innerHTML = `<div>${deviceLabelWithIp()}</div><div>Ambilight ${enabled ? "on" : "off"}</div>${tvLastSeenLine()}`;
 
         const wledHost = byId("wledHost").value.trim() || loadedConfig?.WledHost || "";
         const wledName = latestWledStatus?.Name ?? latestWledStatus?.name;
         setPill("raCardWledPill", !wledHost ? "off" : streaming ? "streaming" : "ready");
         byId("raCardWledMeta").innerHTML = wledHost
-            ? `<div>${wledName ? `${wledName} (${wledHost})` : wledHost}</div><div>${ledCountFields.map(f => Number(byId(f).value) || 0).reduce((a, b) => a + b, 0)} LEDs${byId("sendWhiteChannel").checked ? ", RGBW" : ""}</div>`
+            ? `<div>${wledName ? `${wledName} (${wledHost})` : wledHost}</div><div>${ledCountFields.map(f => Number(byId(f).value) || 0).reduce((a, b) => a + b, 0)} LEDs${byId("sendWhiteChannel").checked ? ", RGBW" : ""}</div>${pingLine(latestPings.wled)}`
             : "Scan or enter a controller address";
 
         const calibrated = isAmbilightCalibrated();
@@ -337,8 +377,53 @@ export default function (view) {
         const hueStreaming = isHueStreaming();
         setPill("raCardHuePill", !hueEnabled || !huePaired ? "off" : hueStreaming ? "streaming" : "ready");
         byId("raCardHueMeta").innerHTML = hueEnabled && huePaired
-            ? `<div>${loadedConfig?.HueEntertainmentConfigurationName || "Paired"}</div><div>Brightness ${byId("hueBrightnessPercent").value}%</div>`
-            : huePaired ? "Paired, currently off" : "Not paired yet";
+            ? `<div>${loadedConfig?.HueEntertainmentConfigurationName || "Paired"}</div><div>Brightness ${byId("hueBrightnessPercent").value}%</div>${pingLine(latestPings.hue)}`
+            : (huePaired ? "Paired, currently off" : "Not paired yet") + pingLine(latestPings.hue);
+    }
+
+    function pingOne(host, port) {
+        if (!host) {
+            return Promise.resolve(null);
+        }
+
+        return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Ping", { host, port }))
+            .then(result => ({ reachable: result?.Reachable ?? result?.reachable ?? false, milliseconds: result?.Milliseconds ?? result?.milliseconds ?? null }))
+            .catch(() => null);
+    }
+
+    // Every 5 s, for the WLED controller and the Hue bridge -- see
+    // tvLastSeenLine's own remarks for why the TV is not TCP-pinged the same
+    // way, and isAmbilightCalibrated's card has no device of its own to ping.
+    function refreshPings() {
+        const wledHost = byId("wledHost").value.trim() || loadedConfig?.WledHost || "";
+        const hueHost = loadedConfig?.HueBridgeHost || "";
+        return Promise.all([
+            pingOne(wledHost, Number(byId("wledHttpPort").value) || 80),
+            pingOne(hueHost, 443)
+        ]).then(([wled, hue]) => {
+            latestPings = { wled, hue };
+            refreshOverviewCards();
+        });
+    }
+
+    // The settings page's own record of what this plugin has actually been
+    // doing -- see PluginActivityLog server-side. Newest entry at the top,
+    // matching how the pill/summary state above it also always shows "now".
+    function refreshActivityLog() {
+        return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/Activity"))
+            .then(entries => {
+                const list = Array.isArray(entries) ? entries : [];
+                show("raActivityEmpty", list.length === 0);
+                byId("raActivityList").innerHTML = list.map(entry => {
+                    const timestamp = entry.Timestamp ?? entry.timestamp;
+                    const level = entry.Level ?? entry.level;
+                    const message = entry.Message ?? entry.message;
+                    const time = new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                    const warning = String(level) === "1" || String(level).toLowerCase() === "warning";
+                    return `<div class="raActivityRow${warning ? " raActivityWarning" : ""}"><span class="raActivityTime">${time}</span><span class="raActivityMessage">${message}</span></div>`;
+                }).join("");
+            })
+            .catch(() => {});
     }
 
     function populateWallColourPresets() {
@@ -588,7 +673,6 @@ export default function (view) {
         const size = 260;
         const center = size / 2;
         const wheelRadius = 90;
-        const wedgeColours = { Red: "#e6483c", Yellow: "#d6c22e", Green: "#4caf50", Cyan: "#26a69a", Blue: "#4a6fd6", Magenta: "#c04fb0" };
         const anchorAngle = { Red: 0, Yellow: 60, Green: 120, Cyan: 180, Blue: 240, Magenta: 300 };
         const toXY = (angleDegrees, radius) => {
             const rad = ((angleDegrees - 90) * Math.PI) / 180;
@@ -1175,7 +1259,7 @@ export default function (view) {
                 byId("whiteChannelStrengthPercent").value = config.WhiteChannelStrengthPercent ?? 50;
                 byId("hueEnabled").checked = config.HueEnabled === true;
                 byId("hueBrightnessPercent").value = config.HueBrightnessPercent || 100;
-                byId("hueResponsePercent").value = config.HueResponsePercent ?? 50;
+                byId("hueResponsePercent").value = config.HueResponsePercent ?? 40;
                 // Jellyfin's plugin configuration API returns an enum as its
                 // string name ("WarmWhiteDim"), not the numeric value the
                 // <select>'s own options use -- the same mismatch already
@@ -1228,6 +1312,8 @@ export default function (view) {
             ]))
             .then(() => {
                 refreshOverviewCards();
+                refreshPings();
+                refreshActivityLog();
                 showOverview();
             })
             .finally(() => Dashboard.hideLoadingMsg());
@@ -1284,6 +1370,100 @@ export default function (view) {
                 refreshOverviewCards();
                 return Dashboard.processPluginConfigurationUpdateResult(result);
             })
+            .finally(() => Dashboard.hideLoadingMsg());
+    }
+
+    // Mirrors PluginConfiguration's own C# property initialisers -- a brand
+    // new install's config, in other words -- except the Hue bridge pairing
+    // itself (host/id/entertainment area), which stays exactly as currently
+    // paired: unlinking that bridge is a separate, explicit action ("Unlink
+    // this bridge" on the Hue tab) and is not implied by resetting
+    // preferences back to their defaults.
+    function factoryDefaultConfiguration() {
+        const anchorDefaults = {};
+        hueAnchorColours.forEach(colour => {
+            anchorDefaults[`${colour}HueShiftDegrees`] = 0;
+            anchorDefaults[`${colour}BrightnessPercent`] = 100;
+            anchorDefaults[`${colour}IntensityPercent`] = 100;
+        });
+        const sideDefaults = {};
+        sideNames.forEach(side => {
+            const key = field => `${side}${field[0].toUpperCase()}${field.slice(1)}Percent`;
+            sideDefaults[key("brightness")] = 100;
+            sideDefaults[key("redGain")] = 100;
+            sideDefaults[key("greenGain")] = 100;
+            sideDefaults[key("blueGain")] = 100;
+        });
+
+        return {
+            ConfigSchemaVersion: 3,
+            Enabled: true,
+            TargetDeviceId: "",
+            TargetDeviceName: "",
+            WledHost: "10.0.0.8",
+            WledHttpPort: 80,
+            RealtimeProtocol: 0,
+            TopLedCount: 265,
+            RightLedCount: 150,
+            BottomLedCount: 266,
+            LeftLedCount: 150,
+            OutputDelayMilliseconds: 0,
+            OutputFramesPerSecond: 30,
+            HoldWhilePaused: true,
+            StopFadeMilliseconds: 250,
+            SamplingDepthPercent: 10,
+            BrightnessPercent: 100,
+            SaturationPercent: 100,
+            RedGainPercent: 100,
+            GreenGainPercent: 100,
+            BlueGainPercent: 100,
+            ...anchorDefaults,
+            BlackLevelFloorPercent: 0,
+            WallColourHex: "#ffffff",
+            WallColourCorrectionPercent: 100,
+            ...sideDefaults,
+            CorrectLedGamma: true,
+            AutoDetectLedGamma: true,
+            IgnoreBlackBorders: true,
+            AnalysisWidth: 160,
+            AnalysisHeight: 90,
+            AnalysisFramesPerSecond: 30,
+            AllowWledControl: false,
+            MinimumColourHoldMilliseconds: 0,
+            WledSmoothingMilliseconds: 0,
+            SendWhiteChannel: false,
+            WhiteChannelStrengthPercent: 50,
+            HueEnabled: false,
+            HueBridgeHost: loadedConfig?.HueBridgeHost || "",
+            HueBridgeId: loadedConfig?.HueBridgeId || "",
+            HueEntertainmentConfigurationId: loadedConfig?.HueEntertainmentConfigurationId || "00000000-0000-0000-0000-000000000000",
+            HueEntertainmentConfigurationName: loadedConfig?.HueEntertainmentConfigurationName || "",
+            HueBrightnessPercent: 100,
+            HueEndBehaviour: 0,
+            HueResponsePercent: 40
+        };
+    }
+
+    function resetConfiguration() {
+        const confirmed = window.confirm(
+            "Reset every Ambilight setting on this page to its factory default?\n\n" +
+            "This clears the bound TV, WLED controller address, LED layout, all colour " +
+            "calibration and every WLED/Hue preference, and saves immediately. A paired " +
+            "Hue bridge stays paired -- use \"Unlink this bridge\" separately for that. " +
+            "This cannot be undone."
+        );
+        if (!confirmed) {
+            return;
+        }
+
+        Dashboard.showLoadingMsg();
+        const config = factoryDefaultConfiguration();
+        window.ApiClient.updatePluginConfiguration(pluginId, config)
+            .then(result => {
+                loadedConfig = config;
+                return Dashboard.processPluginConfigurationUpdateResult(result);
+            })
+            .then(load)
             .finally(() => Dashboard.hideLoadingMsg());
     }
 
@@ -1508,8 +1688,8 @@ export default function (view) {
     function setHueResponseLabel() {
         const value = Number(byId("hueResponsePercent").value);
         byId("hueResponseValue").textContent = value === 50
-            ? "Balanced (50)"
-            : value < 50 ? `Reactive (${value})` : `Smooth (${value})`;
+            ? "Balanced (50 of 100)"
+            : value < 50 ? `Reactive (${value} of 100)` : `Smooth (${value} of 100)`;
     }
 
     populateWallColourPresets();
@@ -1529,12 +1709,14 @@ export default function (view) {
     view.querySelectorAll("[data-open-overview]").forEach(link => link.addEventListener("click", showOverview));
     view.querySelectorAll("[data-edit-toggle]").forEach(button => button.addEventListener("click", () => showSectionEdit(button.dataset.editToggle)));
     setInterval(refreshFpsChain, 2000);
-    // Slower: these each make a real network call to WLED/Hue, not just a
-    // cheap in-process counter read like refreshFpsChain -- only needed
-    // often enough for the overview pills to feel live, not every tick.
-    setInterval(() => { checkControllerStatus(); loadHueStatus().then(refreshOverviewCards); }, 8000);
+    // Every 5 s: a real network round trip to WLED/Hue (status + ping), not
+    // just a cheap in-process counter read like refreshFpsChain -- but still
+    // often enough for the cards to feel genuinely live.
+    setInterval(() => { checkControllerStatus(); loadHueStatus().then(refreshOverviewCards); refreshPings(); }, 5000);
+    setInterval(refreshActivityLog, 5000);
     view.addEventListener("viewshow", load);
     byId("realtimeAmbilightConfigurationForm").addEventListener("submit", save);
+    byId("resetConfiguration").addEventListener("click", resetConfiguration);
     byId("outputDelayMilliseconds").addEventListener("input", setDelayLabel);
     byId("samplingDepthPercent").addEventListener("input", setDepthLabel);
     byId("minimumColourHoldMilliseconds").addEventListener("input", setMinimumColourHoldLabel);

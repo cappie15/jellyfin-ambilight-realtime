@@ -1,5 +1,6 @@
 #pragma warning disable CA1848, CA1873
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Color;
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Diagnostics;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Layout;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Output;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Playback;
@@ -21,6 +22,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private readonly WledRealtimeOutput _output;
     private readonly LatestFrameOutputScheduler _scheduler;
     private readonly ILogger<JellyfinWledOutputService> _logger;
+    private readonly PluginActivityLog _activityLog;
     private readonly LedLayout _physicalLayout;
     /// <summary>
     /// How often the held frame is resent while playback is paused. WLED drops
@@ -109,10 +111,12 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     public JellyfinWledOutputService(
         PlaybackEventCoordinator coordinator,
         WledDiscoveryService discoveryService,
+        PluginActivityLog activityLog,
         ILogger<JellyfinWledOutputService> logger)
     {
         _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
         _discoveryService = discoveryService ?? throw new ArgumentNullException(nameof(discoveryService));
+        _activityLog = activityLog ?? throw new ArgumentNullException(nameof(activityLog));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         var configuration = Plugin.Instance?.Configuration ?? new PluginConfiguration();
         _physicalLayout = new LedLayout(
@@ -371,7 +375,10 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                     catch (Exception exception) when (exception is not OperationCanceledException)
                     {
                         _logger.LogError(exception, "Realtime Ambilight could not finish the playback-stop fade/release.");
+                        _activityLog.Warning("WLED: could not fade out cleanly at stop; releasing anyway.");
                     }
+
+                    _activityLog.Info("WLED: playback ended, LEDs released.");
                 }
 
                 if (previousSession is null && currentSession is not null)
@@ -384,10 +391,12 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                         await _scheduler.SendFrameAsync(new byte[_ledCount * _bytesPerLed], _shutdown.Token).ConfigureAwait(false);
                         lastFrameSent = DateTimeOffset.UtcNow;
                         lastSend = lastFrameSent;
+                        _activityLog.Info("WLED: playback started, LEDs claimed.");
                     }
                     catch (Exception exception) when (exception is not OperationCanceledException)
                     {
                         _logger.LogWarning(exception, "Realtime Ambilight could not blank the LEDs at playback start.");
+                        _activityLog.Warning("WLED: could not claim the LEDs at playback start.");
                     }
                 }
 
@@ -439,6 +448,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                                     _logger.LogWarning(
                                         "Realtime Ambilight was {Overdue:F0} ms behind the picture and restarted the analysis decoder.",
                                         overdue.TotalMilliseconds);
+                                    _activityLog.Warning($"WLED: {overdue.TotalMilliseconds:F0} ms behind the picture; restarted the decoder.");
                                 }
                                 else if (DateTimeOffset.UtcNow - lastLateReport > LateFrameReportInterval)
                                 {
@@ -468,6 +478,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                         if (!loggedSentFrame)
                         {
                             _logger.LogInformation("Realtime Ambilight sent its first WLED frame.");
+                            _activityLog.Info("WLED: streaming started.");
                             loggedSentFrame = true;
                         }
                         lastFrameSent = now;

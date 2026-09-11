@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Diagnostics;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Model;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Playback;
@@ -249,6 +250,7 @@ public sealed class HueEntertainmentServiceTests : IDisposable
             credentialStore,
             bridge,
             lightControl,
+            new PluginActivityLog(),
             NullLogger<HueEntertainmentService>.Instance,
             channelFactory);
         _services.Add(service);

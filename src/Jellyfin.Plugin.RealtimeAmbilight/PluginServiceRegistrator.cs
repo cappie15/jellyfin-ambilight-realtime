@@ -1,4 +1,5 @@
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Decoding;
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Diagnostics;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Playback;
 using Jellyfin.Plugin.RealtimeAmbilight.Hue;
 using MediaBrowser.Controller;
@@ -14,6 +15,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
 {
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
+        serviceCollection.AddSingleton<PluginActivityLog>();
         serviceCollection.AddSingleton<IMonotonicTime, StopwatchMonotonicTime>();
         serviceCollection.AddSingleton<IFfmpegAnalysisSourceResolver, JellyfinFfmpegAnalysisSourceResolver>();
         serviceCollection.AddSingleton<IPlaybackAnalysisWorker, FfmpegAnalysisWorker>();

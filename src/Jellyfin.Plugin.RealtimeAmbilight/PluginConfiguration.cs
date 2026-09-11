@@ -330,7 +330,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>
     /// How the Hue lights follow the picture, 0 (very reactive/intense) to
-    /// 100 (beautifully smooth), <c>50</c> by default. Scales
+    /// 100 (beautifully smooth), <c>40</c> by default -- leaning reactive,
+    /// closer to how a real Philips Hue sync/Ambilight-style product feels
+    /// out of the box than a flat midpoint. Scales
     /// <see cref="Core.Hue.HueNaturalLightFilter"/>'s colour/brightness time
     /// constants and its brightness rate clamp -- reactive means the lights
     /// track a cut or a flash almost instantly, smooth means colour eases
@@ -341,5 +343,5 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// restart Jellyfin (or reconnect: stop then resume playback) after
     /// changing it for the new value to take effect.
     /// </summary>
-    public int HueResponsePercent { get; set; } = 50;
+    public int HueResponsePercent { get; set; } = 40;
 }

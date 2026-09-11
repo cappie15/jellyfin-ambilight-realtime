@@ -1,4 +1,5 @@
 #pragma warning disable CA1848, CA1873
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Diagnostics;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Playback;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
@@ -15,13 +16,19 @@ public sealed class JellyfinPlaybackEventAdapter : IHostedService, IAsyncDisposa
 {
     private readonly ISessionManager _sessionManager;
     private readonly PlaybackEventCoordinator _coordinator;
+    private readonly PluginActivityLog _activityLog;
     private readonly ILogger<JellyfinPlaybackEventAdapter> _logger;
     private int _subscribed;
 
-    public JellyfinPlaybackEventAdapter(ISessionManager sessionManager, PlaybackEventCoordinator coordinator, ILogger<JellyfinPlaybackEventAdapter> logger)
+    public JellyfinPlaybackEventAdapter(
+        ISessionManager sessionManager,
+        PlaybackEventCoordinator coordinator,
+        PluginActivityLog activityLog,
+        ILogger<JellyfinPlaybackEventAdapter> logger)
     {
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
         _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
+        _activityLog = activityLog ?? throw new ArgumentNullException(nameof(activityLog));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -87,6 +94,7 @@ public sealed class JellyfinPlaybackEventAdapter : IHostedService, IAsyncDisposa
             }
 
             _logger.LogInformation("Realtime Ambilight playback start received for session {SessionId}, item {ItemId}.", sessionId, args.Item.Id);
+            _activityLog.Info($"TV: playback started on {args.Session?.DeviceName}.");
             SynchroniseBinding(args.Session?.DeviceId, args.Session?.DeviceName);
 
             _coordinator.TryPost(new PlaybackStarted(
@@ -147,6 +155,7 @@ public sealed class JellyfinPlaybackEventAdapter : IHostedService, IAsyncDisposa
             var sessionId = args.Session?.Id;
             if (!string.IsNullOrWhiteSpace(sessionId))
             {
+                _activityLog.Info($"TV: playback stopped on {args.Session?.DeviceName}.");
                 _coordinator.TryPost(new PlaybackStopped(sessionId));
             }
         }

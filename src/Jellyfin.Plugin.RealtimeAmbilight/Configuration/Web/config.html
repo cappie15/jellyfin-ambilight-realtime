@@ -34,6 +34,17 @@
         #realtimeAmbilightConfigurationPage .raFpsStage .raFpsLabel { opacity: .7; font-size: .85em; }
         #realtimeAmbilightConfigurationPage .raFpsStage .raFpsValue { font-weight: 700; font-size: 1.1em; }
         #realtimeAmbilightConfigurationPage .raFpsArrow { opacity: .5; }
+
+        /* ---- live activity log ---- */
+        #realtimeAmbilightConfigurationPage .raActivityLog { border: 1px solid rgba(127, 127, 127, .35); border-radius: .7em; padding: 1em 1.2em; margin: 0 0 1.8em; }
+        #realtimeAmbilightConfigurationPage .raActivityList { max-height: 13em; overflow-y: auto; font-size: .85em; display: flex; flex-direction: column-reverse; gap: .25em; }
+        #realtimeAmbilightConfigurationPage .raActivityRow { display: flex; gap: .7em; padding: .15em 0; }
+        #realtimeAmbilightConfigurationPage .raActivityRow .raActivityTime { opacity: .6; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        #realtimeAmbilightConfigurationPage .raActivityRow.raActivityWarning .raActivityMessage { color: #d18e1c; }
+
+        /* ---- colour deviation grid ---- */
+        #realtimeAmbilightConfigurationPage .raColourGrid { display: grid; grid-template-columns: 1fr 1fr; gap: .4em 1.4em; margin-top: .7em; font-size: .92em; }
+        #realtimeAmbilightConfigurationPage .raColourDot { display: inline-block; width: .8em; height: .8em; border-radius: 50%; margin-right: .5em; vertical-align: middle; border: 1px solid rgba(127, 127, 127, .45); }
     </style>
     <div class="content-primary">
         <div class="verticalSection">
@@ -58,6 +69,23 @@
                 <div class="raCardTitle"><span>Hue</span><span class="raPill" id="raCardHuePill">&nbsp;</span></div>
                 <div class="raCardMeta" id="raCardHueMeta">&nbsp;</div>
             </button>
+            <div class="raCard" id="raPipelineCard" style="cursor:default">
+                <div class="raCardTitle"><span>Pipeline</span><span class="raPill" id="raCardPipelinePill">&nbsp;</span></div>
+                <div class="raFpsChain" id="wledFpsChain">
+                    <div class="raFpsStage"><div class="raFpsLabel">FFmpeg decode</div><div class="raFpsValue" id="fpsAnalyse">–</div></div>
+                    <span class="raFpsArrow">&#8594;</span>
+                    <div class="raFpsStage"><div class="raFpsLabel">Sampling</div><div class="raFpsValue" id="fpsSample">–</div></div>
+                    <span class="raFpsArrow">&#8594;</span>
+                    <div class="raFpsStage"><div class="raFpsLabel">Sent to WLED</div><div class="raFpsValue" id="fpsWled">–</div></div>
+                </div>
+                <div class="fieldDescription" id="fpsHint">Live only while something is playing on the bound device.</div>
+            </div>
+        </div>
+
+        <div class="raActivityLog">
+            <div class="raCardTitle" style="margin-bottom:.5em"><span>Live activity</span></div>
+            <div class="raActivityList" id="raActivityList"></div>
+            <div class="fieldDescription" id="raActivityEmpty">Nothing yet -- this fills in as WLED, Hue or the TV connect, disconnect, or need attention.</div>
         </div>
 
         <form id="realtimeAmbilightConfigurationForm">
@@ -140,14 +168,6 @@
                     <div class="raSummaryRow"><span class="raK">LEDs around the TV</span><span class="raV" id="wledSummaryLeds">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">White signal (RGBW)</span><span class="raV" id="wledSummaryRgbw">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">Update rate / delay</span><span class="raV" id="wledSummaryTiming">&nbsp;</span></div>
-                    <div class="raFpsChain" id="wledFpsChain">
-                        <div class="raFpsStage"><div class="raFpsLabel">Analysis decode</div><div class="raFpsValue" id="fpsAnalyse">–</div></div>
-                        <span class="raFpsArrow">&#8594;</span>
-                        <div class="raFpsStage"><div class="raFpsLabel">Sampling</div><div class="raFpsValue" id="fpsSample">–</div></div>
-                        <span class="raFpsArrow">&#8594;</span>
-                        <div class="raFpsStage"><div class="raFpsLabel">Sent to WLED</div><div class="raFpsValue" id="fpsWled">–</div></div>
-                    </div>
-                    <div class="fieldDescription" id="fpsHint">Live only while something is playing on the bound device.</div>
                     <button is="emby-button" type="button" class="raised raEditToggle" data-edit-toggle="wled">Edit</button>
                 </div>
                 <div class="raEdit" id="wledEdit" hidden>
@@ -342,8 +362,9 @@
                     <div class="raSummaryRow"><span class="raK">Brightness</span><span class="raV" id="ambilightSummaryBrightness">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">Colour intensity</span><span class="raV" id="ambilightSummarySaturation">&nbsp;</span></div>
                     <div class="raSummaryRow"><span class="raK">Smoothing</span><span class="raV" id="ambilightSummarySmoothing">&nbsp;</span></div>
-                    <div class="raSummaryRow" style="align-items:flex-start"><span class="raK">Colour deviation</span><span class="raV" id="ambilightSummaryDeviation" style="text-align:right">&nbsp;</span></div>
-                    <button is="emby-button" type="button" class="raised raEditToggle" data-edit-toggle="ambilight">Edit</button>
+                    <div class="raSummaryRow"><span class="raK">Colour deviation</span><span class="raV" id="ambilightSummaryDeviationCount">&nbsp;</span></div>
+                    <div class="raColourGrid" id="ambilightSummaryDeviation"></div>
+                    <button is="emby-button" type="button" class="raised raEditToggle" data-edit-toggle="ambilight" style="margin-top:1em">Edit</button>
                 </div>
                 <div class="raEdit" id="ambilightEdit" hidden>
                 <div class="verticalSection" id="calibrationSection">
@@ -512,8 +533,8 @@
                     </div>
 
                     <div class="inputContainer">
-                        <input is="emby-input" id="hueResponsePercent" type="range" min="0" max="100" step="1" label="Responsivity / intensity (0-100)" />
-                        <div class="fieldDescription">Now: <strong id="hueResponseValue"></strong>. Reactive tracks a cut or a flash almost instantly, like an intense Ambilight; smooth eases colour into a new scene over a second or more so the lighting stays ambience rather than something that draws the eye away from the content. <strong>Default: balanced (50).</strong> Takes effect on the next reconnect (stop and resume playback), not mid-stream.</div>
+                        <input is="emby-input" id="hueResponsePercent" type="range" min="0" max="100" step="1" label="Responsivity / intensity (out of 100)" />
+                        <div class="fieldDescription">Now: <strong id="hueResponseValue"></strong>. Reactive tracks a cut or a flash almost instantly, like an intense Ambilight; smooth eases colour into a new scene over a second or more so the lighting stays ambience rather than something that draws the eye away from the content. <strong>Default: 40.</strong> Takes effect on the next reconnect (stop and resume playback), not mid-stream.</div>
                     </div>
 
                     <div class="selectContainer">
@@ -536,6 +557,11 @@
 
             <div class="verticalSection">
                 <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
+                <button is="emby-button" type="button" id="resetConfiguration" class="raised block" style="margin-top:.8em">Reset to defaults</button>
+                <div class="fieldDescription" style="margin-top:.4em">
+                    Puts every setting on this page back to its factory default and saves immediately -- asks for
+                    confirmation first. Does not unlink a paired Hue bridge; use "Unlink this bridge" on the Hue tab for that.
+                </div>
             </div>
 
         </form>

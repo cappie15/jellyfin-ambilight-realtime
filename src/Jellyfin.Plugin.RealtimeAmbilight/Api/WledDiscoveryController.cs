@@ -1,7 +1,10 @@
+using System.Diagnostics;
+using System.Net.Sockets;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Color;
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Diagnostics;
 
 namespace Jellyfin.Plugin.RealtimeAmbilight.Api;
 
@@ -18,11 +21,52 @@ public sealed class WledDiscoveryController : ControllerBase
 {
     private readonly WledDiscoveryService _discoveryService;
     private readonly JellyfinWledOutputService _outputService;
+    private readonly PluginActivityLog _activityLog;
 
-    public WledDiscoveryController(WledDiscoveryService discoveryService, JellyfinWledOutputService outputService)
+    public WledDiscoveryController(WledDiscoveryService discoveryService, JellyfinWledOutputService outputService, PluginActivityLog activityLog)
     {
         _discoveryService = discoveryService ?? throw new ArgumentNullException(nameof(discoveryService));
         _outputService = outputService ?? throw new ArgumentNullException(nameof(outputService));
+        _activityLog = activityLog ?? throw new ArgumentNullException(nameof(activityLog));
+    }
+
+    /// <summary>The settings page's "Live activity" block -- see <see cref="PluginActivityLog"/> for what does and does not end up here.</summary>
+    [HttpGet("Activity")]
+    [ProducesResponseType(typeof(IReadOnlyList<PluginActivityEntry>), StatusCodes.Status200OK)]
+    public ActionResult<IReadOnlyList<PluginActivityEntry>> GetActivity() => Ok(_activityLog.Snapshot());
+
+    /// <summary>
+    /// A reachability/latency check for one of this plugin's own devices
+    /// (the WLED controller, the Hue bridge, or the bound TV, if its IP is
+    /// known), shown live in that device's overview card. Not an ICMP ping --
+    /// this process has no raw-socket privilege for that -- but a bare TCP
+    /// connect to the device's own service port and how long that took,
+    /// which is the standard web-dashboard approximation and answers exactly
+    /// the same question: is it there, and how far away does it feel.
+    /// </summary>
+    [HttpGet("Ping")]
+    [ProducesResponseType(typeof(PingResult), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PingResult>> PingAsync([FromQuery] string host, [FromQuery] int port, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return Ok(new PingResult(false, null));
+        }
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            using var client = new TcpClient();
+            await client.ConnectAsync(host, Math.Clamp(port, 1, ushort.MaxValue), linked.Token).ConfigureAwait(false);
+            stopwatch.Stop();
+            return Ok(new PingResult(true, stopwatch.Elapsed.TotalMilliseconds));
+        }
+        catch (Exception exception) when (exception is SocketException or OperationCanceledException)
+        {
+            return Ok(new PingResult(false, null));
+        }
     }
 
     /// <summary>
@@ -148,6 +192,9 @@ public sealed class WledDiscoveryController : ControllerBase
             : StatusCode(StatusCodes.Status502BadGateway, "WLED did not accept the change.");
     }
 }
+
+/// <summary>Result of one <see cref="WledDiscoveryController.PingAsync"/> reachability check.</summary>
+public sealed record PingResult(bool Reachable, double? Milliseconds);
 
 /// <summary>
 /// A deliberately small, local calibration surface. It never writes WLED
