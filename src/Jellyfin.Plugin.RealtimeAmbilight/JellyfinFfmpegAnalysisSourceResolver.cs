@@ -77,13 +77,15 @@ public sealed class JellyfinFfmpegAnalysisSourceResolver : IFfmpegAnalysisSource
             SourceFramesPerSecond: sourceFramesPerSecond);
     }
 
+    /// <summary>Used only when the source does not report its own frame rate at all (an unusual/older container); not user-configurable, since the source's own rate is always preferred when it is known.</summary>
+    private const int FallbackFramesPerSecond = 30;
+
     private static AnalysisFrameOptions CreateFrameOptions(double? sourceFramesPerSecond)
     {
         var configuration = Plugin.Instance?.Configuration;
-        var matchSource = configuration?.MatchSourceFrameRate ?? true;
-        var framesPerSecond = matchSource && sourceFramesPerSecond is > 0
+        var framesPerSecond = sourceFramesPerSecond is > 0
             ? (int)Math.Round(sourceFramesPerSecond.Value, MidpointRounding.AwayFromZero)
-            : configuration?.AnalysisFramesPerSecond ?? 30;
+            : FallbackFramesPerSecond;
         return new AnalysisFrameOptions
         {
             Width = Math.Clamp(configuration?.AnalysisWidth ?? 160, 16, 1920),

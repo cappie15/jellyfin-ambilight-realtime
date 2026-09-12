@@ -54,13 +54,13 @@ export default function (view) {
 
     const numericFields = [
         "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond", "stopFadeMilliseconds",
-        "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisFramesPerSecond", "samplingDepthPercent",
+        "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "samplingDepthPercent",
         "minimumColourHoldMilliseconds", "wledSmoothingMilliseconds", ...colourTuningFields
     ];
     const defaults = {
         WledHttpPort: 80, RealtimeProtocol: 0, OutputDelayMilliseconds: 0, OutputFramesPerSecond: 30,
         StopFadeMilliseconds: 250, TopLedCount: 265, RightLedCount: 150,
-        BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160, AnalysisFramesPerSecond: 30,
+        BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160,
         SamplingDepthPercent: 10, MinimumColourHoldMilliseconds: 0, WledSmoothingMilliseconds: 0, BrightnessPercent: 100, SaturationPercent: 100,
         RedGainPercent: 100, GreenGainPercent: 100, BlueGainPercent: 100,
         BlackLevelFloorPercent: 0,
@@ -996,12 +996,6 @@ export default function (view) {
         byId("analysisSizeValue").textContent = `${width} × ${analysisHeight()} pixels`;
     }
 
-    // The slider is meaningless while the source's own rate is what actually
-    // gets used, so grey it out rather than leave it interactive with no effect.
-    function updateMatchSourceFrameRateState() {
-        byId("analysisFramesPerSecond").disabled = byId("matchSourceFrameRate").checked;
-    }
-
     // A configuration written by hand, or by an older build, can hold a width the
     // preset list does not offer. Keep it selectable instead of silently moving
     // the user to a different resolution on the next save.
@@ -1420,8 +1414,6 @@ export default function (view) {
                 byId("ignoreBlackBorders").checked = config.IgnoreBlackBorders !== false;
                 byId("correctLedGamma").checked = config.CorrectLedGamma !== false;
                 byId("autoDetectLedGamma").checked = config.AutoDetectLedGamma !== false;
-                byId("matchSourceFrameRate").checked = config.MatchSourceFrameRate !== false;
-                updateMatchSourceFrameRateState();
                 byId("allowWledControl").checked = config.AllowWledControl === true;
                 byId("sendWhiteChannel").checked = config.SendWhiteChannel === true;
                 byId("whiteChannelStrengthPercent").value = config.WhiteChannelStrengthPercent ?? 50;
@@ -1521,7 +1513,6 @@ export default function (view) {
             IgnoreBlackBorders: byId("ignoreBlackBorders").checked,
             CorrectLedGamma: byId("correctLedGamma").checked,
             AutoDetectLedGamma: byId("autoDetectLedGamma").checked,
-            MatchSourceFrameRate: byId("matchSourceFrameRate").checked,
             AllowWledControl: byId("allowWledControl").checked,
             SendWhiteChannel: byId("sendWhiteChannel").checked,
             WhiteChannelStrengthPercent: Number(byId("whiteChannelStrengthPercent").value),
@@ -1562,10 +1553,10 @@ export default function (view) {
     // save() rebuilds and validates the *whole* form (it refuses without a
     // WLED address, for one), which is the wrong failure mode for a slider an
     // operator is dragging while watching the TV, not the screen. This only
-    // ever merges the five tuning fields into whatever was last loaded, so it
-    // can never clobber an in-progress, not-yet-saved edit sitting open in a
+    // ever merges the tuning fields into whatever was last loaded, so it can
+    // never clobber an in-progress, not-yet-saved edit sitting open in a
     // connection modal elsewhere on the page.
-    const tuningFields = ["brightnessPercent", "wledSmoothingMilliseconds", "minimumColourHoldMilliseconds", "hueBrightnessPercent", "hueResponsePercent"];
+    const tuningFields = ["brightnessPercent", "saturationPercent", "blackLevelFloorPercent", "wledSmoothingMilliseconds", "minimumColourHoldMilliseconds", "hueBrightnessPercent", "hueResponsePercent"];
     let tuningSaveTimer = null;
 
     function scheduleTuningSave() {
@@ -1657,8 +1648,6 @@ export default function (view) {
             IgnoreBlackBorders: true,
             AnalysisWidth: 160,
             AnalysisHeight: 90,
-            AnalysisFramesPerSecond: 30,
-            MatchSourceFrameRate: true,
             AllowWledControl: false,
             MinimumColourHoldMilliseconds: 0,
             WledSmoothingMilliseconds: 0,
@@ -2016,7 +2005,6 @@ export default function (view) {
     });
     byId("whiteChannelStrengthPercent").addEventListener("input", setColourLabels);
     byId("sendWhiteChannel").addEventListener("change", setColourLabels);
-    byId("matchSourceFrameRate").addEventListener("change", updateMatchSourceFrameRateState);
     byId("allowWledControl").addEventListener("change", () => {
         byId("allowWledControlSummary").textContent = byId("allowWledControl").checked
             ? "This plugin may fix WLED settings for you. Save to keep it that way."

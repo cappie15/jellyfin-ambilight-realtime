@@ -303,6 +303,16 @@
             </div>
 
             <div class="inputContainer">
+                <input is="emby-input" id="saturationPercent" type="range" min="50" max="200" step="5" label="Colour intensity" />
+                <div class="fieldDescription">Now: <strong id="saturationValue"></strong>. <strong>Default: 100%.</strong></div>
+            </div>
+
+            <div class="inputContainer">
+                <input is="emby-input" id="blackLevelFloorPercent" type="range" min="0" max="20" step="1" label="Black level floor" />
+                <div class="fieldDescription">Now: <strong id="blackLevelFloorValue"></strong>. Picture edges darker than this go fully off instead of glowing dim. <strong>Default: 0% (off).</strong></div>
+            </div>
+
+            <div class="inputContainer">
                 <input is="emby-input" id="wledSmoothingMilliseconds" type="range" min="0" max="500" step="10" dir="rtl" label="WLED smoothing" />
                 <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED into its new colour; left is smoother, right is more reactive. <strong>Default: 0 ms (off, fully reactive).</strong></div>
             </div>
@@ -358,7 +368,7 @@
 
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Reading the picture</h3>
-                    <p class="fieldDescription">How this plugin samples the TV's own picture, before any colour tuning is applied. Leave these at their defaults unless you need lower CPU use or a different edge response.</p>
+                    <p class="fieldDescription">How this plugin samples the stream's own picture, before any colour tuning is applied. Leave these at their defaults unless you need lower CPU use or a different edge response.</p>
 
                     <div style="display:flex;gap:2em;flex-wrap:wrap;align-items:flex-start">
                         <div style="flex:1 1 20em;min-width:18em">
@@ -375,15 +385,7 @@
                             </div>
                         </div>
                         <div style="flex:1 1 20em;min-width:18em">
-                            <div class="inputContainer">
-                                <input is="emby-input" id="analysisFramesPerSecond" type="number" min="1" max="60" label="Sampling frames per second" />
-                                <div class="fieldDescription"><strong>Default: 30.</strong> Do not exceed the LED update rate.</div>
-                            </div>
-                            <label class="checkboxContainer">
-                                <input is="emby-checkbox" id="matchSourceFrameRate" type="checkbox" />
-                                <span>Match the source's own frame rate</span>
-                            </label>
-                            <div class="fieldDescription">Decoding faster than the source's real rate only duplicates frames it never has. <strong>Default: on.</strong></div>
+                            <div class="fieldDescription">Sampling frame rate always follows the source's own; decoding faster than the source's real rate would only duplicate frames it never has.</div>
                         </div>
                     </div>
 
@@ -616,20 +618,9 @@
                     <details id="advancedColourControls">
                         <summary style="cursor:pointer;list-style:revert">
                             <span class="sectionTitle" style="display:inline">All colour controls (advanced)</span>
-                            <div class="fieldDescription" style="margin-top:.3em">Colour intensity, black level floor, raw white balance and the wall colour. The wizard above already adjusts the ones that matter per step.</div>
+                            <div class="fieldDescription" style="margin-top:.3em">Raw white balance and the wall colour. The wizard above already adjusts the ones that matter per step; colour intensity and black level floor now live in the Live tuning panel below, where changes apply immediately.</div>
                         </summary>
                         <div style="padding:.8em 0 0 1.25em">
-                        <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
-                            <div style="flex:1 1 16em;min-width:14em"><div class="inputContainer">
-                                <input is="emby-input" id="saturationPercent" type="range" min="50" max="200" step="5" label="Colour intensity" />
-                                <div class="fieldDescription">Now: <strong id="saturationValue"></strong>. <strong>Default: 100%.</strong></div>
-                            </div></div>
-                            <div style="flex:1 1 16em;min-width:14em"><div class="inputContainer">
-                                <input is="emby-input" id="blackLevelFloorPercent" type="range" min="0" max="20" step="1" label="Black level floor" />
-                                <div class="fieldDescription">Now: <strong id="blackLevelFloorValue"></strong>. Picture edges darker than this go fully off instead of glowing dim. <strong>Default: 0% (off).</strong></div>
-                            </div></div>
-                        </div>
-
                         <div class="fieldDescription" style="margin-top:.5em"><strong>Raw white balance.</strong> What the wizard's per-step controls actually move; start at 100% and use those instead unless you need an exact independent value.</div>
                         <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
                             <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="redGainPercent" type="range" min="50" max="150" step="1" label="Red" /><div class="fieldDescription">Now: <strong id="redGainValue"></strong></div></div></div>
