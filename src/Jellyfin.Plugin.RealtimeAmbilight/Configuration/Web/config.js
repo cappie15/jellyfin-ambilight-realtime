@@ -1854,38 +1854,6 @@ export default function (view) {
     createSideTuningCards();
     addRangeScales();
 
-    // emby-input upgrades the range in place but also inserts its own
-    // <label> as the range's immediate previous sibling, right inside
-    // .raWaveSlider next to the SVG -- exactly where the wave and its
-    // "Smooth"/"Reactive" captions live, so the two collided. Gather the SVG,
-    // the captions and the input into their own inner .raWaveTrack wrapper,
-    // leaving that label as .raWaveSlider's only remaining direct child
-    // above it, rendering exactly like every other slider's label.
-    view.querySelectorAll(".raWaveSliderInput").forEach(range => {
-        const wrapper = range.closest(".raWaveSlider");
-        if (!wrapper) {
-            return;
-        }
-
-        const track = document.createElement("div");
-        track.className = "raWaveTrack";
-        wrapper.querySelectorAll(".raWaveSliderSvg, .raWaveSliderCaption").forEach(el => track.appendChild(el));
-        track.appendChild(range);
-        wrapper.appendChild(track);
-    });
-
-    // addRangeScales inserts its min/now/max line as the range's own next
-    // sibling -- which, now that the range lives inside .raWaveTrack, would
-    // land there too, squeezed next to the wave. Move it out to sit below
-    // the whole wrapper instead, exactly where it renders for every other
-    // slider.
-    view.querySelectorAll(".raWaveSliderInput").forEach(range => {
-        const scale = range.nextElementSibling;
-        const wrapper = range.closest(".raWaveSlider");
-        if (scale && wrapper) {
-            wrapper.insertAdjacentElement("afterend", scale);
-        }
-    });
     addStepButtonsToSection();
     // Delegated, not a per-element listener: some [data-open-edit-all]
     // elements (e.g. the "Open TV settings" link inside the FPS chain hint)
