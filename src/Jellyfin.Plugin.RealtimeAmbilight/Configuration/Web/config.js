@@ -108,6 +108,13 @@ export default function (view) {
     // { reachable, milliseconds } | null per device, refreshed by refreshPings()
     // every 5 s and rendered inline in each overview card by refreshOverviewCards.
     let latestPings = { wled: null, hue: null };
+    // False only for the brief window between the page's first paint and the
+    // first ping round trip resolving. Without this, a configured-but-not-yet-
+    // pinged WLED/Hue card reads latestPings.wled/hue as null and falls
+    // through to the same branch as "reachable", flashing a green READY that
+    // flips to red UNREACHABLE a moment later once the real check lands --
+    // confirmed live, this is not what a working state actually looks like.
+    let pingsEverLoaded = false;
     const byId = id => view.querySelector(`#${id}`);
     const fieldKey = field => field[0].toUpperCase() + field.slice(1);
     const show = (id, visible) => { byId(id).style.display = visible ? "block" : "none"; };
@@ -249,10 +256,11 @@ export default function (view) {
         const streaming = isWledStreaming();
         const ping = latestPings.wled;
         const state = !host ? "off"
+            : !pingsEverLoaded ? "pending"
             : (ping && !ping.reachable) ? "dead"
             : (ping?.reachable && ping.milliseconds > SlowPingThresholdMs) ? "warn"
             : "ok";
-        const label = !host ? "OFF" : state === "dead" ? "UNREACHABLE" : state === "warn" ? "SLOW" : streaming ? "STREAM" : "READY";
+        const label = !host ? "OFF" : !pingsEverLoaded ? "CHECKING…" : state === "dead" ? "UNREACHABLE" : state === "warn" ? "SLOW" : streaming ? "STREAM" : "READY";
         setCardState("wled", state, label);
         const counts = ledCountFields.map(field => Number(byId(field).value) || 0);
         byId("wledStat").innerHTML = host ? `${counts.reduce((a, b) => a + b, 0)} <span class="raUnit">LEDs</span>` : "&mdash;";
@@ -336,10 +344,11 @@ export default function (view) {
         const streaming = isHueStreaming();
         const ping = latestPings.hue;
         const state = !configured ? "off"
+            : !pingsEverLoaded ? "pending"
             : (ping && !ping.reachable) ? "dead"
             : (ping?.reachable && ping.milliseconds > SlowPingThresholdMs) ? "warn"
             : "ok";
-        const label = !configured ? "OFF" : state === "dead" ? "UNREACHABLE" : state === "warn" ? "SLOW" : streaming ? "STREAM" : "READY";
+        const label = !configured ? "OFF" : !pingsEverLoaded ? "CHECKING…" : state === "dead" ? "UNREACHABLE" : state === "warn" ? "SLOW" : streaming ? "STREAM" : "READY";
         setCardState("hue", state, label);
 
         const areaOption = byId("hueEntertainmentConfig").selectedOptions[0]?.textContent
@@ -463,6 +472,7 @@ export default function (view) {
             pingOne(hueHost, 443)
         ]).then(([wled, hue]) => {
             latestPings = { wled, hue };
+            pingsEverLoaded = true;
             refreshOverviewCards();
             renderWledLiveStatus();
         });
