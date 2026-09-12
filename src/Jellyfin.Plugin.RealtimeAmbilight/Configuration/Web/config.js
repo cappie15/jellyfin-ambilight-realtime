@@ -61,7 +61,7 @@ export default function (view) {
         WledHttpPort: 80, RealtimeProtocol: 0, OutputDelayMilliseconds: 0, OutputFramesPerSecond: 30,
         TopLedCount: 265, RightLedCount: 150,
         BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160,
-        SamplingDepthPercent: 10, MinimumColourHoldMilliseconds: 100, WledSmoothingMilliseconds: 110, BrightnessPercent: 158, SaturationPercent: 140,
+        SamplingDepthPercent: 5, MinimumColourHoldMilliseconds: 100, WledSmoothingMilliseconds: 110, BrightnessPercent: 158, SaturationPercent: 140,
         RedGainPercent: 100, GreenGainPercent: 100, BlueGainPercent: 100,
         BlackLevelFloorPercent: 1,
         WallColourCorrectionPercent: 100,
@@ -966,7 +966,7 @@ export default function (view) {
 
     function setDepthLabel() {
         const percent = Number(byId("samplingDepthPercent").value);
-        byId("samplingDepthValue").textContent = percent === 10 ? "10% (recommended)" : `${percent}%`;
+        byId("samplingDepthValue").textContent = percent === 5 ? "5% (recommended)" : `${percent}%`;
         updateLayoutDiagram();
     }
 
@@ -1630,7 +1630,7 @@ export default function (view) {
             OutputDelayMilliseconds: 0,
             OutputFramesPerSecond: 30,
             HoldWhilePaused: true,
-            SamplingDepthPercent: 10,
+            SamplingDepthPercent: 5,
             BrightnessPercent: 158,
             SaturationPercent: 140,
             RedGainPercent: 100,

@@ -83,10 +83,14 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>
     /// Fraction of each axis, as a percentage, sampled inward from every edge.
-    /// Ten percent is the recommended setting: it takes in enough of the picture
-    /// to be stable without letting the centre of the image dominate an edge.
+    /// <see cref="EdgeSampler.DefaultDepthPercent"/> (ten percent) was the
+    /// original recommendation -- enough of the picture to be stable without
+    /// letting the centre dominate an edge -- but real-room tuning settled on
+    /// five instead, closer to the picture's actual edge without losing that
+    /// stability, and this default now reflects that rather than the original
+    /// untested guess.
     /// </summary>
-    public int SamplingDepthPercent { get; set; } = EdgeSampler.DefaultDepthPercent;
+    public int SamplingDepthPercent { get; set; } = 5;
 
     /// <summary>
     /// Sends byte values proportional to light output, which is what a
