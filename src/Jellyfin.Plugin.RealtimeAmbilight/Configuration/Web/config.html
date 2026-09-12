@@ -80,6 +80,10 @@
         #realtimeAmbilightConfigurationPage .raModalClose { background: none; border: none; color: #8a929c; font-size: 1.5em; line-height: 1; cursor: pointer; padding: .1em .3em; }
         #realtimeAmbilightConfigurationPage .raModalClose:hover { color: #e7e9ec; }
         #realtimeAmbilightConfigurationPage .raModalBody { padding: 1.2em 1.3em; overflow-y: auto; flex: 1 1 auto; }
+        /* Same trick as .raStageRailWrap.raScrollable, applied vertically:
+           only added once JS confirms the body actually overflows, so a short
+           modal's own last field never gets needlessly dimmed. */
+        #realtimeAmbilightConfigurationPage .raModalBody.raScrollable { -webkit-mask-image: linear-gradient(to bottom, #000 92%, transparent); mask-image: linear-gradient(to bottom, #000 92%, transparent); }
         #realtimeAmbilightConfigurationPage .raModalFooter { padding: 1em 1.3em; border-top: 1px solid #22262c; flex: none; }
 
         /* ---- modernized sliders + step buttons inside every modal ---- */

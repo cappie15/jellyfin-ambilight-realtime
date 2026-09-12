@@ -212,6 +212,22 @@ export default function (view) {
         byId(`editModal-${section}`).hidden = false;
         byId("raModalBackdrop").hidden = false;
         openModalSection = section;
+        requestAnimationFrame(updateModalScrollFade);
+    }
+
+    // A modal's own content can grow after it opens -- WLED's RGBW checkbox
+    // reveals a whole "White LED strength" field, for one -- so this is
+    // recomputed on every field change inside the modal (see the input/change
+    // listeners below), not just once on open.
+    function updateModalScrollFade() {
+        if (!openModalSection) {
+            return;
+        }
+
+        const body = byId(`editModal-${openModalSection}`)?.querySelector(".raModalBody");
+        if (body) {
+            body.classList.toggle("raScrollable", body.scrollHeight > body.clientHeight + 1);
+        }
     }
 
     function closeEditModal() {
@@ -1894,6 +1910,10 @@ export default function (view) {
     };
     new ResizeObserver(updateStageRailScrollHint).observe(stageRailWrap);
     updateStageRailScrollHint();
+
+    view.addEventListener("input", event => { if (event.target.closest(".raModalBody")) { updateModalScrollFade(); } });
+    view.addEventListener("change", event => { if (event.target.closest(".raModalBody")) { updateModalScrollFade(); } });
+    window.addEventListener("resize", updateModalScrollFade);
 
     tuningFields.forEach(field => byId(field).addEventListener("input", scheduleTuningSave));
 
