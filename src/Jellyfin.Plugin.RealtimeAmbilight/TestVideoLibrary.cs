@@ -32,6 +32,7 @@ public sealed class TestVideoLibrary
         ("06-monochrome-blue.mp4", "Ambilight test 6 - Monochrome blue.mp4"),
         ("07-pillarbox-4-3.mp4", "Ambilight test 7 - Pillarbox 4-3.mp4"),
         ("08-letterbox-21-9.mp4", "Ambilight test 8 - Letterbox 21-9.mp4"),
+        ("09-left-right-check.mp4", "Ambilight test 9 - Left-right check (red left, blue right).mp4"),
     ];
 
     private readonly ILibraryManager _libraryManager;
