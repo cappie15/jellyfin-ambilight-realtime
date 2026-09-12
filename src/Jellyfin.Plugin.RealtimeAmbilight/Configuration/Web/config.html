@@ -67,6 +67,13 @@
         #realtimeAmbilightConfigurationPage .raModalBackdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 40; }
         #realtimeAmbilightConfigurationPage .raModalBackdrop[hidden] { display: none; }
         #realtimeAmbilightConfigurationPage .raModal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 41; width: min(44em, 92vw); max-height: 84vh; display: flex; flex-direction: column; background: #0d0f12; color: #e7e9ec; border: 1px solid #2a2f36; border-radius: 1em; box-shadow: 0 20px 60px -12px rgba(0, 0, 0, .6); font-family: "IBM Plex Sans", system-ui, sans-serif; }
+        /* Below this width a centered floating box has no real margin to
+           center within -- it was landing off-center or clipped depending on
+           the browser's own chrome. A full-screen sheet sidesteps that
+           entirely instead of chasing centering math per device. */
+        @media (max-width: 48em) {
+            #realtimeAmbilightConfigurationPage .raModal { top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; max-height: 100%; transform: none; border-radius: 0; border: none; }
+        }
         #realtimeAmbilightConfigurationPage .raModal[hidden] { display: none; }
         #realtimeAmbilightConfigurationPage .raModalHeader { display: flex; align-items: center; justify-content: space-between; padding: 1.1em 1.3em; border-bottom: 1px solid #22262c; flex: none; }
         #realtimeAmbilightConfigurationPage .raModalTitle { margin: 0; font-size: 1.15em; }
@@ -76,8 +83,33 @@
         #realtimeAmbilightConfigurationPage .raModalFooter { padding: 1em 1.3em; border-top: 1px solid #22262c; flex: none; }
 
         /* ---- modernized sliders + step buttons inside every modal ---- */
-        #realtimeAmbilightConfigurationPage .raModalBody input[type="range"] { accent-color: #3ddc84; height: 1.4em; }
+        #realtimeAmbilightConfigurationPage .raModalBody input[type="range"], #realtimeAmbilightConfigurationPage .raPanel input[type="range"] { accent-color: #3ddc84; height: 1.4em; }
         #realtimeAmbilightConfigurationPage .raModalBody input:disabled { opacity: .45; cursor: not-allowed; }
+
+        /* ---- wave slider: a smooth <-> reactive control drawn as a chirp --
+           long, lazy waves on the smooth end, tightening into short, quick
+           ones on the reactive end, so the track's own shape carries the
+           meaning. dir="rtl" on the actual <input> mirrors it so smooth
+           lands on the left and reactive on the right, matching the wave,
+           without changing the value's own 0=reactive/100=smooth meaning
+           anywhere else (WLED's own smoothing-ms scale, the saved config). ---- */
+        /* .raWaveTrack is assembled by JS (see the "raWaveTrack" wiring in
+           config.js): it moves just the SVG and the <input> into their own
+           inner wrapper, leaving emby-input's own auto-inserted <label>
+           outside it, in normal document flow above -- rendering exactly
+           like every other slider's label, immune to whatever height that
+           label turns out to need. */
+        #realtimeAmbilightConfigurationPage .raWaveTrack { position: relative; height: 1.4em; }
+        #realtimeAmbilightConfigurationPage .raWaveSliderCaption { position: absolute; top: 50%; transform: translateY(-50%); font: 500 .68em/1 "IBM Plex Mono", monospace; color: #6d747d; text-transform: uppercase; letter-spacing: .04em; z-index: 2; pointer-events: none; }
+        #realtimeAmbilightConfigurationPage .raWaveSliderCaptionLeft { left: .1em; }
+        #realtimeAmbilightConfigurationPage .raWaveSliderCaptionRight { right: .1em; }
+        #realtimeAmbilightConfigurationPage .raWaveSliderSvg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+        #realtimeAmbilightConfigurationPage .raWaveSliderSvg path { fill: none; stroke: #3ddc84; stroke-width: 2.5; stroke-linecap: round; opacity: .5; }
+        #realtimeAmbilightConfigurationPage .raWaveSliderInput { position: relative; z-index: 1; width: 100%; margin: 0; -webkit-appearance: none; appearance: none; background: transparent; height: 1.4em; }
+        #realtimeAmbilightConfigurationPage .raWaveSliderInput::-webkit-slider-runnable-track { background: transparent; height: 1.4em; }
+        #realtimeAmbilightConfigurationPage .raWaveSliderInput::-moz-range-track { background: transparent; height: 1.4em; border: none; }
+        #realtimeAmbilightConfigurationPage .raWaveSliderInput::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 1em; height: 1em; border-radius: 50%; background: #3ddc84; margin-top: -.3em; cursor: pointer; box-shadow: 0 0 0 3px #0d0f12; }
+        #realtimeAmbilightConfigurationPage .raWaveSliderInput::-moz-range-thumb { width: 1em; height: 1em; border-radius: 50%; background: #3ddc84; border: 3px solid #0d0f12; cursor: pointer; }
         #realtimeAmbilightConfigurationPage .raStepBtn { flex: 0 0 auto; min-width: 2.2em; padding: .2em .5em; font: 600 .95em/1 "IBM Plex Mono", monospace; }
 
         /* ---- greyed out while its own "enable" checkbox is off, e.g. the Hue
@@ -204,14 +236,14 @@
                     <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="wled">Edit</button>
                 </div>
                 <div class="raCard" id="raCard-ambilight">
-                    <div class="raCardTop"><span>Ambilight</span><span class="raCardState" id="ambilightState"><span class="raSkel"></span></span></div>
+                    <div class="raCardTop"><span>Plugin</span><span class="raCardState" id="ambilightState"><span class="raSkel"></span></span></div>
                     <div class="raCardStat" id="ambilightStat"><span class="raSkel" style="width:80%;max-width:11em"></span></div>
                     <div class="raCardCap" id="ambilightCap"><span class="raSkel"></span></div>
                     <div class="raCardCap" id="ambilightSub">&nbsp;</div>
                     <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="ambilight">Edit</button>
                 </div>
                 <div class="raCard" id="raCard-hue">
-                    <div class="raCardTop"><span>Hue</span><span class="raCardState" id="hueState"><span class="raSkel"></span></span></div>
+                    <div class="raCardTop"><span>Philips Hue</span><span class="raCardState" id="hueState"><span class="raSkel"></span></span></div>
                     <div class="raCardStat" id="hueStat"><span class="raSkel" style="width:80%;max-width:11em"></span></div>
                     <div class="raCardCap" id="hueCap"><span class="raSkel"></span></div>
                     <div class="raCardPing" id="huePing"></div>
@@ -246,6 +278,46 @@
             </div>
             </div>
             <div class="fieldDescription" id="fpsHint">Live only while something is playing on the bound device.</div>
+        </div>
+
+        <div class="raPanel" id="raTuningPanel">
+            <div class="raPanelTop"><span>Live tuning</span><span class="raCardState" id="tuningSavedIndicator">&nbsp;</span></div>
+            <p class="fieldDescription" style="margin-bottom:1.1em">Every slider here applies to the picture immediately and saves itself a moment after you stop moving it, so you can watch the TV or the LEDs instead of the screen while adjusting.</p>
+
+            <div class="inputContainer">
+                <input is="emby-input" id="brightnessPercent" type="range" min="1" max="200" step="1" label="WLED brightness" />
+                <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. Above 100% pushes already-dim scenes brighter than the source picture. <strong>Default: 100%.</strong></div>
+            </div>
+
+            <div class="inputContainer">
+                <div class="raWaveSlider">
+                    <svg class="raWaveSliderSvg" viewBox="0 0 400 24" preserveAspectRatio="none" aria-hidden="true"><path d="M 0.00 12.00 L 1.67 13.20 L 3.33 14.40 L 5.00 15.55 L 6.67 16.64 L 8.33 17.62 L 10.00 18.47 L 11.67 19.16 L 13.33 19.66 L 15.00 19.94 L 16.67 19.99 L 18.33 19.80 L 20.00 19.36 L 21.67 18.67 L 23.33 17.75 L 25.00 16.63 L 26.67 15.33 L 28.33 13.89 L 30.00 12.36 L 31.67 10.80 L 33.33 9.26 L 35.00 7.82 L 36.67 6.53 L 38.33 5.45 L 40.00 4.64 L 41.67 4.15 L 43.33 4.00 L 45.00 4.22 L 46.67 4.81 L 48.33 5.75 L 50.00 7.01 L 51.67 8.54 L 53.33 10.26 L 55.00 12.09 L 56.67 13.94 L 58.33 15.69 L 60.00 17.26 L 61.67 18.55 L 63.33 19.46 L 65.00 19.94 L 66.67 19.94 L 68.33 19.44 L 70.00 18.47 L 71.67 17.07 L 73.33 15.33 L 75.00 13.34 L 76.67 11.24 L 78.33 9.18 L 80.00 7.30 L 81.67 5.74 L 83.33 4.63 L 85.00 4.06 L 86.67 4.10 L 88.33 4.75 L 90.00 5.98 L 91.67 7.70 L 93.33 9.79 L 95.00 12.09 L 96.67 14.40 L 98.33 16.51 L 100.00 18.25 L 101.67 19.45 L 103.33 19.98 L 105.00 19.78 L 106.67 18.85 L 108.33 17.26 L 110.00 15.14 L 111.67 12.71 L 113.33 10.18 L 115.00 7.82 L 116.67 5.87 L 118.33 4.55 L 120.00 4.01 L 121.67 4.32 L 123.33 5.48 L 125.00 7.37 L 126.67 9.79 L 128.33 12.49 L 130.00 15.14 L 131.67 17.45 L 133.33 19.12 L 135.00 19.94 L 136.67 19.79 L 138.33 18.67 L 140.00 16.70 L 141.67 14.12 L 143.33 11.24 L 145.00 8.45 L 146.67 6.11 L 148.33 4.55 L 150.00 4.00 L 151.67 4.56 L 153.33 6.16 L 155.00 8.61 L 156.67 11.56 L 158.33 14.60 L 160.00 17.26 L 161.67 19.16 L 163.33 19.98 L 165.00 19.58 L 166.67 18.00 L 168.33 15.46 L 170.00 12.36 L 171.67 9.18 L 173.33 6.44 L 175.00 4.61 L 176.67 4.00 L 178.33 4.75 L 180.00 6.74 L 181.67 9.65 L 183.33 12.99 L 185.00 16.18 L 186.67 18.63 L 188.33 19.89 L 190.00 19.71 L 191.67 18.10 L 193.33 15.33 L 195.00 11.91 L 196.67 8.49 L 198.33 5.74 L 200.00 4.20 L 201.67 4.20 L 203.33 5.77 L 205.00 8.61 L 206.67 12.16 L 208.33 15.69 L 210.00 18.47 L 211.67 19.89 L 213.33 19.63 L 215.00 17.72 L 216.67 14.55 L 218.33 10.80 L 220.00 7.30 L 221.67 4.84 L 223.33 4.00 L 225.00 5.00 L 226.67 7.63 L 228.33 11.29 L 230.00 15.14 L 231.67 18.26 L 233.33 19.88 L 235.00 19.58 L 236.67 17.41 L 238.33 13.89 L 240.00 9.87 L 241.67 6.38 L 243.33 4.31 L 245.00 4.22 L 246.67 6.16 L 248.33 9.65 L 250.00 13.78 L 251.67 17.45 L 253.33 19.66 L 255.00 19.78 L 256.67 17.75 L 258.33 14.12 L 260.00 9.87 L 261.67 6.21 L 263.33 4.19 L 265.00 4.42 L 266.67 6.86 L 268.33 10.82 L 270.00 15.14 L 271.67 18.55 L 273.33 19.99 L 275.00 19.00 L 276.67 15.86 L 278.33 11.51 L 280.00 7.30 L 281.67 4.55 L 283.33 4.16 L 285.00 6.28 L 286.67 10.26 L 288.33 14.82 L 290.00 18.47 L 291.67 19.99 L 293.33 18.85 L 295.00 15.39 L 296.67 10.77 L 298.33 6.55 L 300.00 4.20 L 301.67 4.56 L 303.33 7.53 L 305.00 12.09 L 306.67 16.64 L 308.33 19.53 L 310.00 19.71 L 311.67 17.07 L 313.33 12.56 L 315.00 7.82 L 316.67 4.63 L 318.33 4.20 L 320.00 6.74 L 321.67 11.29 L 323.33 16.14 L 325.00 19.39 L 326.67 19.76 L 328.33 17.07 L 330.00 12.36 L 331.67 7.49 L 333.33 4.42 L 335.00 4.42 L 336.67 7.53 L 338.33 12.49 L 340.00 17.26 L 341.67 19.85 L 343.33 19.14 L 345.00 15.39 L 346.67 10.18 L 348.33 5.74 L 350.00 4.00 L 351.67 5.75 L 353.33 10.26 L 355.00 15.55 L 356.67 19.28 L 358.33 19.74 L 360.00 16.70 L 361.67 11.51 L 363.33 6.53 L 365.00 4.06 L 366.67 5.28 L 368.33 9.65 L 370.00 15.14 L 371.67 19.16 L 373.33 19.76 L 375.00 16.63 L 376.67 11.24 L 378.33 6.21 L 380.00 4.01 L 381.67 5.75 L 383.33 10.61 L 385.00 16.18 L 386.67 19.66 L 388.33 19.25 L 390.00 15.14 L 391.67 9.40 L 393.33 4.99 L 395.00 4.22 L 396.67 7.53 L 398.33 13.20 L 400.00 18.25" /></svg>
+                    <span class="raWaveSliderCaption raWaveSliderCaptionLeft">Smooth</span>
+                    <span class="raWaveSliderCaption raWaveSliderCaptionRight">Reactive</span>
+                    <input is="emby-input" id="wledSmoothingMilliseconds" type="range" min="0" max="500" step="10" dir="rtl" label="WLED smoothing" class="raWaveSliderInput" />
+                </div>
+                <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED into its new colour. <strong>Default: 0 ms (off, fully reactive).</strong></div>
+            </div>
+
+            <div class="inputContainer">
+                <input is="emby-input" id="minimumColourHoldMilliseconds" type="range" min="0" max="1500" step="50" label="Minimum colour hold" />
+                <div class="fieldDescription">Now: <strong id="minimumColourHoldValue"></strong>. A colour must stay in the picture at least this long before the LEDs follow it, so one flash cut cannot snap the wall to a colour barely there. <strong>Default: 0 ms.</strong></div>
+            </div>
+
+            <div class="inputContainer">
+                <input is="emby-input" id="hueBrightnessPercent" type="range" min="1" max="200" step="1" label="Hue brightness" />
+                <div class="fieldDescription">Now: <strong id="hueBrightnessValue"></strong>. A 1% minimum always stays on. <strong>Default: 100%.</strong></div>
+            </div>
+
+            <div class="inputContainer">
+                <div class="raWaveSlider">
+                    <svg class="raWaveSliderSvg" viewBox="0 0 400 24" preserveAspectRatio="none" aria-hidden="true"><path d="M 0.00 12.00 L 1.67 13.20 L 3.33 14.40 L 5.00 15.55 L 6.67 16.64 L 8.33 17.62 L 10.00 18.47 L 11.67 19.16 L 13.33 19.66 L 15.00 19.94 L 16.67 19.99 L 18.33 19.80 L 20.00 19.36 L 21.67 18.67 L 23.33 17.75 L 25.00 16.63 L 26.67 15.33 L 28.33 13.89 L 30.00 12.36 L 31.67 10.80 L 33.33 9.26 L 35.00 7.82 L 36.67 6.53 L 38.33 5.45 L 40.00 4.64 L 41.67 4.15 L 43.33 4.00 L 45.00 4.22 L 46.67 4.81 L 48.33 5.75 L 50.00 7.01 L 51.67 8.54 L 53.33 10.26 L 55.00 12.09 L 56.67 13.94 L 58.33 15.69 L 60.00 17.26 L 61.67 18.55 L 63.33 19.46 L 65.00 19.94 L 66.67 19.94 L 68.33 19.44 L 70.00 18.47 L 71.67 17.07 L 73.33 15.33 L 75.00 13.34 L 76.67 11.24 L 78.33 9.18 L 80.00 7.30 L 81.67 5.74 L 83.33 4.63 L 85.00 4.06 L 86.67 4.10 L 88.33 4.75 L 90.00 5.98 L 91.67 7.70 L 93.33 9.79 L 95.00 12.09 L 96.67 14.40 L 98.33 16.51 L 100.00 18.25 L 101.67 19.45 L 103.33 19.98 L 105.00 19.78 L 106.67 18.85 L 108.33 17.26 L 110.00 15.14 L 111.67 12.71 L 113.33 10.18 L 115.00 7.82 L 116.67 5.87 L 118.33 4.55 L 120.00 4.01 L 121.67 4.32 L 123.33 5.48 L 125.00 7.37 L 126.67 9.79 L 128.33 12.49 L 130.00 15.14 L 131.67 17.45 L 133.33 19.12 L 135.00 19.94 L 136.67 19.79 L 138.33 18.67 L 140.00 16.70 L 141.67 14.12 L 143.33 11.24 L 145.00 8.45 L 146.67 6.11 L 148.33 4.55 L 150.00 4.00 L 151.67 4.56 L 153.33 6.16 L 155.00 8.61 L 156.67 11.56 L 158.33 14.60 L 160.00 17.26 L 161.67 19.16 L 163.33 19.98 L 165.00 19.58 L 166.67 18.00 L 168.33 15.46 L 170.00 12.36 L 171.67 9.18 L 173.33 6.44 L 175.00 4.61 L 176.67 4.00 L 178.33 4.75 L 180.00 6.74 L 181.67 9.65 L 183.33 12.99 L 185.00 16.18 L 186.67 18.63 L 188.33 19.89 L 190.00 19.71 L 191.67 18.10 L 193.33 15.33 L 195.00 11.91 L 196.67 8.49 L 198.33 5.74 L 200.00 4.20 L 201.67 4.20 L 203.33 5.77 L 205.00 8.61 L 206.67 12.16 L 208.33 15.69 L 210.00 18.47 L 211.67 19.89 L 213.33 19.63 L 215.00 17.72 L 216.67 14.55 L 218.33 10.80 L 220.00 7.30 L 221.67 4.84 L 223.33 4.00 L 225.00 5.00 L 226.67 7.63 L 228.33 11.29 L 230.00 15.14 L 231.67 18.26 L 233.33 19.88 L 235.00 19.58 L 236.67 17.41 L 238.33 13.89 L 240.00 9.87 L 241.67 6.38 L 243.33 4.31 L 245.00 4.22 L 246.67 6.16 L 248.33 9.65 L 250.00 13.78 L 251.67 17.45 L 253.33 19.66 L 255.00 19.78 L 256.67 17.75 L 258.33 14.12 L 260.00 9.87 L 261.67 6.21 L 263.33 4.19 L 265.00 4.42 L 266.67 6.86 L 268.33 10.82 L 270.00 15.14 L 271.67 18.55 L 273.33 19.99 L 275.00 19.00 L 276.67 15.86 L 278.33 11.51 L 280.00 7.30 L 281.67 4.55 L 283.33 4.16 L 285.00 6.28 L 286.67 10.26 L 288.33 14.82 L 290.00 18.47 L 291.67 19.99 L 293.33 18.85 L 295.00 15.39 L 296.67 10.77 L 298.33 6.55 L 300.00 4.20 L 301.67 4.56 L 303.33 7.53 L 305.00 12.09 L 306.67 16.64 L 308.33 19.53 L 310.00 19.71 L 311.67 17.07 L 313.33 12.56 L 315.00 7.82 L 316.67 4.63 L 318.33 4.20 L 320.00 6.74 L 321.67 11.29 L 323.33 16.14 L 325.00 19.39 L 326.67 19.76 L 328.33 17.07 L 330.00 12.36 L 331.67 7.49 L 333.33 4.42 L 335.00 4.42 L 336.67 7.53 L 338.33 12.49 L 340.00 17.26 L 341.67 19.85 L 343.33 19.14 L 345.00 15.39 L 346.67 10.18 L 348.33 5.74 L 350.00 4.00 L 351.67 5.75 L 353.33 10.26 L 355.00 15.55 L 356.67 19.28 L 358.33 19.74 L 360.00 16.70 L 361.67 11.51 L 363.33 6.53 L 365.00 4.06 L 366.67 5.28 L 368.33 9.65 L 370.00 15.14 L 371.67 19.16 L 373.33 19.76 L 375.00 16.63 L 376.67 11.24 L 378.33 6.21 L 380.00 4.01 L 381.67 5.75 L 383.33 10.61 L 385.00 16.18 L 386.67 19.66 L 388.33 19.25 L 390.00 15.14 L 391.67 9.40 L 393.33 4.99 L 395.00 4.22 L 396.67 7.53 L 398.33 13.20 L 400.00 18.25" /></svg>
+                    <span class="raWaveSliderCaption raWaveSliderCaptionLeft">Smooth</span>
+                    <span class="raWaveSliderCaption raWaveSliderCaptionRight">Reactive</span>
+                    <input is="emby-input" id="hueResponsePercent" type="range" min="0" max="100" step="10" dir="rtl" label="Hue responsivity" class="raWaveSliderInput" />
+                </div>
+                <div class="fieldDescription">Now: <strong id="hueResponseValue"></strong>. Reactive tracks a cut instantly; smooth eases in over a second or more. <strong>Default: 40.</strong></div>
+            </div>
         </div>
 
         <div class="raPanel">
@@ -535,20 +607,7 @@
                         </div>
                     </div>
 
-                    <div class="inputContainer" style="margin-top:1.2em">
-                        <input is="emby-input" id="brightnessPercent" type="range" min="1" max="200" step="1" label="LED brightness" />
-                        <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. Above 100% pushes already-dim scenes brighter than the source picture, since physical LEDs next to a bright HDR screen otherwise read as dim. <strong>Default: 100%.</strong></div>
-                    </div>
-
-                    <div class="inputContainer">
-                        <input is="emby-input" id="wledSmoothingMilliseconds" type="range" min="0" max="500" step="10" label="Smoothing" />
-                        <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED into its new colour; lower is more reactive, higher is calmer. A real cut still catches up quickly. <strong>Default: 0 ms (off, fully reactive).</strong></div>
-                    </div>
-
-                    <div class="inputContainer">
-                        <input is="emby-input" id="minimumColourHoldMilliseconds" type="range" min="0" max="1500" step="50" label="Minimum colour hold" />
-                        <div class="fieldDescription">Now: <strong id="minimumColourHoldValue"></strong>. A colour must stay in the picture for at least this long before the LEDs follow it, so a single flash cut or lens flare cannot snap the wall to a colour that was barely there. <strong>Default: 0 ms (off, every sampled frame shown as-is).</strong></div>
-                    </div>
+                    <p class="fieldDescription" style="margin-top:1.2em">Brightness, smoothing and minimum colour hold now live in the Live tuning panel below the signal chain, where changes apply immediately.</p>
 
                     <div style="margin-top:1em">
                     <details id="advancedColourControls">
@@ -625,7 +684,7 @@
                     <div class="fieldDescription">Starts with the bound TV, same as WLED. <strong>Default: off.</strong></div>
                     <div style="display:flex;align-items:baseline;gap:.6em;flex-wrap:wrap;margin:.5em 0">
                         <span id="hueStatusLine" class="fieldDescription" aria-live="polite"></span>
-                        <a href="#" id="hueUnlink" style="display:none">Unlink this bridge</a>
+                        <a href="#" id="hueUnlink" class="raLink" style="display:none;color:#8a929c">Unlink this bridge</a>
                     </div>
                 </div>
 
@@ -658,15 +717,7 @@
                     <button is="emby-button" type="button" id="hueRefreshConfigs" class="raised" style="margin-top:.5em">Refresh list</button>
 
                     <br /><br />
-                    <div class="inputContainer">
-                        <input is="emby-input" id="hueBrightnessPercent" type="range" min="1" max="200" step="1" label="Overall Hue brightness" />
-                        <div class="fieldDescription">Now: <strong id="hueBrightnessValue"></strong>. A 1% minimum always stays on; above 100% boosts scenes that never reach peak source brightness. <strong>Default: 100%.</strong></div>
-                    </div>
-
-                    <div class="inputContainer">
-                        <input is="emby-input" id="hueResponsePercent" type="range" min="0" max="100" step="1" label="Responsivity / intensity (out of 100)" />
-                        <div class="fieldDescription">Now: <strong id="hueResponseValue"></strong>. Reactive tracks a cut instantly; smooth eases in over a second or more. <strong>Default: 40.</strong> Takes effect on the next reconnect, not mid-stream.</div>
-                    </div>
+                    <p class="fieldDescription">Brightness and responsivity now live in the Live tuning panel below the signal chain, where changes apply immediately.</p>
 
                     <div class="selectContainer">
                         <select is="emby-select" id="hueEndBehaviour" label="When playback stops">

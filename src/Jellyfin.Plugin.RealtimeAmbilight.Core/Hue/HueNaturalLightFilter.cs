@@ -56,24 +56,20 @@ public sealed class HueNaturalLightFilter
     private const double MinBrightnessChangePerSecond = 0.4d;
 
     /// <summary>
-    /// How quickly the smoothed hue/chroma direction follows a new target.
-    /// Slower than brightness on purpose: an abrupt colour swap (a hard cut
-    /// between two very differently lit shots) is exactly what "abrupte
-    /// kleurwisselingen" asks to be suppressed, while brightness is allowed
-    /// to move faster so the light still reads as reactive.
+    /// The operator's "Ambilight response" slider, re-read on every
+    /// <see cref="Apply"/> call rather than fixed at construction time -- an
+    /// operator dragging this while watching the light expects it to move
+    /// the light, not to wait for the next reconnect. Colour and brightness
+    /// each derive their own time constant from it within the ranges above
+    /// (colour always the slower of the two, see
+    /// <see cref="MinColourTimeConstantMilliseconds"/>), and the brightness
+    /// rate clamp scales the opposite way (a smoother response means a
+    /// *lower* maximum rate of change) -- cheap enough (a couple of
+    /// interpolations) that recomputing it every frame costs nothing
+    /// measurable, unlike recreating this whole filter would, which would
+    /// also reset its per-channel smoothing state.
     /// </summary>
-    private readonly double _colourTimeConstantMilliseconds;
-
-    private readonly double _brightnessTimeConstantMilliseconds;
-
-    /// <summary>
-    /// Independent hard bound on brightness in units per second (brightness
-    /// is normalized 0-1), applied after smoothing. This is what specifically
-    /// suppresses a short, sharp peak (a strobe, a lens flare, one bright
-    /// frame) that a low-pass alone would still let through as a brief but
-    /// full-amplitude spike.
-    /// </summary>
-    private readonly double _maximumBrightnessChangePerSecond;
+    private readonly Func<int> _responsePercentResolver;
 
     /// <summary>
     /// Minimum background light while synchronisation is active, applied in
@@ -98,19 +94,12 @@ public sealed class HueNaturalLightFilter
 
     /// <param name="responsePercent">
     /// The operator's "Ambilight response" slider, 0 (very reactive/intense)
-    /// to 100 (beautifully smooth), clamped. Fixed for this filter's
-    /// lifetime, like <c>AmbilightFrameProcessor</c>'s own hardware-shaped
-    /// constructor parameters -- it is read once when the Hue connection is
-    /// (re-)established, not resolved live per frame, since a smoothing
-    /// filter's own time constants are a property of the desired feel, not
-    /// something that needs to react to itself changing mid-stream.
+    /// to 100 (beautifully smooth). Re-read on every <see cref="Apply"/>
+    /// call -- see <see cref="_responsePercentResolver"/>'s own remarks.
     /// </param>
-    public HueNaturalLightFilter(int responsePercent = 50)
+    public HueNaturalLightFilter(Func<int>? responsePercentResolver = null)
     {
-        var t = Math.Clamp(responsePercent, 0, 100) / 100d;
-        _colourTimeConstantMilliseconds = Lerp(MinColourTimeConstantMilliseconds, MaxColourTimeConstantMilliseconds, t);
-        _brightnessTimeConstantMilliseconds = Lerp(MinBrightnessTimeConstantMilliseconds, MaxBrightnessTimeConstantMilliseconds, t);
-        _maximumBrightnessChangePerSecond = Lerp(MaxBrightnessChangePerSecond, MinBrightnessChangePerSecond, t);
+        _responsePercentResolver = responsePercentResolver ?? (static () => 50);
     }
 
     /// <param name="target">This frame's raw mapped colour for the channel.</param>
@@ -141,6 +130,10 @@ public sealed class HueNaturalLightFilter
 
         var hasPreviousState = state.Initialized && elapsedMilliseconds is > 0 and < 2000;
         var elapsedSeconds = Math.Max(0d, elapsedMilliseconds) / 1000d;
+        var t = Math.Clamp(_responsePercentResolver(), 0, 100) / 100d;
+        var colourTimeConstantMilliseconds = Lerp(MinColourTimeConstantMilliseconds, MaxColourTimeConstantMilliseconds, t);
+        var brightnessTimeConstantMilliseconds = Lerp(MinBrightnessTimeConstantMilliseconds, MaxBrightnessTimeConstantMilliseconds, t);
+        var maximumBrightnessChangePerSecond = Lerp(MaxBrightnessChangePerSecond, MinBrightnessChangePerSecond, t);
 
         var targetBrightness = Luma(target);
         var targetColour = targetBrightness > 1e-6f
@@ -153,17 +146,17 @@ public sealed class HueNaturalLightFilter
             state.HasSeenRealColour = true;
         }
 
-        var colourMix = hasPreviousState ? Mix(elapsedMilliseconds, _colourTimeConstantMilliseconds) : 1d;
+        var colourMix = hasPreviousState ? Mix(elapsedMilliseconds, colourTimeConstantMilliseconds) : 1d;
         state.SmoothedColour = hasPreviousState
             ? LinearRgb.Lerp(state.SmoothedColour, targetColour, (float)colourMix)
             : targetColour;
 
-        var brightnessMix = hasPreviousState ? Mix(elapsedMilliseconds, _brightnessTimeConstantMilliseconds) : 1d;
+        var brightnessMix = hasPreviousState ? Mix(elapsedMilliseconds, brightnessTimeConstantMilliseconds) : 1d;
         var lowPassBrightness = hasPreviousState
             ? state.SmoothedBrightness + ((targetBrightness - state.SmoothedBrightness) * brightnessMix)
             : targetBrightness;
 
-        var maxStep = hasPreviousState ? _maximumBrightnessChangePerSecond * elapsedSeconds : double.MaxValue;
+        var maxStep = hasPreviousState ? maximumBrightnessChangePerSecond * elapsedSeconds : double.MaxValue;
         var rateLimitedBrightness = Math.Clamp(
             lowPassBrightness,
             state.SmoothedBrightness - maxStep,

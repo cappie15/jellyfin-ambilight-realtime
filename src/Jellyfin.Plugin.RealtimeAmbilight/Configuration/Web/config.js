@@ -237,7 +237,8 @@ export default function (view) {
         setCardState("tv", enabled ? "ok" : "off", !enabled ? "OFF" : streaming ? "STREAM" : "READY");
         byId("tvStat").textContent = targetDeviceName() || "Not bound yet";
         const ip = targetDeviceIp();
-        byId("tvCap").textContent = `${ip ? `${ip} · ` : ""}Ambilight ${enabled ? "on" : "off"}`;
+        const width = Math.max(16, Number(byId("analysisWidth").value) || defaults.AnalysisWidth);
+        byId("tvCap").textContent = `${ip ? `${ip} · ` : ""}${width} × ${analysisHeight()} · Ambilight ${enabled ? "on" : "off"}`;
         const device = knownDevices.find(candidate => candidate.id === byId("targetDeviceId").value);
         byId("tvSub").textContent = device?.lastUsed ? `Last seen ${lastUsedLabel(device.lastUsed)}` : "";
     };
@@ -1485,6 +1486,51 @@ export default function (view) {
             .finally(() => Dashboard.hideLoadingMsg());
     }
 
+    // The Live tuning panel's own save path: deliberately not save() above.
+    // save() rebuilds and validates the *whole* form (it refuses without a
+    // WLED address, for one), which is the wrong failure mode for a slider an
+    // operator is dragging while watching the TV, not the screen. This only
+    // ever merges the five tuning fields into whatever was last loaded, so it
+    // can never clobber an in-progress, not-yet-saved edit sitting open in a
+    // connection modal elsewhere on the page.
+    const tuningFields = ["brightnessPercent", "wledSmoothingMilliseconds", "minimumColourHoldMilliseconds", "hueBrightnessPercent", "hueResponsePercent"];
+    let tuningSaveTimer = null;
+
+    function scheduleTuningSave() {
+        byId("tuningSavedIndicator").textContent = "Applying…";
+        byId("tuningSavedIndicator").className = "raCardState";
+        if (tuningSaveTimer) {
+            clearTimeout(tuningSaveTimer);
+        }
+
+        tuningSaveTimer = setTimeout(saveTuningFieldsNow, 700);
+    }
+
+    function saveTuningFieldsNow() {
+        tuningSaveTimer = null;
+        if (!loadedConfig) {
+            return;
+        }
+
+        const config = { ...loadedConfig };
+        tuningFields.forEach(field => { config[fieldKey(field)] = Number(byId(field).value); });
+        window.ApiClient.updatePluginConfiguration(pluginId, config)
+            .then(() => {
+                loadedConfig = config;
+                byId("tuningSavedIndicator").textContent = "Saved";
+                byId("tuningSavedIndicator").className = "raCardState raOk";
+                setTimeout(() => {
+                    if (!tuningSaveTimer) {
+                        byId("tuningSavedIndicator").textContent = "";
+                    }
+                }, 1500);
+            })
+            .catch(() => {
+                byId("tuningSavedIndicator").textContent = "Could not save";
+                byId("tuningSavedIndicator").className = "raCardState raWarn";
+            });
+    }
+
     // Mirrors PluginConfiguration's own C# property initialisers -- a brand
     // new install's config, in other words -- except the Hue bridge pairing
     // itself (host/id/entertainment area), which stays exactly as currently
@@ -1807,6 +1853,39 @@ export default function (view) {
     populateWallColourPresets();
     createSideTuningCards();
     addRangeScales();
+
+    // emby-input upgrades the range in place but also inserts its own
+    // <label> as the range's immediate previous sibling, right inside
+    // .raWaveSlider next to the SVG -- exactly where the wave and its
+    // "Smooth"/"Reactive" captions live, so the two collided. Gather the SVG,
+    // the captions and the input into their own inner .raWaveTrack wrapper,
+    // leaving that label as .raWaveSlider's only remaining direct child
+    // above it, rendering exactly like every other slider's label.
+    view.querySelectorAll(".raWaveSliderInput").forEach(range => {
+        const wrapper = range.closest(".raWaveSlider");
+        if (!wrapper) {
+            return;
+        }
+
+        const track = document.createElement("div");
+        track.className = "raWaveTrack";
+        wrapper.querySelectorAll(".raWaveSliderSvg, .raWaveSliderCaption").forEach(el => track.appendChild(el));
+        track.appendChild(range);
+        wrapper.appendChild(track);
+    });
+
+    // addRangeScales inserts its min/now/max line as the range's own next
+    // sibling -- which, now that the range lives inside .raWaveTrack, would
+    // land there too, squeezed next to the wave. Move it out to sit below
+    // the whole wrapper instead, exactly where it renders for every other
+    // slider.
+    view.querySelectorAll(".raWaveSliderInput").forEach(range => {
+        const scale = range.nextElementSibling;
+        const wrapper = range.closest(".raWaveSlider");
+        if (scale && wrapper) {
+            wrapper.insertAdjacentElement("afterend", scale);
+        }
+    });
     addStepButtonsToSection();
     // Delegated, not a per-element listener: some [data-open-edit-all]
     // elements (e.g. the "Open TV settings" link inside the FPS chain hint)
@@ -1837,6 +1916,8 @@ export default function (view) {
     };
     new ResizeObserver(updateStageRailScrollHint).observe(stageRailWrap);
     updateStageRailScrollHint();
+
+    tuningFields.forEach(field => byId(field).addEventListener("input", scheduleTuningSave));
 
     setInterval(refreshFpsChain, 1000);
     // Every 5 s: a real network round trip to WLED/Hue (status + ping), not

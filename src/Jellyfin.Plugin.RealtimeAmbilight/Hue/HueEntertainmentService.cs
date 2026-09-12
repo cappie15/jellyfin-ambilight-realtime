@@ -329,10 +329,12 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                 .ResolveLightIdsAsync(configuration.HueBridgeHost, credentials.CertificateThumbprintSha256, credentials.ApplicationKey, _shutdown.Token)
                 .ConfigureAwait(false);
             // Built fresh on every connect, not cached for the service's
-            // whole lifetime: cheap to construct, and it means a changed
-            // HueResponsePercent takes effect on the next reconnect (stop
-            // then resume playback) rather than needing a full restart.
-            _frameProcessor = new HueFrameProcessor(new PlaybackMonotonicTimeAdapter(), () => true, responsePercent: configuration.HueResponsePercent);
+            // whole lifetime -- cheap to construct. HueResponsePercent itself
+            // is resolved live (Plugin.Instance?.Configuration, not the
+            // snapshotted "configuration" parameter above), so the Live
+            // tuning panel's slider takes effect immediately, mid-stream, not
+            // only on the next reconnect.
+            _frameProcessor = new HueFrameProcessor(new PlaybackMonotonicTimeAdapter(), () => true, responsePercentResolver: () => Plugin.Instance?.Configuration.HueResponsePercent ?? 40);
 
             if (_snapshot?.PlaybackSessionId != sessionId)
             {

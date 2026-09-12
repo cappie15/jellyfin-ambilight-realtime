@@ -193,8 +193,8 @@ public class HueNaturalLightFilterTests
     [Fact]
     public void AMoreReactiveResponseFollowsANewTargetFasterThanASmootherOne()
     {
-        var reactive = new HueNaturalLightFilter(responsePercent: 0);
-        var smooth = new HueNaturalLightFilter(responsePercent: 100);
+        var reactive = new HueNaturalLightFilter(responsePercentResolver: () => 0);
+        var smooth = new HueNaturalLightFilter(responsePercentResolver: () => 100);
         reactive.Apply(0, new LinearRgb(0f, 0f, 0f), elapsedMilliseconds: 0);
         smooth.Apply(0, new LinearRgb(0f, 0f, 0f), elapsedMilliseconds: 0);
 
@@ -210,8 +210,8 @@ public class HueNaturalLightFilterTests
         // Out-of-range input (a stored value from before validation, or a
         // bad manual edit of the configuration file) must not crash or
         // silently extrapolate past the intended extremes.
-        var belowRange = new HueNaturalLightFilter(responsePercent: -50);
-        var aboveRange = new HueNaturalLightFilter(responsePercent: 500);
+        var belowRange = new HueNaturalLightFilter(responsePercentResolver: () => -50);
+        var aboveRange = new HueNaturalLightFilter(responsePercentResolver: () => 500);
 
         var belowResult = belowRange.Apply(0, new LinearRgb(1f, 1f, 1f), elapsedMilliseconds: 0);
         var aboveResult = aboveRange.Apply(0, new LinearRgb(1f, 1f, 1f), elapsedMilliseconds: 0);
