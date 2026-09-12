@@ -127,7 +127,10 @@ public static class CalibrationWizard
 /// checks <see cref="IsArmed"/> and answers 404 while it is false, so an
 /// internet-facing Jellyfin does not carry a permanently reachable, unauthenticated
 /// page. Only the admin-only <c>Start</c> action can arm it, and only
-/// <c>Finish</c> (or the admin page itself, on request) disarms it again.
+/// <c>Finish</c> (or the admin page itself, on request) disarms it again --
+/// plus <see cref="IdleTimeout"/> disarms it on its own after a stretch with
+/// neither a TV poll nor a step move, covering an admin who never comes back
+/// to click Finish.
 /// </remarks>
 public sealed class CalibrationWizardState
 {
@@ -138,11 +141,47 @@ public sealed class CalibrationWizardState
     /// </summary>
     private static readonly TimeSpan TvReconnectGap = TimeSpan.FromSeconds(20);
 
+    /// <summary>
+    /// How long the anonymous TV-facing surface stays reachable with no
+    /// activity at all -- no TV poll, no step move from the settings page --
+    /// before it closes itself. Covers the admin closing the settings tab (or
+    /// a browser crash) mid-calibration without ever reaching Finish/Cancel:
+    /// without this, that anonymous surface -- including the unauthenticated
+    /// photo upload -- would otherwise stay reachable on the network forever.
+    /// </summary>
+    public static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(20);
+
+    private readonly Func<DateTimeOffset> _clock;
     private int _stepIndex;
     private int _photoIndex;
+    private bool _isArmed;
     private DateTimeOffset _lastTvPollAt = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastActivityAt = DateTimeOffset.MinValue;
 
-    public bool IsArmed { get; private set; }
+    /// <param name="clock">Defaults to <see cref="DateTimeOffset.UtcNow"/>; overridable so <see cref="IdleTimeout"/> is deterministically testable.</param>
+    public CalibrationWizardState(Func<DateTimeOffset>? clock = null)
+    {
+        _clock = clock ?? (static () => DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>
+    /// True only while actually armed AND not yet idle for <see cref="IdleTimeout"/>;
+    /// crossing the timeout disarms as a side effect of the check itself, so
+    /// every caller of this property (the whole anonymous surface, and the
+    /// settings page's own state poll) enforces the timeout for free.
+    /// </summary>
+    public bool IsArmed
+    {
+        get
+        {
+            if (_isArmed && _clock() - _lastActivityAt > IdleTimeout)
+            {
+                _isArmed = false;
+            }
+
+            return _isArmed;
+        }
+    }
 
     public int StepIndex => _stepIndex;
 
@@ -153,24 +192,26 @@ public sealed class CalibrationWizardState
     public bool IsLastStep => _stepIndex == CalibrationWizard.ColourOrder.Count - 1;
 
     /// <summary>True while the TV page's own poll has landed within the last few seconds.</summary>
-    public bool TvConnected => DateTimeOffset.UtcNow - _lastTvPollAt < TimeSpan.FromSeconds(5);
+    public bool TvConnected => _clock() - _lastTvPollAt < TimeSpan.FromSeconds(5);
 
     /// <summary>Opens the TV-facing surface and restarts at White.</summary>
     public void Arm()
     {
-        IsArmed = true;
+        _isArmed = true;
         _stepIndex = 0;
         _photoIndex = 0;
         _lastTvPollAt = DateTimeOffset.MinValue;
+        _lastActivityAt = _clock();
     }
 
     /// <summary>Closes the TV-facing surface again; the position is left as-is, harmlessly, until the next Arm.</summary>
-    public void Disarm() => IsArmed = false;
+    public void Disarm() => _isArmed = false;
 
     public void MoveTo(int stepIndex, int photoIndex)
     {
         _stepIndex = Math.Clamp(stepIndex, 0, CalibrationWizard.ColourOrder.Count - 1);
         _photoIndex = Math.Max(0, photoIndex);
+        _lastActivityAt = _clock();
     }
 
     /// <summary>
@@ -182,7 +223,7 @@ public sealed class CalibrationWizardState
     /// <returns><see langword="true"/> when this poll just (re)started the wizard.</returns>
     public bool NoteTvPoll()
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = _clock();
         var reconnected = now - _lastTvPollAt > TvReconnectGap;
         if (reconnected)
         {
@@ -191,6 +232,7 @@ public sealed class CalibrationWizardState
         }
 
         _lastTvPollAt = now;
+        _lastActivityAt = now;
         return reconnected;
     }
 }
