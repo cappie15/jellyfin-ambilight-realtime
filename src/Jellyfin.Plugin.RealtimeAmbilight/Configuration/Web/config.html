@@ -143,6 +143,10 @@
         #realtimeAmbilightConfigurationPage .raTuningAccent { height: 3px; background: #3ddc84; margin: 0 -1.3em 1.2em; }
         #realtimeAmbilightConfigurationPage .raPanelTop { display: flex; justify-content: space-between; align-items: center; gap: .6em; font-weight: 600; font-size: .95em; margin-bottom: .7em; }
         #realtimeAmbilightConfigurationPage .raPanelTopLeft { display: flex; align-items: center; gap: .55em; }
+        #realtimeAmbilightConfigurationPage .raPanelTopRight { display: flex; align-items: center; gap: .8em; font-weight: 500; }
+        #realtimeAmbilightConfigurationPage #testVideosPanel { border: 1px solid rgba(127,127,127,.35); border-radius: .6em; padding: .7em 1em; margin: 0 0 1.1em; font-weight: 400; }
+        #realtimeAmbilightConfigurationPage .raTestVideoRow { display: flex; justify-content: space-between; align-items: center; gap: .8em; padding: .3em 0; }
+        #realtimeAmbilightConfigurationPage .raTestVideoRow:not(:last-child) { border-bottom: 1px solid #1c1f24; }
         /* Permanent, not transient like #tuningSavedIndicator: this panel always
            writes straight to the running pipeline, so it always wears this badge,
            independent of whatever the last save happened to say. */
@@ -283,7 +287,14 @@
 
         <div class="raPanel" id="raTuningPanel">
             <div class="raTuningAccent"></div>
-            <div class="raPanelTop"><span class="raPanelTopLeft"><span>Live tuning</span><span class="raLiveBadge">LIVE</span></span><span class="raCardState" id="tuningSavedIndicator">&nbsp;</span></div>
+            <div class="raPanelTop">
+                <span class="raPanelTopLeft"><span>Live tuning</span><span class="raLiveBadge">LIVE</span></span>
+                <span class="raPanelTopRight">
+                    <button type="button" id="testVideosToggle" class="raLink">Test videos &#9662;</button>
+                    <span class="raCardState" id="tuningSavedIndicator">&nbsp;</span>
+                </span>
+            </div>
+            <div id="testVideosPanel" hidden></div>
             <p class="fieldDescription" style="margin-bottom:1.1em">Every slider here applies to the picture immediately and saves itself a moment after you stop moving it, so you can watch the TV or the LEDs instead of the screen while adjusting.</p>
 
             <div class="inputContainer">

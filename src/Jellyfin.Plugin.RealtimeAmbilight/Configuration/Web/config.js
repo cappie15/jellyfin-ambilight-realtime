@@ -110,6 +110,48 @@ export default function (view) {
     const byId = id => view.querySelector(`#${id}`);
     const fieldKey = field => field[0].toUpperCase() + field.slice(1);
     const show = (id, visible) => { byId(id).style.display = visible ? "block" : "none"; };
+    const escapeHtml = text => String(text).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char]));
+
+    // Looked up by name rather than a fixed library path or item id: the test
+    // clips live in whatever temporary library the operator points at the
+    // folder they were given, under whatever name they chose for it, so a
+    // name search is the only lookup that does not need to know either.
+    // Re-run every time the panel opens, deliberately not cached: the
+    // operator's very first click often comes before the library has been
+    // added yet, and a cached "not found" would never self-correct once it
+    // finally is.
+    function loadTestVideos() {
+        const panel = byId("testVideosPanel");
+        panel.innerHTML = "<p class=\"fieldDescription\">Looking for the test clips&hellip;</p>";
+        window.ApiClient.getJSON(window.ApiClient.getUrl("Items", {
+            searchTerm: "Ambilight test",
+            Recursive: true,
+            IncludeItemTypes: "Video",
+            Limit: 20
+        })).then(result => {
+            const items = (result?.Items ?? []).slice().sort((a, b) => a.Name.localeCompare(b.Name));
+            if (items.length === 0) {
+                panel.innerHTML = "<p class=\"fieldDescription\">No test clips found yet. Add a temporary library pointed at the folder you were given, and wait for Jellyfin to scan it.</p>";
+                return;
+            }
+
+            const serverId = window.ApiClient.serverId?.() ?? "";
+            panel.innerHTML = items.map(item => {
+                const playUrl = `${window.location.origin}/web/#/details?id=${encodeURIComponent(item.Id)}&serverId=${encodeURIComponent(serverId)}`;
+                return `<div class="raTestVideoRow"><span>${escapeHtml(item.Name)}</span><a is="emby-linkbutton" href="${playUrl}" target="_blank" rel="noopener">Play &#9656;</a></div>`;
+            }).join("");
+        }).catch(() => {
+            panel.innerHTML = "<p class=\"fieldDescription\">Could not look up the test clips right now.</p>";
+        });
+    }
+
+    function toggleTestVideosPanel() {
+        const panel = byId("testVideosPanel");
+        panel.hidden = !panel.hidden;
+        if (!panel.hidden) {
+            loadTestVideos();
+        }
+    }
 
     function setDelayLabel() {
         const value = Number(byId("outputDelayMilliseconds").value);
@@ -1907,6 +1949,7 @@ export default function (view) {
     byId("wledHost").addEventListener("change", () => { checkControllerSettings(); checkControllerStatus(); });
     byId("wledHttpPort").addEventListener("change", () => { checkControllerSettings(); checkControllerStatus(); });
     byId("startCalibrationWizard").addEventListener("click", startWizard);
+    byId("testVideosToggle").addEventListener("click", toggleTestVideosPanel);
     byId("wizardPrev").addEventListener("click", () => moveWizard(wizardStepIndex - 1));
     byId("wizardNext").addEventListener("click", () => moveWizard(wizardStepIndex + 1));
     byId("copyCalibrationUrl").addEventListener("click", () => {
