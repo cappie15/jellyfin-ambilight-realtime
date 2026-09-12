@@ -161,10 +161,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             frame => (Plugin.Instance?.Configuration.IgnoreBlackBorders ?? true)
                 ? borderDetector.Detect(frame)
                 : default,
-            Math.Clamp(
-                configuration.SamplingDepthPercent,
-                EdgeSampler.MinimumDepthPercent,
-                EdgeSampler.MaximumDepthPercent),
+            static () => Plugin.Instance?.Configuration.SamplingDepthPercent ?? EdgeSampler.DefaultDepthPercent,
             () => _encoding,
             static () => BuildColourTuning(Plugin.Instance?.Configuration).ToAdjustment(),
             static () => Plugin.Instance?.Configuration.MinimumColourHoldMilliseconds ?? 0,

@@ -104,13 +104,13 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// a bright HDR screen otherwise always read as dim, since nothing else
     /// in the pipeline can push a pixel brighter than it already is.
     /// </summary>
-    public int BrightnessPercent { get; set; } = 100;
+    public int BrightnessPercent { get; set; } = 158;
 
     /// <summary>
     /// Colour intensity as a percentage. Above 100 pushes each colour away from
     /// its own luminance, which deepens it without changing how bright it is.
     /// </summary>
-    public int SaturationPercent { get; set; } = 100;
+    public int SaturationPercent { get; set; } = 140;
 
     /// <summary>
     /// Per-channel gains as percentages. Used today only by the wizard's
@@ -164,7 +164,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// Below this fraction of picture-edge luminance, a physical LED is driven
     /// fully off instead of a dim, often colour-cast glow. Zero disables it.
     /// </summary>
-    public int BlackLevelFloorPercent { get; set; }
+    public int BlackLevelFloorPercent { get; set; } = 1;
 
     /// <summary>
     /// The apparent paint colour behind the television. A white value means no
@@ -238,10 +238,10 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// has persisted continuously for at least this long, so a single-frame
     /// flash -- a cut, a lens flare, one strobe frame -- cannot snap the wall
     /// to a colour that was never really "in the picture" long enough to read
-    /// as such. Zero (the default) disables it: every sampled frame is shown
-    /// exactly as sampled, matching every installation before this existed.
+    /// as such. Zero disables it entirely: every sampled frame is shown
+    /// exactly as sampled.
     /// </summary>
-    public int MinimumColourHoldMilliseconds { get; set; }
+    public int MinimumColourHoldMilliseconds { get; set; } = 100;
 
     /// <summary>
     /// Eases each LED toward a newly sampled colour over roughly this many
@@ -250,12 +250,12 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// -- most visible as small "steps" between source and target colour at
     /// low brightness, where the eye is most sensitive to a brightness
     /// change -- gets smoothed away before it ever reaches the temporal
-    /// ditherer. Zero (the default) disables it: every sampled frame is
-    /// shown exactly as sampled, matching every installation before this
-    /// existed. Researched against HyperHDR's own "Infinite Color Engine"
-    /// before building this -- see <see cref="Core.Output.WledTemporalSmoother"/>.
+    /// ditherer. Zero disables it entirely: every sampled frame is shown
+    /// exactly as sampled. Researched against HyperHDR's own "Infinite Color
+    /// Engine" before building this -- see
+    /// <see cref="Core.Output.WledTemporalSmoother"/>.
     /// </summary>
-    public int WledSmoothingMilliseconds { get; set; }
+    public int WledSmoothingMilliseconds { get; set; } = 110;
 
     /// <summary>
     /// Sends RGBW32 instead of RGB24, so a strip with its own white LEDs
@@ -328,25 +328,23 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// a pixel brighter than its own tonemapped source value, so content
     /// that never reaches peak brightness always reads as dim on the bulb.
     /// </summary>
-    public int HueBrightnessPercent { get; set; } = 100;
+    public int HueBrightnessPercent { get; set; } = 169;
 
     /// <summary>What the paired lights do once a synchronised session ends.</summary>
     public Core.Hue.HueEndBehaviour HueEndBehaviour { get; set; } = Core.Hue.HueEndBehaviour.WarmWhiteDim;
 
     /// <summary>
     /// How the Hue lights follow the picture, 0 (very reactive/intense) to
-    /// 100 (beautifully smooth), <c>40</c> by default -- leaning reactive,
-    /// closer to how a real Philips Hue sync/Ambilight-style product feels
-    /// out of the box than a flat midpoint. Scales
+    /// 100 (beautifully smooth). Scales
     /// <see cref="Core.Hue.HueNaturalLightFilter"/>'s colour/brightness time
     /// constants and its brightness rate clamp -- reactive means the lights
     /// track a cut or a flash almost instantly, smooth means colour eases
     /// into a new scene over a second or more so the lighting reads as
     /// ambience rather than something competing for attention with the
-    /// content itself. Read once when a Hue connection is (re-)established,
-    /// like <see cref="SendWhiteChannel"/>'s own hardware-shaped settings --
-    /// restart Jellyfin (or reconnect: stop then resume playback) after
-    /// changing it for the new value to take effect.
+    /// content itself. Resolved live from this property on every frame (see
+    /// <see cref="Core.Hue.HueFrameProcessor"/>'s own resolver), so changing
+    /// it applies immediately, unlike <see cref="SendWhiteChannel"/>'s own
+    /// hardware-shaped settings.
     /// </summary>
-    public int HueResponsePercent { get; set; } = 40;
+    public int HueResponsePercent { get; set; } = 20;
 }

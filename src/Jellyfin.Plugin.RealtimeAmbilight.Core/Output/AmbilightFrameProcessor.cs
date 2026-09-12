@@ -15,7 +15,7 @@ public sealed class AmbilightFrameProcessor
     private readonly LedLayout _physicalLayout;
     private readonly LogicalSamplingLayout _logicalLayout;
     private readonly Func<AnalysisFrame, CropInsets> _cropResolver;
-    private readonly int _samplingDepthPercent;
+    private readonly Func<int> _samplingDepthPercentResolver;
     private readonly Func<Rgb24Encoding> _encodingResolver;
     private readonly Func<PerimeterColourAdjustment> _adjustmentResolver;
     private readonly Func<int> _minimumColourHoldMillisecondsResolver;
@@ -25,6 +25,19 @@ public sealed class AmbilightFrameProcessor
     private readonly WledTemporalSmoother _smoother = new();
     private readonly FrameRateMeter _processRate = new(new StopwatchMonotonicTime());
     private DateTimeOffset? _lastProcessedAt;
+    private DateTimeOffset? _sessionStartedAt;
+
+    /// <summary>
+    /// How long a new session takes to ramp up from black to full brightness,
+    /// mirroring <c>JellyfinWledOutputService.StopFadeMilliseconds</c>'s fade
+    /// the other way at stop. Unlike that fade-out, this cannot simply
+    /// interpolate toward one known destination frame: playback has only just
+    /// started, so what the picture actually looks like is still arriving one
+    /// real sample at a time. Instead every frame encoded during this window
+    /// is scaled toward black by how much of it remains, converging on the
+    /// real picture already fading in around it rather than after it.
+    /// </summary>
+    private const int FadeInMilliseconds = 2500;
 
     /// <summary>
     /// How many frames per second are actually being sampled and colour-processed
@@ -43,7 +56,7 @@ public sealed class AmbilightFrameProcessor
         LedLayout physicalLayout,
         LogicalSamplingLayout logicalLayout,
         Func<AnalysisFrame, CropInsets> cropResolver,
-        int samplingDepthPercent = EdgeSampler.DefaultDepthPercent,
+        Func<int>? samplingDepthPercentResolver = null,
         Func<Rgb24Encoding>? encodingResolver = null,
         Func<PerimeterColourAdjustment>? adjustmentResolver = null,
         Func<int>? minimumColourHoldMillisecondsResolver = null,
@@ -53,7 +66,7 @@ public sealed class AmbilightFrameProcessor
         _physicalLayout = physicalLayout ?? throw new ArgumentNullException(nameof(physicalLayout));
         _logicalLayout = logicalLayout ?? throw new ArgumentNullException(nameof(logicalLayout));
         _cropResolver = cropResolver ?? throw new ArgumentNullException(nameof(cropResolver));
-        _samplingDepthPercent = Math.Clamp(samplingDepthPercent, EdgeSampler.MinimumDepthPercent, EdgeSampler.MaximumDepthPercent);
+        _samplingDepthPercentResolver = samplingDepthPercentResolver ?? (static () => EdgeSampler.DefaultDepthPercent);
         _encodingResolver = encodingResolver ?? (static () => Rgb24Encoding.Bt709);
         _adjustmentResolver = adjustmentResolver ?? (static () => PerimeterColourAdjustment.None);
         _minimumColourHoldMillisecondsResolver = minimumColourHoldMillisecondsResolver ?? (static () => 0);
@@ -88,13 +101,17 @@ public sealed class AmbilightFrameProcessor
     {
         ArgumentNullException.ThrowIfNull(frame);
         _processRate.Increment();
+        var samplingDepthPercent = Math.Clamp(
+            _samplingDepthPercentResolver(),
+            EdgeSampler.MinimumDepthPercent,
+            EdgeSampler.MaximumDepthPercent);
         var samples = EdgeSampler.SampleBgra(
             frame.BgraPixels,
             frame.Width,
             frame.Height,
             _cropResolver(frame),
             _logicalLayout,
-            _samplingDepthPercent);
+            samplingDepthPercent);
         return LinearLightInterpolator.InterpolatePerimeter(
             _physicalLayout,
             _logicalLayout,
@@ -135,9 +152,14 @@ public sealed class AmbilightFrameProcessor
     /// <summary>
     /// Forgets the last due target, so a stale colour from a previous session
     /// cannot be repeated onto the strip before this session's own first
-    /// frame becomes due.
+    /// frame becomes due. Also marks the start of this session's own
+    /// <see cref="FadeInMilliseconds"/> ramp-up.
     /// </summary>
-    public void ClearTarget() => _lastTarget = null;
+    public void ClearTarget()
+    {
+        _lastTarget = null;
+        _sessionStartedAt = DateTimeOffset.UtcNow;
+    }
 
     private byte[] Encode(LinearRgb[] target)
     {
@@ -149,6 +171,25 @@ public sealed class AmbilightFrameProcessor
         var now = DateTimeOffset.UtcNow;
         var elapsedMilliseconds = _lastProcessedAt is { } last ? (now - last).TotalMilliseconds : 0;
         _lastProcessedAt = now;
+
+        if (_sessionStartedAt is { } startedAt)
+        {
+            var fadeInFraction = (now - startedAt).TotalMilliseconds / FadeInMilliseconds;
+            if (fadeInFraction < 1)
+            {
+                var brightness = (float)Math.Clamp(fadeInFraction, 0, 1);
+                for (var index = 0; index < physicalFrame.Length; index++)
+                {
+                    var colour = physicalFrame[index];
+                    physicalFrame[index] = new LinearRgb(colour.Red * brightness, colour.Green * brightness, colour.Blue * brightness);
+                }
+            }
+            else
+            {
+                _sessionStartedAt = null;
+            }
+        }
+
         _dwellFilter.Apply(physicalFrame, _minimumColourHoldMillisecondsResolver(), elapsedMilliseconds);
         var adjustment = _adjustmentResolver();
         if (!adjustment.IsIdentity)

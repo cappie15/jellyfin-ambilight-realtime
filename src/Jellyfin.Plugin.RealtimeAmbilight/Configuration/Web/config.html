@@ -297,37 +297,42 @@
 
             <div class="inputContainer">
                 <input is="emby-input" id="brightnessPercent" type="range" min="1" max="200" step="1" label="WLED brightness" />
-                <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. Above 100% pushes already-dim scenes brighter than the source picture. <strong>Default: 100%.</strong></div>
+                <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. Above 100% pushes already-dim scenes brighter than the source picture. <strong>Default: 158%.</strong></div>
             </div>
 
             <div class="inputContainer">
                 <input is="emby-input" id="saturationPercent" type="range" min="50" max="200" step="5" label="Colour intensity" />
-                <div class="fieldDescription">Now: <strong id="saturationValue"></strong>. <strong>Default: 100%.</strong></div>
+                <div class="fieldDescription">Now: <strong id="saturationValue"></strong>. <strong>Default: 140%.</strong></div>
             </div>
 
             <div class="inputContainer">
                 <input is="emby-input" id="blackLevelFloorPercent" type="range" min="0" max="20" step="1" label="Black level floor" />
-                <div class="fieldDescription">Now: <strong id="blackLevelFloorValue"></strong>. Picture edges darker than this go fully off instead of glowing dim. <strong>Default: 0% (off).</strong></div>
+                <div class="fieldDescription">Now: <strong id="blackLevelFloorValue"></strong>. Picture edges darker than this go fully off instead of glowing dim. <strong>Default: 1%.</strong></div>
+            </div>
+
+            <div class="inputContainer">
+                <input is="emby-input" id="samplingDepthPercent" type="range" min="1" max="30" step="1" label="Sampling edge range" />
+                <div class="fieldDescription">Now: <strong id="samplingDepthValue"></strong>. Lower is more literal; higher is calmer. <strong>Default: 10%.</strong></div>
             </div>
 
             <div class="inputContainer">
                 <input is="emby-input" id="wledSmoothingMilliseconds" type="range" min="0" max="500" step="10" dir="rtl" label="WLED smoothing" />
-                <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED into its new colour; left is smoother, right is more reactive. <strong>Default: 0 ms (off, fully reactive).</strong></div>
+                <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED into its new colour; left is smoother, right is more reactive. <strong>Default: 110 ms.</strong></div>
             </div>
 
             <div class="inputContainer">
                 <input is="emby-input" id="minimumColourHoldMilliseconds" type="range" min="0" max="1500" step="50" label="Minimum colour hold" />
-                <div class="fieldDescription">Now: <strong id="minimumColourHoldValue"></strong>. A colour must stay in the picture at least this long before the LEDs follow it, so one flash cut cannot snap the wall to a colour barely there. <strong>Default: 0 ms.</strong></div>
+                <div class="fieldDescription">Now: <strong id="minimumColourHoldValue"></strong>. A colour must stay in the picture at least this long before the LEDs follow it, so one flash cut cannot snap the wall to a colour barely there. <strong>Default: 100 ms.</strong></div>
             </div>
 
             <div class="inputContainer">
                 <input is="emby-input" id="hueBrightnessPercent" type="range" min="1" max="200" step="1" label="Hue brightness" />
-                <div class="fieldDescription">Now: <strong id="hueBrightnessValue"></strong>. A 1% minimum always stays on. <strong>Default: 100%.</strong></div>
+                <div class="fieldDescription">Now: <strong id="hueBrightnessValue"></strong>. A 1% minimum always stays on. <strong>Default: 169%.</strong></div>
             </div>
 
             <div class="inputContainer">
                 <input is="emby-input" id="hueResponsePercent" type="range" min="0" max="100" step="10" dir="rtl" label="Hue responsivity" />
-                <div class="fieldDescription">Now: <strong id="hueResponseValue"></strong>. Reactive tracks a cut instantly; smooth eases in over a second or more. <strong>Default: 40.</strong></div>
+                <div class="fieldDescription">Now: <strong id="hueResponseValue"></strong>. Reactive tracks a cut instantly; smooth eases in over a second or more. <strong>Default: 20.</strong></div>
             </div>
         </div>
 
@@ -388,12 +393,7 @@
                     </div>
 
                     <div class="fieldDescription">Analysis size: <strong id="analysisSizeValue"></strong></div>
-
-                    <br />
-                    <div class="inputContainer">
-                        <input is="emby-input" id="samplingDepthPercent" type="range" min="1" max="30" step="1" label="Sampling edge range" />
-                        <div class="fieldDescription">Now: <strong id="samplingDepthValue"></strong>. Lower is more literal; higher is calmer. <strong>Default: 10%.</strong></div>
-                    </div>
+                    <div class="fieldDescription" style="margin-top:.4em">Sampling edge range now lives in the Live tuning panel below the signal chain, where changes apply immediately.</div>
 
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" id="ignoreBlackBorders" type="checkbox" />

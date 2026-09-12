@@ -61,9 +61,9 @@ export default function (view) {
         WledHttpPort: 80, RealtimeProtocol: 0, OutputDelayMilliseconds: 0, OutputFramesPerSecond: 30,
         TopLedCount: 265, RightLedCount: 150,
         BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160,
-        SamplingDepthPercent: 10, MinimumColourHoldMilliseconds: 0, WledSmoothingMilliseconds: 0, BrightnessPercent: 100, SaturationPercent: 100,
+        SamplingDepthPercent: 10, MinimumColourHoldMilliseconds: 100, WledSmoothingMilliseconds: 110, BrightnessPercent: 158, SaturationPercent: 140,
         RedGainPercent: 100, GreenGainPercent: 100, BlueGainPercent: 100,
-        BlackLevelFloorPercent: 0,
+        BlackLevelFloorPercent: 1,
         WallColourCorrectionPercent: 100,
         TopBrightnessPercent: 100, TopRedGainPercent: 100, TopGreenGainPercent: 100, TopBlueGainPercent: 100,
         RightBrightnessPercent: 100, RightRedGainPercent: 100, RightGreenGainPercent: 100, RightBlueGainPercent: 100,
@@ -1555,7 +1555,7 @@ export default function (view) {
     // ever merges the tuning fields into whatever was last loaded, so it can
     // never clobber an in-progress, not-yet-saved edit sitting open in a
     // connection modal elsewhere on the page.
-    const tuningFields = ["brightnessPercent", "saturationPercent", "blackLevelFloorPercent", "wledSmoothingMilliseconds", "minimumColourHoldMilliseconds", "hueBrightnessPercent", "hueResponsePercent"];
+    const tuningFields = ["brightnessPercent", "saturationPercent", "blackLevelFloorPercent", "samplingDepthPercent", "wledSmoothingMilliseconds", "minimumColourHoldMilliseconds", "hueBrightnessPercent", "hueResponsePercent"];
     let tuningSaveTimer = null;
 
     function scheduleTuningSave() {
@@ -1631,13 +1631,13 @@ export default function (view) {
             OutputFramesPerSecond: 30,
             HoldWhilePaused: true,
             SamplingDepthPercent: 10,
-            BrightnessPercent: 100,
-            SaturationPercent: 100,
+            BrightnessPercent: 158,
+            SaturationPercent: 140,
             RedGainPercent: 100,
             GreenGainPercent: 100,
             BlueGainPercent: 100,
             ...anchorDefaults,
-            BlackLevelFloorPercent: 0,
+            BlackLevelFloorPercent: 1,
             WallColourHex: "#ffffff",
             WallColourCorrectionPercent: 100,
             ...sideDefaults,
@@ -1647,8 +1647,8 @@ export default function (view) {
             AnalysisWidth: 160,
             AnalysisHeight: 90,
             AllowWledControl: false,
-            MinimumColourHoldMilliseconds: 0,
-            WledSmoothingMilliseconds: 0,
+            MinimumColourHoldMilliseconds: 100,
+            WledSmoothingMilliseconds: 110,
             SendWhiteChannel: false,
             WhiteChannelStrengthPercent: 50,
             HueEnabled: false,
@@ -1656,9 +1656,9 @@ export default function (view) {
             HueBridgeId: loadedConfig?.HueBridgeId || "",
             HueEntertainmentConfigurationId: loadedConfig?.HueEntertainmentConfigurationId || "00000000-0000-0000-0000-000000000000",
             HueEntertainmentConfigurationName: loadedConfig?.HueEntertainmentConfigurationName || "",
-            HueBrightnessPercent: 100,
+            HueBrightnessPercent: 169,
             HueEndBehaviour: 0,
-            HueResponsePercent: 40
+            HueResponsePercent: 20
         };
     }
 

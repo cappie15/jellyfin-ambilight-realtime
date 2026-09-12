@@ -80,6 +80,25 @@ public class AmbilightFrameProcessorTests
     }
 
     [Fact]
+    public void ClearTargetStartsAFadeInSoTheVeryNextEncodedFrameIsNearBlackNotFullBrightness()
+    {
+        // Regression test for the requested symmetric counterpart to the
+        // stop-side fade-to-black: a new session must not jump straight to
+        // full brightness the instant the first real frame becomes due.
+        var processor = CreateProcessor();
+
+        processor.ClearTarget();
+        var target = processor.Sample(CreateSolidFrame(red: 235, green: 16, blue: 16));
+        var rgb24 = processor.EncodeTarget(target);
+
+        // Encoded a moment (well under 2500 ms) after ClearTarget, so the
+        // fade-in ramp has barely started -- nowhere near the 255 a
+        // never-cleared processor produces for this same input (see
+        // SampleThenEncodeTargetConnectsBgraSamplingInterpolationAndRgb24Encoding).
+        Assert.True(rgb24[0] < 10, $"expected a near-black red channel this soon after ClearTarget, got {rgb24[0]}");
+    }
+
+    [Fact]
     public async Task SchedulerDropsSupersededFramesAndSendsOnlyTheLatest()
     {
         var latestFrames = new LatestFrameBuffer<AnalysisFrame>();
