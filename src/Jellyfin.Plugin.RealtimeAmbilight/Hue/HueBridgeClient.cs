@@ -227,16 +227,6 @@ public sealed class HueBridgeClient : IHueBridgeClient, IDisposable
     }
 
     /// <summary>
-    /// A properly configured <see cref="LocalHueApi"/>, for callers that need
-    /// HueApi's own typed client (e.g. light state PUTs for the end-of-session
-    /// behaviour) rather than this class's own hand-rolled calls -- still with
-    /// this plugin's own certificate-pinned <see cref="HttpClient"/> passed in
-    /// explicitly, never <see cref="LocalHueApi"/>'s own accept-any default.
-    /// </summary>
-    public LocalHueApi CreatePinnedLocalApi(string host, string expectedCertificateThumbprintSha256, string applicationKey)
-        => new(host, applicationKey, CreatePinnedClient(host, expectedCertificateThumbprintSha256));
-
-    /// <summary>
     /// Returns the cached client for this exact (host, thumbprint) pair if
     /// one already exists, or builds and caches a new one. Safe to call
     /// concurrently: <see cref="ConcurrentDictionary{TKey,TValue}.GetOrAdd"/>
