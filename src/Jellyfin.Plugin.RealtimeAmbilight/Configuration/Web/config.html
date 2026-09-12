@@ -80,9 +80,10 @@
         #realtimeAmbilightConfigurationPage .raModalClose { background: none; border: none; color: #8a929c; font-size: 1.5em; line-height: 1; cursor: pointer; padding: .1em .3em; }
         #realtimeAmbilightConfigurationPage .raModalClose:hover { color: #e7e9ec; }
         #realtimeAmbilightConfigurationPage .raModalBody { padding: 1.2em 1.3em; overflow-y: auto; flex: 1 1 auto; }
-        /* Same trick as .raStageRailWrap.raScrollable, applied vertically:
-           only added once JS confirms the body actually overflows, so a short
-           modal's own last field never gets needlessly dimmed. */
+        /* Only added once JS confirms the body actually overflows, so a short
+           modal's own last field never gets needlessly dimmed. Vertical
+           scroll inside a fixed-height modal is fine; this page's own rule
+           is specifically against ever scrolling sideways. */
         #realtimeAmbilightConfigurationPage .raModalBody.raScrollable { -webkit-mask-image: linear-gradient(to bottom, #000 92%, transparent); mask-image: linear-gradient(to bottom, #000 92%, transparent); }
         #realtimeAmbilightConfigurationPage .raModalFooter { padding: 1em 1.3em; border-top: 1px solid #22262c; flex: none; }
 
@@ -155,20 +156,17 @@
         @keyframes raLiveDotPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
         @media (prefers-reduced-motion: reduce) { #realtimeAmbilightConfigurationPage .raLiveBadge::before { animation: none; } }
 
-        /* ---- signal chain: eight real stages, not just the three with their
-           own independent counter -- 4/5/6 are genuinely inline with 2/3/7 so
-           they show "inline" rather than a fabricated rate of their own. All
-           eight sit in one row, connected end to end, rather than wrapping
-           into an unrelated 4x2 grid -- the point is to see the whole chain
-           at once. Narrow viewports scroll horizontally instead of wrapping:
-           a wrapped connector would no longer connect anything. ---- */
-        #realtimeAmbilightConfigurationPage .raStageRailWrap { overflow-x: auto; padding-bottom: .1em; }
-        /* Only added once JS confirms the row actually overflows -- a fade
-           that is always on would dim the last stage even when everything
-           already fits. */
-        #realtimeAmbilightConfigurationPage .raStageRailWrap.raScrollable { -webkit-mask-image: linear-gradient(to right, #000 92%, transparent); mask-image: linear-gradient(to right, #000 92%, transparent); }
-        #realtimeAmbilightConfigurationPage .raStageGrid { display: flex; align-items: stretch; width: max-content; min-width: 100%; }
-        #realtimeAmbilightConfigurationPage .raStage { position: relative; flex: 1 1 6.5em; min-width: 6.5em; border: 1px solid transparent; border-radius: .6em; padding: .55em .55em; background: linear-gradient(#0d0f12, #0d0f12) padding-box, linear-gradient(#3a3f47, #3a3f47) border-box; }
+        /* ---- signal chain: seven real stages, not just the three with their
+           own independent counter -- 4/5 are genuinely inline with 2/3/6 so
+           they show "inline" rather than a fabricated rate of their own.
+           flex-wrap, not width:max-content + horizontal scroll: this rail
+           must never scroll sideways, on any screen (stated explicitly after
+           it did on a phone) -- a second row of stages reads fine; a
+           horizontal scrollbar on a settings page does not. A wrapped
+           connector after the last stage of a row is a harmless dangling
+           stub, not a broken link, and a cheap trade for never scrolling. ---- */
+        #realtimeAmbilightConfigurationPage .raStageGrid { display: flex; flex-wrap: wrap; align-items: stretch; row-gap: .4em; }
+        #realtimeAmbilightConfigurationPage .raStage { position: relative; flex: 1 1 4.6em; min-width: 4.6em; border: 1px solid transparent; border-radius: .6em; padding: .5em .5em; background: linear-gradient(#0d0f12, #0d0f12) padding-box, linear-gradient(#3a3f47, #3a3f47) border-box; }
         /* Rolling through the same rainbow the rack bar and connectors use,
            only while this stage is genuinely active right now -- a solid
            amber/red border still means trouble, exactly as everywhere else
@@ -185,7 +183,7 @@
            gradient as the boxes and the rack bar once both stages either
            side of it are actually live, so the colour reads as one signal
            moving left to right through the whole chain. */
-        #realtimeAmbilightConfigurationPage .raConnector { flex: 0 0 .8em; align-self: center; height: 3px; border-radius: 2px; background: #2a2d33; }
+        #realtimeAmbilightConfigurationPage .raConnector { flex: 0 0 .5em; align-self: center; height: 3px; border-radius: 2px; background: #2a2d33; }
         #realtimeAmbilightConfigurationPage .raConnector.raOk { background: linear-gradient(90deg, #ff5f6d, #ffc371, #3ddc84, #6dd5ed, #a78bfa, #ff5f6d); background-size: 300% 100%; animation: raRackSweepMove 6s linear infinite; }
 
         #realtimeAmbilightConfigurationPage .raActivityList { max-height: 13em; overflow-y: auto; font-size: .85em; display: flex; flex-direction: column-reverse; gap: .25em; font-family: "IBM Plex Mono", monospace; }
@@ -258,12 +256,17 @@
         </div>
 
         <!-- Not a device card: this is the shared chain behind both WLED and Hue's
-             output, not something with its own address to bind or ping. All eight
-             stages a frame actually passes through, in order -- not just the three
-             that happen to have their own independent throughput counter. -->
+             output, not something with its own address to bind or ping. Six
+             stages a frame actually passes through, in the real order it passes
+             through them -- not just the three that happen to have their own
+             independent throughput counter. LED mapping, colour adjustment and
+             smoothing are one block: all three happen back to back with
+             nothing of their own to show in between, so three separate boxes
+             was three boxes doing the job of one. Wraps onto a second row on a
+             narrow screen rather than ever scrolling sideways -- see
+             raStageGrid's own CSS remarks. -->
         <div class="raPanel" id="raPipelinePanel">
             <div class="raPanelTop"><span>Signal chain</span><span class="raCardState" id="pipelineState">&nbsp;</span></div>
-            <div class="raStageRailWrap">
             <div class="raStageGrid" id="raStageGrid">
                 <div class="raStage" id="stage-playback"><span class="raStageNum">1</span><div class="raStageLabel">Playback</div><div class="raStageValue" id="stagePlayback">–</div><div class="raStageSub" id="stageSourceFps"></div></div>
                 <div class="raConnector" id="connector-1"></div>
@@ -271,16 +274,11 @@
                 <div class="raConnector" id="connector-2"></div>
                 <div class="raStage" id="stage-sample"><span class="raStageNum">3</span><div class="raStageLabel">Edge sampling</div><div class="raStageValue" id="fpsSample">–</div></div>
                 <div class="raConnector" id="connector-3"></div>
-                <div class="raStage" id="stage-colour"><span class="raStageNum">4</span><div class="raStageLabel">Colour &amp; HDR</div><div class="raStageValue" id="stageColour">inline</div></div>
+                <div class="raStage" id="stage-colour"><span class="raStageNum">4</span><div class="raStageLabel">LED processing</div><div class="raStageValue" id="stageColour">inline</div></div>
                 <div class="raConnector" id="connector-4"></div>
-                <div class="raStage" id="stage-interp"><span class="raStageNum">5</span><div class="raStageLabel">LED mapping</div><div class="raStageValue" id="stageInterp">inline</div></div>
+                <div class="raStage" id="stage-wled"><span class="raStageNum">5</span><div class="raStageLabel">Sent to WLED</div><div class="raStageValue" id="fpsWled">–</div></div>
                 <div class="raConnector" id="connector-5"></div>
-                <div class="raStage" id="stage-smooth"><span class="raStageNum">6</span><div class="raStageLabel">Smoothing</div><div class="raStageValue" id="stageSmooth">inline</div></div>
-                <div class="raConnector" id="connector-6"></div>
-                <div class="raStage" id="stage-wled"><span class="raStageNum">7</span><div class="raStageLabel">Sent to WLED</div><div class="raStageValue" id="fpsWled">–</div></div>
-                <div class="raConnector" id="connector-7"></div>
-                <div class="raStage" id="stage-hue"><span class="raStageNum">8</span><div class="raStageLabel">Sent to Hue</div><div class="raStageValue" id="fpsHue">–</div></div>
-            </div>
+                <div class="raStage" id="stage-hue"><span class="raStageNum">6</span><div class="raStageLabel">Sent to Hue</div><div class="raStageValue" id="fpsHue">–</div></div>
             </div>
             <div class="fieldDescription" id="fpsHint">Nothing playing yet.</div>
         </div>

@@ -487,19 +487,17 @@ export default function (view) {
                 setStage("stage-decode", "fpsAnalyse", active ? format(analyse) : "Ready", active);
                 setStage("stage-sample", "fpsSample", active ? format(sample) : "Ready", active);
                 setStage("stage-colour", "stageColour", "inline", active);
-                setStage("stage-interp", "stageInterp", "inline", active);
-                setStage("stage-smooth", "stageSmooth", "inline", active);
                 setStage("stage-wled", "fpsWled", active ? format(wled) : "Ready", active);
                 setStage("stage-hue", "fpsHue", hueActive ? format(hue) : "Ready", hueActive);
 
                 // Each wire is "on" only once both stages it joins are live,
                 // so the colour reads as one signal actually reaching that
                 // point in the chain, not a decoration next to it.
-                for (let index = 1; index <= 6; index++) {
+                for (let index = 1; index <= 4; index++) {
                     byId(`connector-${index}`).className = `raConnector${active ? " raOk" : ""}`;
                 }
 
-                byId("connector-7").className = `raConnector${active && hueActive ? " raOk" : ""}`;
+                byId("connector-5").className = `raConnector${active && hueActive ? " raOk" : ""}`;
 
                 byId("fpsHint").innerHTML = active
                     ? ""
@@ -1936,16 +1934,6 @@ export default function (view) {
             closeEditModal();
         }
     });
-    // The rail only scrolls once it actually overflows its own width (varies
-    // with the sidebar/viewport), so the fade hint at the right edge is only
-    // added then -- otherwise it would needlessly dim the last stage.
-    const stageRailWrap = byId("raStageGrid").closest(".raStageRailWrap");
-    const updateStageRailScrollHint = () => {
-        stageRailWrap.classList.toggle("raScrollable", stageRailWrap.scrollWidth > stageRailWrap.clientWidth + 1);
-    };
-    new ResizeObserver(updateStageRailScrollHint).observe(stageRailWrap);
-    updateStageRailScrollHint();
-
     view.addEventListener("input", event => { if (event.target.closest(".raModalBody")) { updateModalScrollFade(); } });
     view.addEventListener("change", event => { if (event.target.closest(".raModalBody")) { updateModalScrollFade(); } });
     window.addEventListener("resize", updateModalScrollFade);
