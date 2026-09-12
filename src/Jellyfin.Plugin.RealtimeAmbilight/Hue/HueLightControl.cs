@@ -1,4 +1,5 @@
 #pragma warning disable CA1848, CA1873
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue;
@@ -31,7 +32,7 @@ public interface IHueLightControl
 /// a session starts, and writing the warm-white-dim or restore payload once
 /// it ends. Ordinary REST PUTs, not part of the realtime DTLS path.
 /// </summary>
-public sealed class HueLightControl : IHueLightControl
+public sealed class HueLightControl : IHueLightControl, IDisposable
 {
     private const int Port = 443;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
@@ -41,20 +42,33 @@ public sealed class HueLightControl : IHueLightControl
 
     private readonly ILogger _logger;
 
+    /// <summary>One pinned client per (host, thumbprint) pair -- see <see cref="HueBridgeClient"/>'s own field of the same shape for the full reasoning.</summary>
+    private readonly ConcurrentDictionary<(string Host, string Thumbprint), HttpClient> _pinnedClients = new();
+
     public HueLightControl(ILogger logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
+    public void Dispose()
+    {
+        foreach (var client in _pinnedClients.Values)
+        {
+            client.Dispose();
+        }
+
+        _pinnedClients.Clear();
+    }
+
     public async Task<HueLightSnapshotEntry?> ReadStateAsync(
         string host, string certificateThumbprint, string applicationKey, Guid lightId, CancellationToken cancellationToken)
     {
-        using var client = CreateClient(host, certificateThumbprint, applicationKey);
+        var client = CreateClient(host, certificateThumbprint);
         try
         {
-            using var response = await client
-                .GetAsync(new Uri($"https://{host}:{Port}/clip/v2/resource/light/{lightId}"), cancellationToken)
-                .ConfigureAwait(false);
+            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri($"https://{host}:{Port}/clip/v2/resource/light/{lightId}"));
+            request.Headers.Add("hue-application-key", applicationKey);
+            using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 return null;
@@ -176,13 +190,13 @@ public sealed class HueLightControl : IHueLightControl
 
     private async Task PutAsync(string host, string certificateThumbprint, string applicationKey, Guid lightId, string json, CancellationToken cancellationToken)
     {
-        using var client = CreateClient(host, certificateThumbprint, applicationKey);
+        var client = CreateClient(host, certificateThumbprint);
         try
         {
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            using var response = await client
-                .PutAsync(new Uri($"https://{host}:{Port}/clip/v2/resource/light/{lightId}"), content, cancellationToken)
-                .ConfigureAwait(false);
+            using var request = new HttpRequestMessage(HttpMethod.Put, new Uri($"https://{host}:{Port}/clip/v2/resource/light/{lightId}")) { Content = content };
+            request.Headers.Add("hue-application-key", applicationKey);
+            using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Hue bridge {Host} rejected the end-of-session update for light {LightId}: {StatusCode}.", host, lightId, response.StatusCode);
@@ -195,15 +209,14 @@ public sealed class HueLightControl : IHueLightControl
         }
     }
 
-    private static HttpClient CreateClient(string host, string certificateThumbprint, string applicationKey)
-    {
-        var handler = new HttpClientHandler
+    private HttpClient CreateClient(string host, string certificateThumbprint)
+        => _pinnedClients.GetOrAdd((host, certificateThumbprint), key =>
         {
-            ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
-                certificate is not null && string.Equals(HueBridgeClient.Thumbprint(certificate), certificateThumbprint, StringComparison.OrdinalIgnoreCase),
-        };
-        var client = new HttpClient(handler) { Timeout = RequestTimeout };
-        client.DefaultRequestHeaders.Add("hue-application-key", applicationKey);
-        return client;
-    }
+            var handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
+                    certificate is not null && string.Equals(HueBridgeClient.Thumbprint(certificate), key.Thumbprint, StringComparison.OrdinalIgnoreCase),
+            };
+            return new HttpClient(handler) { Timeout = RequestTimeout };
+        });
 }

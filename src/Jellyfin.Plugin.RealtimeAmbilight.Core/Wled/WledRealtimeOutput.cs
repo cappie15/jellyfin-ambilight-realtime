@@ -163,12 +163,11 @@ public sealed class WledRealtimeOutput : ILedFrameOutput, IDisposable
             CurrentProtocol = new WledProtocolSelection(
                 WledRealtimeProtocol.Ddp,
                 "RGBW forces DDP because Hyperion Raw RGB has no white channel.");
-            var rgbwPackets = DdpPacketizer.Packetize(rgb24Frame.Span, _nextDdpSequence, bytesPerLed: 4);
-            foreach (var packet in rgbwPackets)
-            {
-                await _udpSender.SendAsync(packet, _endpoint.Host, DdpPort, cancellationToken).ConfigureAwait(false);
-                _nextDdpSequence = DdpPacketizer.NextSequence(_nextDdpSequence);
-            }
+            _nextDdpSequence = await DdpPacketizer.SendPacketsAsync(
+                rgb24Frame,
+                _nextDdpSequence,
+                bytesPerLed: 4,
+                packet => _udpSender.SendAsync(packet, _endpoint.Host, DdpPort, cancellationToken)).ConfigureAwait(false);
 
             return;
         }
@@ -182,12 +181,11 @@ public sealed class WledRealtimeOutput : ILedFrameOutput, IDisposable
             return;
         }
 
-        var packets = DdpPacketizer.Packetize(rgb24Frame.Span, _nextDdpSequence);
-        foreach (var packet in packets)
-        {
-            await _udpSender.SendAsync(packet, _endpoint.Host, DdpPort, cancellationToken).ConfigureAwait(false);
-            _nextDdpSequence = DdpPacketizer.NextSequence(_nextDdpSequence);
-        }
+        _nextDdpSequence = await DdpPacketizer.SendPacketsAsync(
+            rgb24Frame,
+            _nextDdpSequence,
+            bytesPerLed: 3,
+            packet => _udpSender.SendAsync(packet, _endpoint.Host, DdpPort, cancellationToken)).ConfigureAwait(false);
     }
 
     private void ValidateFrame(ReadOnlySpan<byte> rgb24Frame)

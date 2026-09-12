@@ -48,3 +48,64 @@ public class DdpPacketizerTests
     private static byte[] CreateFrame(int ledCount)
         => Enumerable.Range(0, ledCount * 3).Select(static value => (byte)(value % 251)).ToArray();
 }
+
+public class DdpPacketizerSendPacketsAsyncTests
+{
+    [Theory]
+    [InlineData(100, 1)]
+    [InlineData(480, 1)]
+    [InlineData(490, 2)]
+    [InlineData(831, 2)]
+    [InlineData(1000, 3)]
+    public async Task ProducesTheSameBytesAsPacketizeWithoutAllocatingAnArrayPerPacket(int ledCount, int expectedPacketCount)
+    {
+        var frame = CreateFrame(ledCount);
+        var expectedPackets = DdpPacketizer.Packetize(frame, 14);
+        var sent = new List<byte[]>();
+
+        var nextSequence = await DdpPacketizer.SendPacketsAsync(
+            frame,
+            14,
+            bytesPerLed: 3,
+            packet =>
+            {
+                // The pool can (and does) rent an array larger than requested --
+                // sent.length must reflect the trimmed AsMemory(0, totalLength)
+                // slice, not the rented buffer's own possibly-larger length.
+                sent.Add(packet.ToArray());
+                return Task.CompletedTask;
+            });
+
+        Assert.Equal(expectedPacketCount, sent.Count);
+        Assert.Equal(expectedPackets.Count, sent.Count);
+        for (var index = 0; index < expectedPackets.Count; index++)
+        {
+            Assert.Equal(expectedPackets[index], sent[index]);
+        }
+
+        // The sequence written into each packet already wraps at 15 back to 1
+        // (see NormalizeSequence/NextSequence), so the value returned after
+        // the loop is simply one more step past whatever the last packet
+        // itself carried -- not a plain "firstSequence + packetCount" offset,
+        // which would be wrong here once the run wraps more than once.
+        Assert.Equal(DdpPacketizer.NextSequence(expectedPackets[^1][1]), nextSequence);
+    }
+
+    [Fact]
+    public async Task ReturnsTheBufferToThePoolEvenWhenSendThrows()
+    {
+        // A leaked rented buffer is invisible in a single test run, but this
+        // at least proves the finally block runs on the exception path rather
+        // than only ever being exercised on the happy path.
+        var frame = CreateFrame(100);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DdpPacketizer.SendPacketsAsync(
+            frame,
+            1,
+            bytesPerLed: 3,
+            _ => throw new InvalidOperationException("simulated send failure")));
+    }
+
+    private static byte[] CreateFrame(int ledCount)
+        => Enumerable.Range(0, ledCount * 3).Select(static value => (byte)(value % 251)).ToArray();
+}

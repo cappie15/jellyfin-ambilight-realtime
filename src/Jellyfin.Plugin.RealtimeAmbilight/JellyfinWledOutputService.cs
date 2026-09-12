@@ -158,11 +158,36 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
         _scheduler = new LatestFrameOutputScheduler(_coordinator.LatestFrames.Subscribe(), processor, _output);
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Starts the pump immediately rather than awaiting WLED's own two
+    /// startup probes first. <see cref="IHostedService.StartAsync"/> is
+    /// awaited by Jellyfin's own host startup sequence, so blocking here on
+    /// two WLED round trips (each bounded by its own multi-second timeout)
+    /// added that same delay to Jellyfin's own overall startup whenever WLED
+    /// happened to be unreachable at boot -- observed live, not
+    /// hypothetical. Neither probe is needed before the pump can usefully
+    /// run: a wrong encoding guess or an unset "force max brightness" for the
+    /// first few frames is a much smaller cost than delaying the entire
+    /// server's readiness on a controller that might not even be reachable.
+    /// </summary>
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        await DetectEncodingAsync(cancellationToken).ConfigureAwait(false);
-        await EnsureForceMaxBrightnessAsync(cancellationToken).ConfigureAwait(false);
         _pump = Task.Run(RunPumpAsync, CancellationToken.None);
+        _ = RunStartupProbesAsync();
+        return Task.CompletedTask;
+    }
+
+    private async Task RunStartupProbesAsync()
+    {
+        try
+        {
+            await DetectEncodingAsync(_shutdown.Token).ConfigureAwait(false);
+            await EnsureForceMaxBrightnessAsync(_shutdown.Token).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogWarning(exception, "Realtime Ambilight could not complete its startup WLED checks.");
+        }
     }
 
     /// <summary>
@@ -344,7 +369,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
         var wasOutputEnabled = true;
         _logger.LogInformation("Realtime Ambilight output pump started.");
         var configuration = Plugin.Instance?.Configuration ?? new PluginConfiguration();
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1d / Math.Clamp(configuration.OutputFramesPerSecond, 1, 60)));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1d / Math.Clamp(configuration.OutputFramesPerSecond, 1, 180)));
         try
         {
             while (await timer.WaitForNextTickAsync(_shutdown.Token).ConfigureAwait(false))

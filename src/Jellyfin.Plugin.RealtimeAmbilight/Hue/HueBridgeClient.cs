@@ -1,4 +1,5 @@
 #pragma warning disable CA1848, CA1873
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -51,16 +52,41 @@ public interface IHueBridgeClient
 /// plugin actually chose, never <c>HttpClientHandler.DangerousAcceptAnyServerCertificateValidator</c>
 /// -- see the ADR for why that specific default matters here.
 /// </summary>
-public sealed class HueBridgeClient : IHueBridgeClient
+public sealed class HueBridgeClient : IHueBridgeClient, IDisposable
 {
     private const int Port = 443;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ILogger _logger;
 
+    /// <summary>
+    /// One pinned <see cref="HttpClient"/> per (host, expected thumbprint)
+    /// pair actually seen, reused across calls instead of a fresh
+    /// HttpClientHandler/HttpClient (and the TLS handshake that goes with
+    /// it) on every single pairing/config/light call -- the same class of
+    /// per-call setup cost this project already stopped paying for UDP
+    /// packets. In practice there is only ever one entry (the one currently
+    /// paired bridge); a second only appears if the operator re-pairs with a
+    /// different bridge without the plugin restarting in between, which is
+    /// exactly why this is keyed by both host and thumbprint rather than
+    /// just host -- a changed thumbprint must never silently reuse a
+    /// connection pinned to the previous device.
+    /// </summary>
+    private readonly ConcurrentDictionary<(string Host, string Thumbprint), HttpClient> _pinnedClients = new();
+
     public HueBridgeClient(ILogger logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    public void Dispose()
+    {
+        foreach (var client in _pinnedClients.Values)
+        {
+            client.Dispose();
+        }
+
+        _pinnedClients.Clear();
     }
 
     /// <summary>
@@ -127,7 +153,7 @@ public sealed class HueBridgeClient : IHueBridgeClient
     /// </summary>
     public async Task<HuePairingResult> TryPairAsync(string host, string expectedCertificateThumbprintSha256, CancellationToken cancellationToken)
     {
-        using var client = CreatePinnedClient(host, expectedCertificateThumbprintSha256);
+        var client = CreatePinnedClient(host, expectedCertificateThumbprintSha256);
         try
         {
             using var content = new StringContent(
@@ -171,11 +197,10 @@ public sealed class HueBridgeClient : IHueBridgeClient
     public async Task<IReadOnlyList<HueEntertainmentConfiguration>> GetEntertainmentConfigurationsAsync(
         string host, string expectedCertificateThumbprintSha256, string applicationKey, CancellationToken cancellationToken)
     {
-        using var client = CreatePinnedClient(host, expectedCertificateThumbprintSha256);
-        client.DefaultRequestHeaders.Add("hue-application-key", applicationKey);
-        using var response = await client
-            .GetAsync(new Uri($"https://{host}:{Port}/clip/v2/resource/entertainment_configuration"), cancellationToken)
-            .ConfigureAwait(false);
+        var client = CreatePinnedClient(host, expectedCertificateThumbprintSha256);
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri($"https://{host}:{Port}/clip/v2/resource/entertainment_configuration"));
+        request.Headers.Add("hue-application-key", applicationKey);
+        using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         return HueEntertainmentConfigurationParser.ParseList(json);
@@ -192,11 +217,10 @@ public sealed class HueBridgeClient : IHueBridgeClient
     public async Task<IReadOnlyDictionary<Guid, Guid>> ResolveLightIdsAsync(
         string host, string expectedCertificateThumbprintSha256, string applicationKey, CancellationToken cancellationToken)
     {
-        using var client = CreatePinnedClient(host, expectedCertificateThumbprintSha256);
-        client.DefaultRequestHeaders.Add("hue-application-key", applicationKey);
-        using var response = await client
-            .GetAsync(new Uri($"https://{host}:{Port}/clip/v2/resource/entertainment"), cancellationToken)
-            .ConfigureAwait(false);
+        var client = CreatePinnedClient(host, expectedCertificateThumbprintSha256);
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri($"https://{host}:{Port}/clip/v2/resource/entertainment"));
+        request.Headers.Add("hue-application-key", applicationKey);
+        using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         return HueEntertainmentServiceParser.ParseLightIdsByServiceId(json);
@@ -212,34 +236,45 @@ public sealed class HueBridgeClient : IHueBridgeClient
     public LocalHueApi CreatePinnedLocalApi(string host, string expectedCertificateThumbprintSha256, string applicationKey)
         => new(host, applicationKey, CreatePinnedClient(host, expectedCertificateThumbprintSha256));
 
+    /// <summary>
+    /// Returns the cached client for this exact (host, thumbprint) pair if
+    /// one already exists, or builds and caches a new one. Safe to call
+    /// concurrently: <see cref="ConcurrentDictionary{TKey,TValue}.GetOrAdd"/>
+    /// only ever publishes one winner if two callers race to create the
+    /// same key, and the (rare) loser's own freshly built client is simply
+    /// discarded unused rather than leaking -- it was never handed to a
+    /// caller or entered into the dictionary.
+    /// </summary>
     private HttpClient CreatePinnedClient(string host, string expectedCertificateThumbprintSha256)
-    {
-        var handler = new HttpClientHandler
+        => _pinnedClients.GetOrAdd((host, expectedCertificateThumbprintSha256), key =>
         {
-            ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
+            var (clientHost, clientExpectedThumbprint) = key;
+            var handler = new HttpClientHandler
             {
-                if (certificate is null)
+                ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
                 {
-                    return false;
-                }
+                    if (certificate is null)
+                    {
+                        return false;
+                    }
 
-                var actual = Thumbprint(certificate);
-                var matches = string.Equals(actual, expectedCertificateThumbprintSha256, StringComparison.OrdinalIgnoreCase);
-                if (!matches)
-                {
-                    _logger.LogWarning(
-                        "Hue bridge {Host} answered with a certificate that does not match the one pinned at pairing time (expected {Expected}, got {Actual}). Refusing the connection.",
-                        host,
-                        expectedCertificateThumbprintSha256,
-                        actual);
-                }
+                    var actual = Thumbprint(certificate);
+                    var matches = string.Equals(actual, clientExpectedThumbprint, StringComparison.OrdinalIgnoreCase);
+                    if (!matches)
+                    {
+                        _logger.LogWarning(
+                            "Hue bridge {Host} answered with a certificate that does not match the one pinned at pairing time (expected {Expected}, got {Actual}). Refusing the connection.",
+                            clientHost,
+                            clientExpectedThumbprint,
+                            actual);
+                    }
 
-                return matches;
-            },
-        };
+                    return matches;
+                },
+            };
 
-        return new HttpClient(handler) { Timeout = RequestTimeout };
-    }
+            return new HttpClient(handler) { Timeout = RequestTimeout };
+        });
 
     /// <summary>
     /// SHA-256 of the leaf certificate's raw bytes -- trust-on-first-use

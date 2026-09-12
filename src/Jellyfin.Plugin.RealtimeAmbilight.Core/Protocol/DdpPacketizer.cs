@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 
 namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Protocol;
@@ -51,6 +52,63 @@ public static class DdpPacketizer
         }
 
         return packets;
+    }
+
+    /// <summary>
+    /// Same wire format as <see cref="Packetize"/>, but never allocates a
+    /// packet array of its own: each packet is rented from
+    /// <see cref="ArrayPool{T}.Shared"/>, handed to <paramref name="sendAsync"/>,
+    /// and returned to the pool as soon as that call completes. Built for the
+    /// real per-frame send path (now running up to a few hundred times a
+    /// second with the output side's own high-fps smoothing), where
+    /// <see cref="Packetize"/>'s own array-of-arrays plus one fresh array per
+    /// packet was allocating a handful of small, short-lived objects every
+    /// single frame for no reason other than convenience -- cheap for the GC
+    /// individually, but the same class of waste as the UDP socket this
+    /// project already stopped recreating per packet.
+    /// </summary>
+    /// <returns>The sequence number the next call should start from.</returns>
+    public static async Task<byte> SendPacketsAsync(
+        ReadOnlyMemory<byte> rgbFrame,
+        byte firstSequence,
+        int bytesPerLed,
+        Func<ReadOnlyMemory<byte>, Task> sendAsync)
+    {
+        ArgumentNullException.ThrowIfNull(sendAsync);
+        ValidateFrame(rgbFrame.Span, bytesPerLed);
+
+        var packetCount = (rgbFrame.Length + ChannelsPerPacket - 1) / ChannelsPerPacket;
+        var offset = 0;
+        var sequence = NormalizeSequence(firstSequence);
+        var dataType = bytesPerLed == 4 ? Rgbw32 : Rgb24;
+
+        for (var index = 0; index < packetCount; index++)
+        {
+            var payloadLength = Math.Min(ChannelsPerPacket, rgbFrame.Length - offset);
+            var totalLength = HeaderLength + payloadLength;
+            var packet = ArrayPool<byte>.Shared.Rent(totalLength);
+            try
+            {
+                packet[0] = index == packetCount - 1 ? (byte)(Version1 | Push) : Version1;
+                packet[1] = sequence;
+                packet[2] = dataType;
+                packet[3] = DisplayDestination;
+                BinaryPrimitives.WriteUInt32BigEndian(packet.AsSpan(4, 4), checked((uint)offset));
+                BinaryPrimitives.WriteUInt16BigEndian(packet.AsSpan(8, 2), checked((ushort)payloadLength));
+                rgbFrame.Span.Slice(offset, payloadLength).CopyTo(packet.AsSpan(HeaderLength));
+
+                await sendAsync(packet.AsMemory(0, totalLength)).ConfigureAwait(false);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(packet);
+            }
+
+            offset += payloadLength;
+            sequence = NextSequence(sequence);
+        }
+
+        return sequence;
     }
 
     public static byte NextSequence(byte currentSequence)

@@ -500,8 +500,30 @@ public sealed class CalibrationController : ControllerBase
             return BadRequest($"Expected {expectedLength} RGBA bytes for {width}x{height}.");
         }
 
+        // Content-Length is optional on an HTTP request -- chunked transfer
+        // omits it entirely -- so the check above alone does not bound how
+        // many bytes get read here. This endpoint is [AllowAnonymous] and
+        // reachable by anything on the network once a calibration is armed,
+        // not only the TV that is supposed to be the caller, so the read
+        // itself is capped explicitly rather than trusting a header the
+        // sender was never required to send: CopyToAsync alone would have
+        // buffered as much as the caller cared to transmit (bounded only by
+        // whatever the hosting server's own default request-body limit
+        // happens to be, comfortably larger than the ~8 MB this endpoint
+        // ever legitimately needs).
         using var buffer = new MemoryStream(expectedLength);
-        await Request.Body.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+        var readChunk = new byte[Math.Min(expectedLength, 81920)];
+        int bytesRead;
+        while ((bytesRead = await Request.Body.ReadAsync(readChunk, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + bytesRead > expectedLength)
+            {
+                return BadRequest($"Expected at most {expectedLength} RGBA bytes for {width}x{height}.");
+            }
+
+            buffer.Write(readChunk, 0, bytesRead);
+        }
+
         if (buffer.Length != expectedLength)
         {
             return BadRequest($"Expected {expectedLength} RGBA bytes for {width}x{height} but received {buffer.Length}.");

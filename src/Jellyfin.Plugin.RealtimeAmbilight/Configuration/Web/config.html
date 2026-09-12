@@ -132,8 +132,20 @@
         #realtimeAmbilightConfigurationPage #raTuningPanel { padding-top: 0; overflow: hidden; }
         #realtimeAmbilightConfigurationPage #raTuningPanel .inputContainer { margin-bottom: 1.3em; }
         #realtimeAmbilightConfigurationPage #raTuningPanel .inputContainer:last-child { margin-bottom: 0; }
+        /* A thin rule at the bottom of the gap between sliders, not the top:
+           it then sits clear of each slider's own label/caption above it and
+           reads as separating the five rows rather than underlining one. */
+        #realtimeAmbilightConfigurationPage #raTuningPanel .inputContainer:not(:last-child) { padding-bottom: 1.1em; border-bottom: 1px solid #1c1f24; }
         #realtimeAmbilightConfigurationPage .raTuningAccent { height: 3px; background: #3ddc84; margin: 0 -1.3em 1.2em; }
         #realtimeAmbilightConfigurationPage .raPanelTop { display: flex; justify-content: space-between; align-items: center; gap: .6em; font-weight: 600; font-size: .95em; margin-bottom: .7em; }
+        #realtimeAmbilightConfigurationPage .raPanelTopLeft { display: flex; align-items: center; gap: .55em; }
+        /* Permanent, not transient like #tuningSavedIndicator: this panel always
+           writes straight to the running pipeline, so it always wears this badge,
+           independent of whatever the last save happened to say. */
+        #realtimeAmbilightConfigurationPage .raLiveBadge { display: inline-flex; align-items: center; gap: .35em; font: 700 .65em/1 "IBM Plex Mono", monospace; letter-spacing: .08em; color: #3ddc84; background: rgba(61,220,132,.12); border: 1px solid rgba(61,220,132,.35); border-radius: 1em; padding: .3em .55em; }
+        #realtimeAmbilightConfigurationPage .raLiveBadge::before { content: ""; width: .45em; height: .45em; border-radius: 50%; background: #3ddc84; animation: raLiveDotPulse 2s ease-in-out infinite; }
+        @keyframes raLiveDotPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+        @media (prefers-reduced-motion: reduce) { #realtimeAmbilightConfigurationPage .raLiveBadge::before { animation: none; } }
 
         /* ---- signal chain: eight real stages, not just the three with their
            own independent counter -- 4/5/6 are genuinely inline with 2/3/7 so
@@ -267,7 +279,7 @@
 
         <div class="raPanel" id="raTuningPanel">
             <div class="raTuningAccent"></div>
-            <div class="raPanelTop"><span>Live tuning</span><span class="raCardState" id="tuningSavedIndicator">&nbsp;</span></div>
+            <div class="raPanelTop"><span class="raPanelTopLeft"><span>Live tuning</span><span class="raLiveBadge">LIVE</span></span><span class="raCardState" id="tuningSavedIndicator">&nbsp;</span></div>
             <p class="fieldDescription" style="margin-bottom:1.1em">Every slider here applies to the picture immediately and saves itself a moment after you stop moving it, so you can watch the TV or the LEDs instead of the screen while adjusting.</p>
 
             <div class="inputContainer">
@@ -504,7 +516,7 @@
                     </div>
 
                     <div class="inputContainer">
-                        <input is="emby-input" id="outputFramesPerSecond" type="number" min="1" max="60" label="LED updates per second" />
+                        <input is="emby-input" id="outputFramesPerSecond" type="number" min="1" max="180" label="LED updates per second" />
                         <div class="fieldDescription">Higher is smoother but costs more CPU. <strong>Default: 30.</strong> Restart after changing.</div>
                     </div>
 
