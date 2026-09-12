@@ -53,13 +53,13 @@ export default function (view) {
     };
 
     const numericFields = [
-        "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond", "stopFadeMilliseconds",
+        "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond",
         "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "samplingDepthPercent",
         "minimumColourHoldMilliseconds", "wledSmoothingMilliseconds", ...colourTuningFields
     ];
     const defaults = {
         WledHttpPort: 80, RealtimeProtocol: 0, OutputDelayMilliseconds: 0, OutputFramesPerSecond: 30,
-        StopFadeMilliseconds: 250, TopLedCount: 265, RightLedCount: 150,
+        TopLedCount: 265, RightLedCount: 150,
         BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160,
         SamplingDepthPercent: 10, MinimumColourHoldMilliseconds: 0, WledSmoothingMilliseconds: 0, BrightnessPercent: 100, SaturationPercent: 100,
         RedGainPercent: 100, GreenGainPercent: 100, BlueGainPercent: 100,
@@ -355,8 +355,9 @@ export default function (view) {
         setCardState("wled", state, label);
         const counts = ledCountFields.map(field => Number(byId(field).value) || 0);
         byId("wledStat").innerHTML = host ? `${counts.reduce((a, b) => a + b, 0)} <span class="raUnit">LEDs</span>` : "&mdash;";
+        const protocol = latestPerformance?.WledProtocol ?? latestPerformance?.wledProtocol;
         byId("wledCap").textContent = host
-            ? `${wledName ? `${wledName} (${host})` : host} · ${byId("sendWhiteChannel").checked ? "RGBW" : "RGB"} · ${byId("outputFramesPerSecond").value} fps`
+            ? `${wledName ? `${wledName} (${host})` : host} · ${byId("sendWhiteChannel").checked ? "RGBW" : "RGB"} · ${byId("outputFramesPerSecond").value} fps${protocol ? ` · ${protocol}` : ""}`
             : "Scan or enter a controller address";
         byId("wledPing").innerHTML = pingLine(ping);
     };
@@ -1629,7 +1630,6 @@ export default function (view) {
             OutputDelayMilliseconds: 0,
             OutputFramesPerSecond: 30,
             HoldWhilePaused: true,
-            StopFadeMilliseconds: 250,
             SamplingDepthPercent: 10,
             BrightnessPercent: 100,
             SaturationPercent: 100,

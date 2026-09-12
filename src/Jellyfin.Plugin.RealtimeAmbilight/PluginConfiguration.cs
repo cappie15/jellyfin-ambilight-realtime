@@ -72,6 +72,13 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public int PauseKeepAliveSeconds { get; set; } = 2;
 
+    /// <summary>
+    /// Retained so existing serialized configurations keep deserializing; no
+    /// longer used. Removed as a user setting: the operator's own value had
+    /// drifted to 2500 ms with no sign a shorter fade was ever wanted, so
+    /// <see cref="JellyfinWledOutputService"/> now uses that as a fixed
+    /// constant instead of a control almost never left at its default.
+    /// </summary>
     public int StopFadeMilliseconds { get; set; } = 250;
 
     /// <summary>

@@ -12,11 +12,21 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.RealtimeAmbilight;
 
 /// <summary>Dashboard-facing throughput at each pipeline stage, Hz. Null means no session is active.</summary>
-public sealed record PipelinePerformanceSnapshot(double? AnalyseFps, double? SampleFps, double? WledRenderFps, double? HueSendFps = null, double? SourceFps = null);
+public sealed record PipelinePerformanceSnapshot(double? AnalyseFps, double? SampleFps, double? WledRenderFps, double? HueSendFps = null, double? SourceFps = null, string? WledProtocol = null);
 
 /// <summary>Runs the latest-only frame pump for the reference 831-led WLED.</summary>
 public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
 {
+    /// <summary>
+    /// How long the strip fades to black after playback stops, before the
+    /// realtime session releases. Not user-configurable: the operator's own
+    /// setting had drifted well past the old 250 ms default (up to 2500 ms)
+    /// with no indication a shorter fade was ever actually wanted, so this is
+    /// now simply the fixed value rather than a control almost never left at
+    /// its default.
+    /// </summary>
+    private const int StopFadeMilliseconds = 2500;
+
     private readonly PlaybackEventCoordinator _coordinator;
     private readonly WledDiscoveryService _discoveryService;
     private readonly WledRealtimeOutput _output;
@@ -107,8 +117,18 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             active ? _coordinator.LatestFrames.PublishRateHz : null,
             active ? _scheduler.ProcessRateHz : null,
             active ? _output.SendRateHz : null,
-            SourceFps: active ? _coordinator.SourceFramesPerSecond : null);
+            SourceFps: active ? _coordinator.SourceFramesPerSecond : null,
+            WledProtocol: DescribeProtocol(_output.CurrentProtocol));
     }
+
+    /// <summary>The protocol actually in use, resolved from "Automatic" if that is what is configured, so the settings page can show it without needing to open the advanced protocol control at all.</summary>
+    private static string? DescribeProtocol(WledProtocolSelection? selection) => selection?.Protocol switch
+    {
+        null => null,
+        WledRealtimeProtocol.Ddp => "DDP",
+        WledRealtimeProtocol.HyperionRawRgb => "Hyperion Raw RGB",
+        var other => other.ToString(),
+    };
 
     public JellyfinWledOutputService(
         PlaybackEventCoordinator coordinator,
@@ -425,11 +445,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                     pendingFrames.Clear();
                     try
                     {
-                        var fadeMilliseconds = Math.Clamp(Plugin.Instance?.Configuration.StopFadeMilliseconds ?? 250, 0, 5000);
-                        if (fadeMilliseconds > 0)
-                        {
-                            await _output.FadeToBlackAsync(TimeSpan.FromMilliseconds(fadeMilliseconds), 30, _shutdown.Token).ConfigureAwait(false);
-                        }
+                        await _output.FadeToBlackAsync(TimeSpan.FromMilliseconds(StopFadeMilliseconds), 30, _shutdown.Token).ConfigureAwait(false);
                         await _output.ReleaseAsync(_shutdown.Token).ConfigureAwait(false);
                     }
                     catch (Exception exception) when (exception is not OperationCanceledException)

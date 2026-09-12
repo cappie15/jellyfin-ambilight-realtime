@@ -541,31 +541,37 @@
                     </label>
                     <div class="fieldDescription">Keep the paused frame on the wall. <strong>Default: on.</strong></div>
 
-                    <div class="inputContainer">
-                        <input is="emby-input" id="stopFadeMilliseconds" type="number" min="0" max="5000" step="50" label="Fade out on stop (ms)" />
-                        <div class="fieldDescription"><code>0</code> cuts immediately. <strong>Default: 250 ms.</strong></div>
+                    <div style="margin-top:.6em">
+                    <details id="advancedWledSettings">
+                        <summary style="cursor:pointer;list-style:revert">
+                            <span class="sectionTitle" style="display:inline">Realtime protocol (advanced)</span>
+                            <div class="fieldDescription" style="margin-top:.3em">Automatic picks the right protocol; the WLED card above shows which one is actually in use. Only change this for troubleshooting.</div>
+                        </summary>
+                        <div style="padding:.8em 0 0 1.25em">
+                        <div class="selectContainer">
+                            <select is="emby-select" id="realtimeProtocol" label="Realtime protocol">
+                                <option value="0">Automatic (recommended)</option>
+                                <option value="1">Hyperion Raw RGB</option>
+                                <option value="2">DDP</option>
+                            </select>
+                            <div class="fieldDescription">Restart after changing.</div>
+                        </div>
+                        </div>
+                    </details>
                     </div>
 
-                    <div class="selectContainer">
-                        <select is="emby-select" id="realtimeProtocol" label="Realtime protocol">
-                            <option value="0">Automatic (recommended)</option>
-                            <option value="1">Hyperion Raw RGB</option>
-                            <option value="2">DDP</option>
-                        </select>
-                        <div class="fieldDescription">Automatic chooses the right protocol. Restart after changing.</div>
-                    </div>
-
+                    <div class="fieldDescription" style="margin-bottom:.4em"><strong>Gamma correction.</strong> Keeps the strip's own brightness curve matched to the picture; the two boxes below are one setting, the second only ever acting as a fallback for the first.</div>
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" id="autoDetectLedGamma" type="checkbox" />
-                        <span>Match LED brightness to the picture, read from the controller</span>
+                        <span>Read it from the controller (recommended)</span>
                     </label>
-                    <div class="fieldDescription">Uses the gamma setting reported by WLED. <strong>Default: on.</strong></div>
+                    <div class="fieldDescription">Uses the gamma setting WLED itself reports. <strong>Default: on.</strong></div>
 
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" id="correctLedGamma" type="checkbox" />
-                        <span>Correct brightness manually</span>
+                        <span>If that fails, assume gamma correction is needed</span>
                     </label>
-                    <div class="fieldDescription">Used when automatic detection is unavailable. <strong>Default: on.</strong></div>
+                    <div class="fieldDescription">Only takes effect when the controller does not report its own setting above. <strong>Default: on.</strong></div>
                 </div>
                 <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save and Close</span></button></div>
                 </div>
