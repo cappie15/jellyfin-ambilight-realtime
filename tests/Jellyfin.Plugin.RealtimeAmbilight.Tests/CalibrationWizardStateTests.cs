@@ -59,7 +59,7 @@ public class CalibrationWizardStateTests
         wizard.Arm();
 
         now += CalibrationWizardState.IdleTimeout - TimeSpan.FromSeconds(1);
-        wizard.MoveTo(1, 0);
+        wizard.MoveTo(1);
         now += CalibrationWizardState.IdleTimeout - TimeSpan.FromSeconds(1);
 
         Assert.True(wizard.IsArmed);
@@ -71,7 +71,7 @@ public class CalibrationWizardStateTests
         var now = DateTimeOffset.UtcNow;
         var wizard = new CalibrationWizardState(() => now);
         wizard.Arm();
-        wizard.MoveTo(3, 2);
+        wizard.MoveTo(3);
 
         now += CalibrationWizardState.IdleTimeout + TimeSpan.FromSeconds(1);
         Assert.False(wizard.IsArmed);
@@ -80,6 +80,5 @@ public class CalibrationWizardStateTests
 
         Assert.True(wizard.IsArmed);
         Assert.Equal(0, wizard.StepIndex);
-        Assert.Equal(0, wizard.PhotoIndex);
     }
 }

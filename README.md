@@ -227,10 +227,11 @@ points build one smooth correction curve around the whole colour wheel --
 shown back to the operator as an actual chart once the wizard finishes, not
 just numbers -- so a colour between two calibrated points is corrected
 smoothly too, not just the six points themselves. White keeps its own,
-separate colour-temperature control (warmer/cooler). A short finetuning
-pass follows, walking a handful of real two-colour photos so the same
-calibrated values can be checked against actual content, not just a flat
-swatch, before the wizard is done.
+separate colour-temperature control (warmer/cooler). Once the seven swatch
+steps are done, check the result against real content the same way you would
+watch anything else: play a video in Jellyfin as usual, with the always-on
+**Live tuning** panel open, and adjust brightness, smoothing or responsivity
+there while it plays.
 
 Click **Start calibration** on the **Ambilight** tab first -- the TV link is
 only reachable while a calibration is actually running. On an internet-facing

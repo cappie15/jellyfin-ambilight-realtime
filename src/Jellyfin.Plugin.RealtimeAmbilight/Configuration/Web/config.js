@@ -52,14 +52,6 @@ export default function (view) {
         Magenta: { lowLabel: "Redder", highLabel: "Bluer", sign: -1 }
     };
 
-    // Which two anchors each real two-colour finetuning photo actually shows
-    // and should offer sliders for -- mirrors CalibrationWizard.FinetuningColourPairs.
-    const finetuningColourPairs = {
-        "Blue-Green": ["Blue", "Green"],
-        "Orange-Red": ["Red", "Yellow"],
-        "Purple-Teal": ["Blue", "Cyan"],
-        "Yellow-Pink": ["Yellow", "Magenta"]
-    };
     const numericFields = [
         "wledHttpPort", "realtimeProtocol", "outputDelayMilliseconds", "outputFramesPerSecond", "stopFadeMilliseconds",
         "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "analysisFramesPerSecond", "samplingDepthPercent",
@@ -618,14 +610,11 @@ export default function (view) {
         byId("openCalibrationPattern").href = url;
     }
 
-    // Mirrors CalibrationWizard.ColourOrder server-side: 7 tuning steps (white,
-    // then every RGB primary and secondary) followed by 4 finetuning steps.
-    // Only used as a fallback bound before the server's own StepCount is known.
-    const wizardStepCountFallback = 11;
-    const wizardTuningStepCount = 7;
+    // Mirrors CalibrationWizard.TuningOrder server-side: White, then every RGB
+    // primary and secondary. Only used as a fallback bound before the
+    // server's own StepCount is known.
+    const wizardStepCountFallback = 7;
     let wizardStepIndex = 0;
-    let wizardPhotoIndex = 0;
-    let wizardPhotoCount = 0;
     let wizardStarted = false;
 
     function currentTuningPayload() {
@@ -638,9 +627,7 @@ export default function (view) {
     // White keeps its original mechanic (a plain red/blue gain push-pull,
     // now ±60 instead of ±50 -- 20% more range, on request); each of the six
     // primary/secondary steps instead shows that one colour's own three
-    // anchor sliders (hue/brightness/intensity, see hueStepSpecs); each
-    // finetuning step shows two colours' worth of those same three-slider
-    // groups side by side, refining the same anchors with real-photo context.
+    // anchor sliders (hue/brightness/intensity, see hueStepSpecs).
     const wizardWhiteRange = 60;
 
     function anchorControlHtml(colourName, idPrefix) {
@@ -716,11 +703,7 @@ export default function (view) {
     function renderStepControls(colourName) {
         const container = byId("wizardStepControls");
 
-        // "White level" is the finetuning replay of the White tuning step
-        // against the operator's own real white-level photos instead of the
-        // synthetic swatch -- same control, same underlying red/blue gain
-        // push-pull, just shown again later with real-photo context.
-        if (colourName === "White" || colourName === "White level") {
+        if (colourName === "White") {
             container.innerHTML = `<div class="inputContainer"><input is="emby-input" id="wizardQuickField" type="range" min="-${wizardWhiteRange}" max="${wizardWhiteRange}" step="1" label="Colour temperature" /><div class="fieldDescription">Cooler &harr; <strong id="wizardQuickValue"></strong> &harr; Warmer</div></div>`;
             const quick = byId("wizardQuickField");
             quick.value = Math.round((Number(byId("redGainPercent").value) - Number(byId("blueGainPercent").value)) / 2);
@@ -743,13 +726,6 @@ export default function (view) {
         if (hueStepSpecs[colourName]) {
             container.innerHTML = anchorControlHtml(colourName, "wizardAnchor");
             wireAnchorControl(colourName, "wizardAnchor");
-            return;
-        }
-
-        const pair = finetuningColourPairs[colourName];
-        if (pair) {
-            container.innerHTML = pair.map((colour, index) => anchorControlHtml(colour, `wizardAnchor${index}`)).join("");
-            pair.forEach((colour, index) => wireAnchorControl(colour, `wizardAnchor${index}`));
             return;
         }
 
@@ -814,23 +790,12 @@ export default function (view) {
         const stepIndex = state.StepIndex ?? state.stepIndex ?? 0;
         const stepCount = state.StepCount ?? state.stepCount ?? wizardStepCountFallback;
         const colourName = state.ColourName ?? state.colourName ?? "";
-        const isConfirmation = state.IsConfirmationStep ?? state.isConfirmationStep ?? (stepIndex >= wizardTuningStepCount);
         const isLastStep = state.IsLastStep ?? state.isLastStep ?? (stepIndex === stepCount - 1);
-        const photoCount = state.PhotoCount ?? state.photoCount ?? 0;
         wizardStepIndex = stepIndex;
-        wizardPhotoIndex = state.PhotoIndex ?? state.photoIndex ?? 0;
-        wizardPhotoCount = photoCount;
-        byId("wizardStepLabel").textContent = isConfirmation
-            ? `Confirmation ${stepIndex - wizardTuningStepCount + 1} of ${stepCount - wizardTuningStepCount}, ${colourName}`
-            : `${stepIndex + 1} of ${wizardTuningStepCount}, ${colourName} tuning`;
+        byId("wizardStepLabel").textContent = `${stepIndex + 1} of ${stepCount}, ${colourName} tuning`;
         renderStepControls(colourName);
         byId("wizardPrev").disabled = stepIndex === 0;
         byId("wizardNext").disabled = isLastStep;
-        // Hidden, not merely disabled, when a step has only one photo: a
-        // "Try another photo" button that can never do anything is a dead
-        // affordance the operator otherwise keeps running into on almost
-        // every step (only White currently has more than one photo).
-        show("wizardAnotherPhoto", photoCount > 1);
         byId("finishCalibrationWizard").textContent = isLastStep ? "✓ Done, finish calibration" : "Stop & release LEDs";
         byId("calibrationPreviewStatus").textContent = describeStatus(state);
         if (isLastStep) {
@@ -846,16 +811,14 @@ export default function (view) {
 
     // Moves the wizard on the server, which the already-open TV page picks up
     // on its next poll and uploads its own sampled edges from the new step's
-    // photo -- this call never needs to know a photo's actual colours itself.
-    function moveWizard(stepIndex, photoIndex) {
+    // swatch -- this call never needs to know a swatch's actual colours itself.
+    function moveWizard(stepIndex) {
         wizardStepIndex = Math.max(0, Math.min(wizardStepCountFallback - 1, stepIndex));
-        wizardPhotoIndex = Math.max(0, photoIndex);
         return window.ApiClient.ajax({
             type: "POST",
             url: window.ApiClient.getUrl("RealtimeAmbilight/Calibration/WizardState"),
             data: JSON.stringify({
                 StepIndex: wizardStepIndex,
-                PhotoIndex: wizardPhotoIndex,
                 ...currentTuningPayload()
             }),
             contentType: "application/json",
@@ -1944,9 +1907,8 @@ export default function (view) {
     byId("wledHost").addEventListener("change", () => { checkControllerSettings(); checkControllerStatus(); });
     byId("wledHttpPort").addEventListener("change", () => { checkControllerSettings(); checkControllerStatus(); });
     byId("startCalibrationWizard").addEventListener("click", startWizard);
-    byId("wizardPrev").addEventListener("click", () => moveWizard(wizardStepIndex - 1, 0));
-    byId("wizardNext").addEventListener("click", () => moveWizard(wizardStepIndex + 1, 0));
-    byId("wizardAnotherPhoto").addEventListener("click", () => moveWizard(wizardStepIndex, wizardPhotoIndex + 1));
+    byId("wizardPrev").addEventListener("click", () => moveWizard(wizardStepIndex - 1));
+    byId("wizardNext").addEventListener("click", () => moveWizard(wizardStepIndex + 1));
     byId("copyCalibrationUrl").addEventListener("click", () => {
         const url = byId("calibrationPatternUrl").value;
         if (navigator.clipboard?.writeText) {

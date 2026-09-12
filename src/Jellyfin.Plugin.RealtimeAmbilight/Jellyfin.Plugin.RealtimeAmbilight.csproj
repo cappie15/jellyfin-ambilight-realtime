@@ -21,9 +21,5 @@
   <ItemGroup>
     <EmbeddedResource Include="Configuration/Web/config.html" />
     <EmbeddedResource Include="Configuration/Web/config.js" />
-    <!-- The operator's own curated, cropped-and-resized (1920x1080) calibration
-         photos, shipped with the plugin: no external hosting, no attribution,
-         no load time beyond what is already on disk. -->
-    <EmbeddedResource Include="Configuration/CalibrationPhotos/*.jpg" />
   </ItemGroup>
 </Project>

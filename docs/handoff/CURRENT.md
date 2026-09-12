@@ -1,5 +1,19 @@
 # Current state
 
+## Superseded (2026-09-12): the photo-finetuning wizard phase is gone
+
+The "finetuning" confirmation phase described below (`ConfirmationOrder`,
+`FinetuningColourPairs`, `CalibrationWizard.Photos`, the 7 embedded
+`Configuration/CalibrationPhotos/*.jpg` files, the `GetPhoto` real-photo
+branch, the settings page's "Try another photo" button) was removed outright
+at the operator's own explicit request ("de afbeeldingen worden niet meer
+gebruikt"). The wizard is now just the seven swatch-tuning steps
+(White + six primary/secondary). Checking the result against real content is
+now just: play a video in Jellyfin as usual, with the Live tuning panel open.
+Every mention of a finetuning/confirmation phase, the "Gaps ... extra
+finetuning-foto's" ask, and `s3_finaltest.jpg` further down this file is
+historical only -- do not resume that work.
+
 ## Last known commit and worktree
 
 `feat/colour-calibration-curve` is at `3e12e47`, **not yet merged to `main`**

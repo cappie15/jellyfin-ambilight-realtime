@@ -217,12 +217,6 @@ public sealed record PingResult(bool Reachable, double? Milliseconds);
 [Authorize(Policy = "RequiresElevation")]
 public sealed class CalibrationController : ControllerBase
 {
-    /// <summary>Resource name prefix built from the plugin's embedded calibration photos folder.</summary>
-    private const string PhotoResourcePrefix = "Jellyfin.Plugin.RealtimeAmbilight.Configuration.CalibrationPhotos.";
-
-    /// <summary>Read once per file name and kept hot: the fixed 19-photo set is a bounded, small amount of memory.</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> PhotoCache = new();
-
     private readonly JellyfinWledOutputService _outputService;
 
     public CalibrationController(JellyfinWledOutputService outputService)
@@ -337,12 +331,7 @@ public sealed class CalibrationController : ControllerBase
                 }
                 const stepIndex = pick(state, "StepIndex");
                 const stepCount = pick(state, "StepCount");
-                const tuningCount = stepCount - pick(state, "ConfirmationCount");
-                const isConfirmation = pick(state, "IsConfirmationStep");
-                const phase = isConfirmation
-                  ? `Confirmation ${stepIndex - tuningCount + 1} of ${stepCount - tuningCount}`
-                  : `Step ${stepIndex + 1} of ${tuningCount}`;
-                label.textContent = `${phase}, ${pick(state, "ColourName")}`;
+                label.textContent = `Step ${stepIndex + 1} of ${stepCount}, ${pick(state, "ColourName")}`;
               }
               async function tick() {
                 try {
@@ -358,7 +347,7 @@ public sealed class CalibrationController : ControllerBase
                   }
                   everConnected = true;
                   const state = await response.json();
-                  const key = [pick(state, "StepIndex"), pick(state, "PhotoIndex")].join(":");
+                  const key = String(pick(state, "StepIndex"));
                   if (key === lastKey) { return; }
                   lastKey = key;
                   render(state);
@@ -382,55 +371,32 @@ public sealed class CalibrationController : ControllerBase
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> SwatchCache = new();
 
     /// <summary>
-    /// Serves either one of the operator's own calibration photos or, for the
-    /// six primary/secondary steps, a rendered flat swatch at that colour's
-    /// canonical hue (see <see cref="CalibrationWizard.SwatchColours"/>) --
-    /// same-origin either way, sampled by the TV page's own canvas exactly
-    /// like a photo would be, so the calibration measures precisely what the
-    /// real edge-sampling pipeline sees. Embedded photos ship in the plugin
-    /// so there is no external fetch, no attribution and no load time beyond
-    /// what is already on disk. 404 while no session is armed, like the rest
-    /// of this anonymous surface.
+    /// Serves a rendered flat swatch at the given step's own canonical hue
+    /// (see <see cref="CalibrationWizard.SwatchColours"/>), same-origin,
+    /// sampled by the TV page's own canvas exactly like a photo would be, so
+    /// the calibration measures precisely what the real edge-sampling
+    /// pipeline sees. 404 while no session is armed, like the rest of this
+    /// anonymous surface, and for any name that is not one of the wizard's
+    /// own colours.
     /// </summary>
     [AllowAnonymous]
-    [HttpGet("Photo/{colour}/{index:int}")]
-    public IActionResult GetPhoto(string colour, int index)
+    [HttpGet("Photo/{colour}")]
+    public IActionResult GetPhoto(string colour)
     {
         if (!_outputService.Wizard.IsArmed)
         {
             return NotFound();
         }
 
-        if (CalibrationWizard.SwatchColours.TryGetValue(colour, out var swatch))
-        {
-            var png = SwatchCache.GetOrAdd(
-                colour,
-                _ => Core.Color.SolidColourImage.CreateFlatPng(swatch.Red, swatch.Green, swatch.Blue, SwatchWidth, SwatchHeight));
-            return File(png, "image/png");
-        }
-
-        var fileName = CalibrationWizard.PhotoAt(colour, index);
-        if (fileName is null)
+        if (!CalibrationWizard.SwatchColours.TryGetValue(colour, out var swatch))
         {
             return NotFound();
         }
 
-        if (PhotoCache.TryGetValue(fileName, out var cached))
-        {
-            return File(cached, "image/jpeg");
-        }
-
-        using var stream = typeof(Plugin).Assembly.GetManifestResourceStream(PhotoResourcePrefix + fileName);
-        if (stream is null)
-        {
-            return NotFound();
-        }
-
-        using var buffer = new MemoryStream();
-        stream.CopyTo(buffer);
-        var bytes = buffer.ToArray();
-        PhotoCache[fileName] = bytes;
-        return File(bytes, "image/jpeg");
+        var png = SwatchCache.GetOrAdd(
+            colour,
+            _ => Core.Color.SolidColourImage.CreateFlatPng(swatch.Red, swatch.Green, swatch.Blue, SwatchWidth, SwatchHeight));
+        return File(png, "image/png");
     }
 
     /// <summary>
@@ -467,7 +433,7 @@ public sealed class CalibrationController : ControllerBase
     [ProducesResponseType(typeof(CalibrationWizardStateResponse), StatusCodes.Status200OK)]
     public ActionResult<CalibrationWizardStateResponse> MoveWizard([FromBody] CalibrationWizardMoveRequest request)
     {
-        _outputService.Wizard.MoveTo(request.StepIndex, request.PhotoIndex);
+        _outputService.Wizard.MoveTo(request.StepIndex);
         return Ok(BuildWizardStateResponse());
     }
 
@@ -554,27 +520,13 @@ public sealed class CalibrationController : ControllerBase
     {
         var wizard = _outputService.Wizard;
         var colourName = wizard.ColourName;
-        var isSwatch = CalibrationWizard.SwatchColours.ContainsKey(colourName);
-        var photo = CalibrationWizard.PhotoAt(colourName, wizard.PhotoIndex);
-        // A swatch always has exactly one "photo" (itself) and nothing to
-        // cycle through -- there is only one canonical hue for a colour.
-        var photoCount = isSwatch
-            ? 1
-            : CalibrationWizard.Photos.TryGetValue(colourName, out var photos) ? photos.Count : 0;
-        var proxiedPhotoUrl = isSwatch || photo is not null
-            ? $"/RealtimeAmbilight/Calibration/Photo/{colourName}/{wizard.PhotoIndex}"
-            : null;
 
         return new CalibrationWizardStateResponse(
             wizard.StepIndex,
-            CalibrationWizard.ColourOrder.Count,
-            CalibrationWizard.ConfirmationOrder.Count,
-            CalibrationWizard.IsConfirmationStep(wizard.StepIndex),
+            CalibrationWizard.TuningOrder.Count,
             wizard.IsLastStep,
             colourName,
-            wizard.PhotoIndex,
-            photoCount,
-            proxiedPhotoUrl,
+            $"/RealtimeAmbilight/Calibration/Photo/{colourName}",
             _outputService.IsCalibrationPreviewActive,
             _outputService.Wizard.TvConnected);
     }
@@ -592,8 +544,6 @@ public sealed class CalibrationController : ControllerBase
 public sealed class CalibrationWizardMoveRequest
 {
     public int StepIndex { get; set; }
-
-    public int PhotoIndex { get; set; }
 
     public string WallColourHex { get; set; } = "#ffffff";
 
@@ -628,12 +578,8 @@ public sealed record CalibrationPreviewResponse(bool Active, string Message);
 public sealed record CalibrationWizardStateResponse(
     int StepIndex,
     int StepCount,
-    int ConfirmationCount,
-    bool IsConfirmationStep,
     bool IsLastStep,
     string ColourName,
-    int PhotoIndex,
-    int PhotoCount,
-    string? PhotoUrl,
+    string PhotoUrl,
     bool PreviewActive,
     bool TvConnected);
