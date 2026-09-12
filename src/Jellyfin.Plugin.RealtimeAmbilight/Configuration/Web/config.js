@@ -112,36 +112,77 @@ export default function (view) {
     const show = (id, visible) => { byId(id).style.display = visible ? "block" : "none"; };
     const escapeHtml = text => String(text).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char]));
 
-    // Looked up by name rather than a fixed library path or item id: the test
-    // clips live in whatever temporary library the operator points at the
-    // folder they were given, under whatever name they chose for it, so a
-    // name search is the only lookup that does not need to know either.
-    // Re-run every time the panel opens, deliberately not cached: the
-    // operator's very first click often comes before the library has been
-    // added yet, and a cached "not found" would never self-correct once it
-    // finally is.
-    function loadTestVideos() {
-        const panel = byId("testVideosPanel");
-        panel.innerHTML = "<p class=\"fieldDescription\">Looking for the test clips&hellip;</p>";
-        window.ApiClient.getJSON(window.ApiClient.getUrl("Items", {
+    // The eight clips ship embedded in the plugin itself and are extracted
+    // and registered as a real Jellyfin library on the operator's own click
+    // (TestVideoLibrary, server-side) -- no Dashboard trip, no manual library
+    // of their own to build. A real library, not just files on disk: the
+    // Ambilight pipeline only ever reacts to an actual Jellyfin playback
+    // session, so the clips have to be a real, playable library item.
+    function renderTestVideoRows(items) {
+        const serverId = window.ApiClient.serverId?.() ?? "";
+        const rows = items.slice().sort((a, b) => a.Name.localeCompare(b.Name)).map(item => {
+            const playUrl = `${window.location.origin}/web/#/details?id=${encodeURIComponent(item.Id)}&serverId=${encodeURIComponent(serverId)}`;
+            return `<div class="raTestVideoRow"><span>${escapeHtml(item.Name)}</span><a is="emby-linkbutton" href="${playUrl}" target="_blank" rel="noopener">Play &#9656;</a></div>`;
+        }).join("");
+        const notice = items.length === 0
+            ? "<p class=\"fieldDescription\">Set up just now; Jellyfin is still scanning. Close and reopen this in a few seconds.</p>"
+            : "";
+        return `${rows}${notice}<div class="raTestVideoRow"><span class="fieldDescription">Done tuning?</span><button type="button" id="removeTestVideos" class="raLink">Remove test videos</button></div>`;
+    }
+
+    function findTestVideoItems() {
+        return window.ApiClient.getJSON(window.ApiClient.getUrl("Items", {
             searchTerm: "Ambilight test",
             Recursive: true,
             IncludeItemTypes: "Video",
             Limit: 20
-        })).then(result => {
-            const items = (result?.Items ?? []).slice().sort((a, b) => a.Name.localeCompare(b.Name));
-            if (items.length === 0) {
-                panel.innerHTML = "<p class=\"fieldDescription\">No test clips found yet. Add a temporary library pointed at the folder you were given, and wait for Jellyfin to scan it.</p>";
+        })).then(result => result?.Items ?? []);
+    }
+
+    function wireRemoveTestVideosButton() {
+        byId("removeTestVideos")?.addEventListener("click", () => {
+            byId("testVideosPanel").innerHTML = "<p class=\"fieldDescription\">Removing&hellip;</p>";
+            window.ApiClient.ajax({
+                type: "POST",
+                url: window.ApiClient.getUrl("RealtimeAmbilight/Calibration/TestVideos/Remove")
+            }).then(loadTestVideos).catch(() => {
+                byId("testVideosPanel").innerHTML = "<p class=\"fieldDescription\">Could not remove the test videos right now.</p>";
+            });
+        });
+    }
+
+    function wireSetupTestVideosButton() {
+        byId("setupTestVideos")?.addEventListener("click", () => {
+            byId("testVideosPanel").innerHTML = "<p class=\"fieldDescription\">Setting up&hellip; extracting the clips and scanning the new library, this takes a few seconds.</p>";
+            window.ApiClient.ajax({
+                type: "POST",
+                url: window.ApiClient.getUrl("RealtimeAmbilight/Calibration/TestVideos/Setup")
+            }).then(loadTestVideos).catch(() => {
+                byId("testVideosPanel").innerHTML = "<p class=\"fieldDescription\">Could not set up the test videos right now.</p>";
+            });
+        });
+    }
+
+    // Re-run every time the panel opens rather than cached: whether the
+    // library is set up, and whether its scan has caught up yet, can both
+    // change between one open and the next.
+    function loadTestVideos() {
+        const panel = byId("testVideosPanel");
+        panel.innerHTML = "<p class=\"fieldDescription\">Loading&hellip;</p>";
+        window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Calibration/TestVideos/Status")).then(status => {
+            const isSetUp = status?.IsSetUp ?? status?.isSetUp ?? false;
+            if (!isSetUp) {
+                panel.innerHTML = "<p class=\"fieldDescription\">Eight short clips (sunrise, action, nature, motorsport, brightness range, a monochrome scene, and 4:3/21:9 aspect-ratio tests) for confirming calibration against real content. One click adds them as their own temporary library; nothing else on your server is touched.</p><button type=\"button\" id=\"setupTestVideos\" class=\"raised\">Set up test videos</button>";
+                wireSetupTestVideosButton();
                 return;
             }
 
-            const serverId = window.ApiClient.serverId?.() ?? "";
-            panel.innerHTML = items.map(item => {
-                const playUrl = `${window.location.origin}/web/#/details?id=${encodeURIComponent(item.Id)}&serverId=${encodeURIComponent(serverId)}`;
-                return `<div class="raTestVideoRow"><span>${escapeHtml(item.Name)}</span><a is="emby-linkbutton" href="${playUrl}" target="_blank" rel="noopener">Play &#9656;</a></div>`;
-            }).join("");
+            findTestVideoItems().then(items => {
+                panel.innerHTML = renderTestVideoRows(items);
+                wireRemoveTestVideosButton();
+            });
         }).catch(() => {
-            panel.innerHTML = "<p class=\"fieldDescription\">Could not look up the test clips right now.</p>";
+            panel.innerHTML = "<p class=\"fieldDescription\">Could not check the test videos right now.</p>";
         });
     }
 

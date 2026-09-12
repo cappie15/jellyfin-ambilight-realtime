@@ -218,10 +218,12 @@ public sealed record PingResult(bool Reachable, double? Milliseconds);
 public sealed class CalibrationController : ControllerBase
 {
     private readonly JellyfinWledOutputService _outputService;
+    private readonly TestVideoLibrary _testVideoLibrary;
 
-    public CalibrationController(JellyfinWledOutputService outputService)
+    public CalibrationController(JellyfinWledOutputService outputService, TestVideoLibrary testVideoLibrary)
     {
         _outputService = outputService ?? throw new ArgumentNullException(nameof(outputService));
+        _testVideoLibrary = testVideoLibrary ?? throw new ArgumentNullException(nameof(testVideoLibrary));
     }
 
     /// <summary>
@@ -538,6 +540,30 @@ public sealed class CalibrationController : ControllerBase
         await _outputService.StopCalibrationPreviewAsync(cancellationToken).ConfigureAwait(false);
         return NoContent();
     }
+
+    /// <summary>Whether <see cref="TestVideoLibrary.LibraryName"/> is currently registered, so the settings page knows whether to offer "set up" or the clip list.</summary>
+    [HttpGet("TestVideos/Status")]
+    [ProducesResponseType(typeof(TestVideoLibraryStatusResponse), StatusCodes.Status200OK)]
+    public ActionResult<TestVideoLibraryStatusResponse> GetTestVideoLibraryStatus()
+        => Ok(new TestVideoLibraryStatusResponse(_testVideoLibrary.IsSetUp));
+
+    /// <summary>Extracts the embedded test clips and registers them as a real Jellyfin library, so the operator never has to do that by hand.</summary>
+    [HttpPost("TestVideos/Setup")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> SetupTestVideosAsync(CancellationToken cancellationToken)
+    {
+        await _testVideoLibrary.SetupAsync(cancellationToken).ConfigureAwait(false);
+        return NoContent();
+    }
+
+    /// <summary>Removes the test-video library and deletes the extracted files, leaving no trace behind.</summary>
+    [HttpPost("TestVideos/Remove")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> RemoveTestVideosAsync()
+    {
+        await _testVideoLibrary.RemoveAsync().ConfigureAwait(false);
+        return NoContent();
+    }
 }
 
 /// <summary>Moves the wizard, or retunes it, carrying the sliders' current values either way.</summary>
@@ -573,6 +599,8 @@ public sealed class CalibrationWizardMoveRequest
 }
 
 public sealed record CalibrationPreviewResponse(bool Active, string Message);
+
+public sealed record TestVideoLibraryStatusResponse(bool IsSetUp);
 
 /// <summary>The wizard state the TV pattern page polls for and the settings page reads back after moving it.</summary>
 public sealed record CalibrationWizardStateResponse(

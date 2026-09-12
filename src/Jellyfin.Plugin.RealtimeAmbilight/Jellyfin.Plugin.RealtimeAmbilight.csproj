@@ -21,5 +21,9 @@
   <ItemGroup>
     <EmbeddedResource Include="Configuration/Web/config.html" />
     <EmbeddedResource Include="Configuration/Web/config.js" />
+    <!-- Short, synthetic (ffmpeg-generated, not real footage) calibration test
+         clips: no licensing question, no external fetch, no separate library
+         the operator has to build by hand; see TestVideoLibrary. -->
+    <EmbeddedResource Include="Configuration/TestVideos/*.mp4" />
   </ItemGroup>
 </Project>

@@ -16,6 +16,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
         serviceCollection.AddSingleton<PluginActivityLog>();
+        serviceCollection.AddSingleton<TestVideoLibrary>();
         serviceCollection.AddSingleton<IMonotonicTime, StopwatchMonotonicTime>();
         serviceCollection.AddSingleton<IFfmpegAnalysisSourceResolver, JellyfinFfmpegAnalysisSourceResolver>();
         serviceCollection.AddSingleton<IPlaybackAnalysisWorker, FfmpegAnalysisWorker>();
