@@ -503,7 +503,7 @@ export default function (view) {
 
                 byId("fpsHint").innerHTML = active
                     ? ""
-                    : `Live only while something is playing on the bound device (${deviceLabelWithIp()}). <button type="button" class="raLink" data-open-edit-all="tv">Open TV settings</button>`;
+                    : `Nothing playing on ${deviceLabelWithIp()}. <button type="button" class="raLink" data-open-edit-all="tv">Open TV settings</button>`;
                 const enabled = byId("enabled").checked;
                 setCardState("pipeline", !enabled ? "off" : "ok", !enabled ? "OFF" : active ? "STREAM" : "READY");
                 refreshOverviewCards();
