@@ -155,6 +155,11 @@
         #realtimeAmbilightConfigurationPage .raLiveBadge::before { content: ""; width: .45em; height: .45em; border-radius: 50%; background: #3ddc84; animation: raLiveDotPulse 2s ease-in-out infinite; }
         @keyframes raLiveDotPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
         @media (prefers-reduced-motion: reduce) { #realtimeAmbilightConfigurationPage .raLiveBadge::before { animation: none; } }
+        /* Same pill shape as .raLiveBadge, amber instead of green: a warning,
+           not a status. Hue Entertainment itself, not any one setting within
+           it -- so it sits on the card title and the modal heading, not
+           inline with a slider the way LIVE does. */
+        #realtimeAmbilightConfigurationPage .raPreAlphaBadge { display: inline-flex; align-items: center; font: 700 .65em/1 "IBM Plex Mono", monospace; letter-spacing: .08em; color: #f5a623; background: rgba(245,166,35,.12); border: 1px solid rgba(245,166,35,.35); border-radius: 1em; padding: .3em .55em; margin-left: .5em; vertical-align: middle; }
 
         /* ---- signal chain: seven real stages, not just the three with their
            own independent counter -- 4/5 are genuinely inline with 2/3/6 so
@@ -246,7 +251,7 @@
                     <button is="emby-button" type="button" class="raised raCardAction" data-open-edit-all="ambilight">Edit</button>
                 </div>
                 <div class="raCard" id="raCard-hue">
-                    <div class="raCardTop"><span>Philips Hue</span><span class="raCardState" id="hueState"><span class="raSkel"></span></span></div>
+                    <div class="raCardTop"><span>Philips Hue<span class="raPreAlphaBadge">PRE-ALPHA</span></span><span class="raCardState" id="hueState"><span class="raSkel"></span></span></div>
                     <div class="raCardStat" id="hueStat"><span class="raSkel" style="width:80%;max-width:11em"></span></div>
                     <div class="raCardCap" id="hueCap"><span class="raSkel"></span></div>
                     <div class="raCardPing" id="huePing"></div>
@@ -308,6 +313,17 @@
             <div class="inputContainer">
                 <input is="emby-input" id="blackLevelFloorPercent" type="range" min="0" max="20" step="1" label="Black level floor" />
                 <div class="fieldDescription">Now: <strong id="blackLevelFloorValue"></strong>. Picture edges darker than this go fully off instead of glowing dim. <strong>Default: 1%.</strong></div>
+            </div>
+
+            <div id="whiteChannelStrengthContainer" class="inputContainer">
+                <input is="emby-input" id="whiteChannelStrengthPercent" type="range" min="20" max="100" step="1" label="White LED strength" />
+                <div class="fieldDescription">
+                    Now: <strong id="whiteChannelStrengthValue"></strong>. A single white LED cannot reach the
+                    combined brightness of red, green and blue lit together, so a bright/near-white scene can
+                    look dimmer than it should if everything is pushed onto it. Lower this if white still looks
+                    dim; the colour LEDs pick up whatever the white LED cannot. Only shown while RGBW (Send a
+                    real white signal) is on. <strong>Default: 50%.</strong>
+                </div>
             </div>
 
             <div class="inputContainer">
@@ -465,15 +481,7 @@
                     <div id="rgbwSuggestion" class="fieldDescription" style="display:none;border-left:3px solid currentColor;padding-left:.8em;margin-top:1em">
                         WLED reports a white LED on this strip. Turning the checkbox above on will use it for a truer white.
                     </div>
-                    <div id="whiteChannelStrengthContainer" class="inputContainer" style="margin-top:1em">
-                        <input is="emby-input" id="whiteChannelStrengthPercent" type="range" min="20" max="100" step="1" label="White LED strength" />
-                        <div class="fieldDescription">
-                            Now: <strong id="whiteChannelStrengthValue"></strong>. A single white LED cannot reach the
-                            combined brightness of red, green and blue lit together, so a bright/near-white scene can
-                            look dimmer than it should if everything is pushed onto it. Lower this if white still looks
-                            dim; the colour LEDs pick up whatever the white LED cannot. <strong>Default: 50%.</strong>
-                        </div>
-                    </div>
+                    <div class="fieldDescription" style="margin-top:1em">White LED strength now lives in the Live tuning panel below the signal chain (only shown there once RGBW is on), where changes apply immediately.</div>
                 </div>
 
                 <div class="verticalSection">
@@ -667,10 +675,14 @@
             </div>
 
             <div class="raModal" id="editModal-hue" hidden>
-                <div class="raModalHeader"><h2 class="raModalTitle">Hue</h2><button type="button" class="raModalClose" data-close-modal aria-label="Close">&times;</button></div>
+                <div class="raModalHeader"><h2 class="raModalTitle">Hue <span class="raPreAlphaBadge">PRE-ALPHA</span></h2><button type="button" class="raModalClose" data-close-modal aria-label="Close">&times;</button></div>
                 <div class="raModalBody">
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Philips Hue Entertainment (optional)</h3>
+                    <p class="fieldDescription" style="border-left:3px solid currentColor;padding-left:.8em;color:#f5a623">
+                        Pre-alpha: not yet working reliably. WLED is the finished, primary output; enable this only
+                        to help test it, not for a lighting setup you depend on.
+                    </p>
                     <p class="fieldDescription">
                         A second Ambilight output, following the same picture as WLED. One bridge, one entertainment
                         area, set up in the Hue app itself.

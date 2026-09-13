@@ -1555,7 +1555,7 @@ export default function (view) {
     // ever merges the tuning fields into whatever was last loaded, so it can
     // never clobber an in-progress, not-yet-saved edit sitting open in a
     // connection modal elsewhere on the page.
-    const tuningFields = ["brightnessPercent", "saturationPercent", "blackLevelFloorPercent", "samplingDepthPercent", "wledSmoothingMilliseconds", "minimumColourHoldMilliseconds", "hueBrightnessPercent", "hueResponsePercent"];
+    const tuningFields = ["brightnessPercent", "saturationPercent", "blackLevelFloorPercent", "whiteChannelStrengthPercent", "samplingDepthPercent", "wledSmoothingMilliseconds", "minimumColourHoldMilliseconds", "hueBrightnessPercent", "hueResponsePercent"];
     let tuningSaveTimer = null;
 
     function scheduleTuningSave() {
