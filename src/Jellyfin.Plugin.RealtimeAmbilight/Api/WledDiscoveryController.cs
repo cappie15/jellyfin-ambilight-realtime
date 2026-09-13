@@ -90,6 +90,21 @@ public sealed class WledDiscoveryController : ControllerBase
         => Ok(_outputService.GetPerformance() with { HueSendFps = _hueService.SendRateHz });
 
     /// <summary>
+    /// A cheap, glance-able look at what the strip is actually showing right
+    /// now, downsampled to a handful of swatches per side -- explicitly
+    /// requested as a lighter alternative to HyperHDR's own live LED preview.
+    /// Null (200 with no body content) while nothing is active, so the
+    /// settings page can tell "no session" apart from "no data yet". Meant
+    /// to be polled only while the operator actually has the preview panel
+    /// open, not continuously -- see <see cref="JellyfinWledOutputService.GetLivePreview"/>
+    /// for why that keeps this cheap even when polled.
+    /// </summary>
+    [HttpGet("LivePreview")]
+    [ProducesResponseType(typeof(LivePreviewSnapshot), StatusCodes.Status200OK)]
+    public ActionResult<LivePreviewSnapshot?> GetLivePreview()
+        => Ok(_outputService.GetLivePreview());
+
+    /// <summary>
     /// Reports controller settings that visibly change how the Ambilight looks,
     /// so the settings page can warn about them instead of leaving the operator
     /// to wonder why the LEDs ignore every brightness control they can find.

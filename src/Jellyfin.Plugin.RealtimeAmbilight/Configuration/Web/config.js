@@ -233,6 +233,57 @@ export default function (view) {
         }
     }
 
+    // Polled only while the panel is actually open (see toggleLivePreviewPanel),
+    // and stopped again on close/page-hide -- explicitly requested as a
+    // lighter alternative to HyperHDR's own live LED view, so it must not add
+    // a poll that runs forever once loaded.
+    let livePreviewTimer = null;
+
+    function renderLivePreviewSide(elementId, hexColours) {
+        const el = byId(elementId);
+        if (!hexColours || hexColours.length === 0) {
+            el.innerHTML = "";
+            return;
+        }
+
+        el.innerHTML = hexColours.map(hex => `<span style="background:${hex}"></span>`).join("");
+    }
+
+    function loadLivePreview() {
+        window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/LivePreview")).then(preview => {
+            const top = preview?.Top ?? preview?.top;
+            const right = preview?.Right ?? preview?.right;
+            const bottom = preview?.Bottom ?? preview?.bottom;
+            const left = preview?.Left ?? preview?.left;
+            if (!top && !right && !bottom && !left) {
+                ["raLivePreviewTop", "raLivePreviewRight", "raLivePreviewBottom", "raLivePreviewLeft"].forEach(id => renderLivePreviewSide(id, null));
+                byId("raLivePreviewStatus").textContent = "Waiting for playback…";
+                return;
+            }
+
+            renderLivePreviewSide("raLivePreviewTop", top);
+            renderLivePreviewSide("raLivePreviewRight", right);
+            renderLivePreviewSide("raLivePreviewBottom", bottom);
+            renderLivePreviewSide("raLivePreviewLeft", left);
+            byId("raLivePreviewStatus").textContent = "Live.";
+        }).catch(() => {
+            byId("raLivePreviewStatus").textContent = "Could not reach the preview right now.";
+        });
+    }
+
+    function toggleLivePreviewPanel() {
+        const panel = byId("livePreviewPanel");
+        panel.hidden = !panel.hidden;
+        if (panel.hidden) {
+            clearInterval(livePreviewTimer);
+            livePreviewTimer = null;
+            return;
+        }
+
+        loadLivePreview();
+        livePreviewTimer = setInterval(loadLivePreview, 700);
+    }
+
     function setDelayLabel() {
         const value = Number(byId("outputDelayMilliseconds").value);
         byId("outputDelayValue").textContent = value === 0 ? "0 ms (no delay)" : `${value} ms`;
@@ -2089,6 +2140,7 @@ export default function (view) {
     byId("wledHttpPort").addEventListener("change", () => { checkControllerSettings(); checkControllerStatus(); });
     byId("startCalibrationWizard").addEventListener("click", startWizard);
     byId("testVideosToggle").addEventListener("click", toggleTestVideosPanel);
+    byId("livePreviewToggle").addEventListener("click", toggleLivePreviewPanel);
     byId("wizardPrev").addEventListener("click", () => moveWizard(wizardStepIndex - 1));
     byId("wizardNext").addEventListener("click", () => moveWizard(wizardStepIndex + 1));
     byId("copyCalibrationUrl").addEventListener("click", () => {

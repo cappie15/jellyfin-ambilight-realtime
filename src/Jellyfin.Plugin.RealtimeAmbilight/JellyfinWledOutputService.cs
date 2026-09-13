@@ -153,6 +153,60 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
         var other => other.ToString(),
     };
 
+    /// <summary>At most this many swatches per side, regardless of how many physical LEDs that side actually has -- a glance-able preview, not a pixel-accurate one, so this stays cheap even on an 800+ LED strip.</summary>
+    private const int MaximumSwatchesPerSide = 24;
+
+    /// <summary>
+    /// Downsamples <see cref="_latestPhysicalFrame"/> into a handful of
+    /// <c>#rrggbb</c> swatches per side, in physical order, for a settings-page
+    /// "what is the strip actually showing right now" preview -- explicitly
+    /// requested as a cheaper alternative to HyperHDR's own live LED view.
+    /// Deliberately not polled continuously by anything: computed only when
+    /// this is actually called, so its cost is paid only while a viewer has
+    /// the preview panel open, not on every frame.
+    /// </summary>
+    public LivePreviewSnapshot? GetLivePreview()
+    {
+        var frame = _latestPhysicalFrame;
+        if (frame is null || _coordinator.ActiveSessionId is null)
+        {
+            return null;
+        }
+
+        var top = Downsample(frame, 0, _physicalLayout.TopLedCount);
+        var right = Downsample(frame, _physicalLayout.TopLedCount, _physicalLayout.RightLedCount);
+        var bottom = Downsample(frame, _physicalLayout.TopLedCount + _physicalLayout.RightLedCount, _physicalLayout.BottomLedCount);
+        var left = Downsample(frame, _physicalLayout.TopLedCount + _physicalLayout.RightLedCount + _physicalLayout.BottomLedCount, _physicalLayout.LeftLedCount);
+        return new LivePreviewSnapshot(top, right, bottom, left);
+    }
+
+    private static string[] Downsample(LinearRgb[] frame, int startIndex, int count)
+    {
+        if (count <= 0)
+        {
+            return [];
+        }
+
+        var swatchCount = Math.Min(count, MaximumSwatchesPerSide);
+        var swatches = new string[swatchCount];
+        for (var swatch = 0; swatch < swatchCount; swatch++)
+        {
+            // Evenly spaced sample points across this side's own run, not a
+            // straight truncation, so a long side is represented along its
+            // whole length rather than just its first few LEDs.
+            var index = startIndex + ((swatch * count) / swatchCount);
+            swatches[swatch] = ToHexColour(frame[index]);
+        }
+
+        return swatches;
+    }
+
+    private static string ToHexColour(LinearRgb colour)
+    {
+        byte Encode(float component) => (byte)Math.Clamp((int)MathF.Round(Rgb24Encoder.ToTransferValue(component, Rgb24Encoding.Bt709) * 255f), 0, 255);
+        return $"#{Encode(colour.Red):x2}{Encode(colour.Green):x2}{Encode(colour.Blue):x2}";
+    }
+
     public JellyfinWledOutputService(
         PlaybackEventCoordinator coordinator,
         WledDiscoveryService discoveryService,

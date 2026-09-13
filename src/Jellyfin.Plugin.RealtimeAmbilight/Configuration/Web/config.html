@@ -145,6 +145,18 @@
         #realtimeAmbilightConfigurationPage .raPanelTop { display: flex; justify-content: space-between; align-items: center; gap: .6em; font-weight: 600; font-size: .95em; margin-bottom: .7em; }
         #realtimeAmbilightConfigurationPage .raPanelTopLeft { display: flex; align-items: center; gap: .55em; }
         #realtimeAmbilightConfigurationPage .raPanelTopRight { display: flex; align-items: center; gap: .8em; font-weight: 500; }
+        /* A TV-shaped rectangle with a swatch strip along each side, in
+           physical order -- deliberately a picture of the room, not a bare
+           list of hex codes, since the whole point is to glance at it the
+           way you would glance at the real strip. */
+        #realtimeAmbilightConfigurationPage .raLivePreviewBorder { position: relative; display: grid; grid-template-columns: 1.4em 1fr 1.4em; grid-template-rows: 1.4em 1fr 1.4em; gap: 3px; width: min(28em, 100%); aspect-ratio: 16 / 10; margin: .6em 0; background: #05060700; }
+        #realtimeAmbilightConfigurationPage .raLivePreviewSide { display: flex; border-radius: .25em; overflow: hidden; background: #14171b; }
+        #realtimeAmbilightConfigurationPage .raLivePreviewSide span { flex: 1 1 0; }
+        #realtimeAmbilightConfigurationPage .raLivePreviewTop { grid-column: 1 / 4; grid-row: 1; flex-direction: row; }
+        #realtimeAmbilightConfigurationPage .raLivePreviewBottom { grid-column: 1 / 4; grid-row: 3; flex-direction: row; }
+        #realtimeAmbilightConfigurationPage .raLivePreviewLeft { grid-column: 1; grid-row: 2; flex-direction: column; }
+        #realtimeAmbilightConfigurationPage .raLivePreviewRight { grid-column: 3; grid-row: 2; flex-direction: column; }
+        #realtimeAmbilightConfigurationPage .raLivePreviewScreen { grid-column: 2; grid-row: 2; display: flex; align-items: center; justify-content: center; background: #05070a; border-radius: .3em; color: #4d545c; font: 600 .78em/1 "IBM Plex Mono", monospace; letter-spacing: .1em; }
         #realtimeAmbilightConfigurationPage #testVideosPanel { border: 1px solid rgba(127,127,127,.35); border-radius: .6em; padding: .7em 1em; margin: 0 0 1.1em; font-weight: 400; }
         #realtimeAmbilightConfigurationPage .raTestVideoRow { display: flex; justify-content: space-between; align-items: center; gap: .8em; padding: .3em 0; }
         #realtimeAmbilightConfigurationPage .raTestVideoRow:not(:last-child) { border-bottom: 1px solid #1c1f24; }
@@ -293,9 +305,21 @@
             <div class="raPanelTop">
                 <span class="raPanelTopLeft"><span>Live tuning</span><span class="raLiveBadge">LIVE</span></span>
                 <span class="raPanelTopRight">
+                    <button type="button" id="livePreviewToggle" class="raLink">Live preview &#9662;</button>
                     <button type="button" id="testVideosToggle" class="raLink">Test videos &#9662;</button>
                     <span class="raCardState" id="tuningSavedIndicator">&nbsp;</span>
                 </span>
+            </div>
+            <div id="livePreviewPanel" hidden>
+                <p class="fieldDescription">What the strip is actually showing right now, a few swatches per side. Only fetched while this is open, and only while something is playing.</p>
+                <div id="raLivePreviewBorder" class="raLivePreviewBorder">
+                    <div id="raLivePreviewTop" class="raLivePreviewSide raLivePreviewTop"></div>
+                    <div id="raLivePreviewRight" class="raLivePreviewSide raLivePreviewRight"></div>
+                    <div id="raLivePreviewBottom" class="raLivePreviewSide raLivePreviewBottom"></div>
+                    <div id="raLivePreviewLeft" class="raLivePreviewSide raLivePreviewLeft"></div>
+                    <div class="raLivePreviewScreen">TV</div>
+                </div>
+                <p class="fieldDescription" id="raLivePreviewStatus">Waiting for playback…</p>
             </div>
             <div id="testVideosPanel" hidden></div>
             <p class="fieldDescription" style="margin-bottom:1.1em">Every slider here applies to the picture immediately and saves itself a moment after you stop moving it, so you can watch the TV or the LEDs instead of the screen while adjusting.</p>

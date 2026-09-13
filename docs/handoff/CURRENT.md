@@ -1,5 +1,29 @@
 # Current state
 
+## 2026-09-13 (later still): finished the live-preview feature that had been left half-done
+
+Earlier this session, `LivePreviewSnapshot` and a `_latestPhysicalFrame`
+field were added to `JellyfinWledOutputService.cs` in preparation for a
+"current live feed" panel (explicitly requested, "zoals hyperhdr dat ook
+heeft"), but the actual `GetLivePreview()` method, the API endpoint, and the
+UI were never written -- caught by a self-audit after the operator asked
+directly whether anything from their prompts had been missed.
+
+Finished now: `GetLivePreview()` downsamples the last physical-LED frame
+actually sent to WLED into at most 24 `#rrggbb` swatches per side (in
+physical order), computed only when called (no continuous background work);
+new `GET RealtimeAmbilight/LivePreview` endpoint; a "Live preview" toggle on
+the Live Tuning panel next to "Test videos", rendering a small TV-shaped
+border with a swatch strip per side, polled every 700ms *only* while that
+panel is open (`toggleLivePreviewPanel`/`livePreviewTimer` in config.js) --
+explicitly resource-conscious per the original request ("alleen wanneer dat
+niet teveel resources eist"). No dedicated unit test: `JellyfinWledOutputService`
+has never had its own test harness (it is the large DI-heavy integration
+service), consistent with the rest of this file's existing coverage.
+
+240 tests passing (unchanged -- this addition has no test of its own, see
+above).
+
 ## 2026-09-13 (later still): Hue gets its own black-level floor and start/end fade; naming consistency; fixed a self-inflicted white flash
 
 - **Fixed a real regression from earlier this session**: `ClaimWithFadeToBlackAsync`'s "fade from a neutral warm-white guess when nothing is remembered" idea backfired -- reported live as a genuine, briefly full-brightness white flash at every playback start (worse than the plain instant cut it was meant to soften, especially with WLED's own "force max brightness" in play). Removed the guess entirely: claiming with nothing remembered now sends a single black frame, same as before this session; the fade only ever runs from a colour that was genuinely just on the strip.
