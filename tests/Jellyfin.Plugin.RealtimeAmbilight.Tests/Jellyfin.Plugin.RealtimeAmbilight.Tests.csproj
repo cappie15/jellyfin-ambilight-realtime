@@ -16,9 +16,9 @@
       bootstrap needs the actual DLLs copied to the test output. Referenced
       here, without ExcludeAssets, for exactly that.
     -->
-    <PackageReference Include="Jellyfin.Common" Version="10.11.9" />
-    <PackageReference Include="Jellyfin.Controller" Version="10.11.9" />
-    <PackageReference Include="Jellyfin.Model" Version="10.11.9" />
+    <PackageReference Include="Jellyfin.Common" Version="12.0.0" />
+    <PackageReference Include="Jellyfin.Controller" Version="12.0.0" />
+    <PackageReference Include="Jellyfin.Model" Version="12.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Jellyfin.Plugin.RealtimeAmbilight.Core/Jellyfin.Plugin.RealtimeAmbilight.Core.csproj" />
