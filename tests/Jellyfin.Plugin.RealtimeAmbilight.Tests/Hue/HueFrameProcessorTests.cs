@@ -22,12 +22,19 @@ public class HueFrameProcessorTests
     [Fact]
     public void AChannelNearTheTopOfTheScreenFollowsTheBrightTopHalfNotTheDarkBottomHalf()
     {
-        var processor = new HueFrameProcessor(new ManualMonotonicTime());
+        var time = new ManualMonotonicTime();
+        var processor = new HueFrameProcessor(time);
         var frame = CreateFrame(64, 64, static (_, y) => y < 32 ? (235, 235, 235) : (16, 16, 16));
         var channels = new[] { new HueEntertainmentChannel(1, new HuePosition(0, 0, 1), []) };
 
-        // First call snaps (no previous smoothing state), so it reads the
-        // frame's own colour directly rather than easing toward it.
+        // First call snaps (no previous smoothing state), so it would read
+        // the frame's own colour directly rather than easing toward it --
+        // but the session's own 2000 ms fade-in still holds the very first
+        // frame near black regardless, so the clock is advanced past that
+        // window first to observe the frame processor's steady-state colour
+        // rather than its deliberate start-of-session fade.
+        processor.Process(frame, channels);
+        time.Advance(TimeSpan.FromMilliseconds(2100));
         var result = processor.Process(frame, channels);
 
         Assert.True(result[1].Red > 0.3f);
@@ -36,7 +43,8 @@ public class HueFrameProcessorTests
     [Fact]
     public void AChannelBehindTheViewerFollowsTheWholeSceneNotJustOneEdge()
     {
-        var processor = new HueFrameProcessor(new ManualMonotonicTime());
+        var time = new ManualMonotonicTime();
+        var processor = new HueFrameProcessor(time);
         // Bright picture, but only at the very edges are the sampled bands
         // dark -- the scene average should still read as bright overall,
         // unlike a channel that only ever looked at the top edge.
@@ -44,9 +52,34 @@ public class HueFrameProcessorTests
             (x < 4 || x >= 60 || y < 4 || y >= 60) ? (0, 0, 0) : (235, 235, 235));
         var behindViewer = new[] { new HueEntertainmentChannel(1, new HuePosition(0, 1, 0.5), []) };
 
+        // Past the session's own 2000 ms fade-in -- see the top-half test's
+        // own comment for why.
+        processor.Process(frame, behindViewer);
+        time.Advance(TimeSpan.FromMilliseconds(2100));
         var result = processor.Process(frame, behindViewer);
 
         Assert.True(result[1].Red > 0.3f);
+    }
+
+    [Fact]
+    public void ANewSessionFadesInFromBlackOverTheFirst2000Milliseconds()
+    {
+        var time = new ManualMonotonicTime();
+        var processor = new HueFrameProcessor(time);
+        var frame = CreateFrame(32, 32, static (_, _) => (235, 235, 235));
+        var channels = new[] { new HueEntertainmentChannel(1, new HuePosition(0, 0, 0), []) };
+
+        var firstFrame = processor.Process(frame, channels);
+        Assert.Equal(0f, firstFrame[1].Red);
+
+        time.Advance(TimeSpan.FromMilliseconds(1000));
+        var halfway = processor.Process(frame, channels);
+
+        time.Advance(TimeSpan.FromMilliseconds(1100));
+        var pastFadeIn = processor.Process(frame, channels);
+
+        Assert.True(halfway[1].Red > 0f, "expected some brightness partway through the fade-in");
+        Assert.True(pastFadeIn[1].Red > halfway[1].Red, "expected full brightness once the fade-in has finished");
     }
 
     [Fact]

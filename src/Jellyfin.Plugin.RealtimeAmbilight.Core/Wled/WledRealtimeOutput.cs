@@ -123,22 +123,24 @@ public sealed class WledRealtimeOutput : ILedFrameOutput, IDisposable
     }
 
     /// <summary>
-    /// Claims the strip for realtime control right now, easing to black over
-    /// the given duration instead of the instant hard cut a single blank
-    /// frame would be. Unlike <see cref="FadeToBlackAsync"/>, never a no-op:
-    /// there is deliberately nothing remembered yet at the very moment
-    /// playback starts (a prior stop already faded to black and released,
-    /// or this is the first claim since the plugin started), so this plugin
-    /// has no way to read what WLED's own, independently-run effect actually
-    /// looks like right now -- reading live per-pixel output back from WLED
-    /// is not something its API offers. Rather than skip the fade entirely
-    /// in that case, it eases down from a neutral, full-brightness warm-white
-    /// guess instead: an assumed starting point that is not necessarily
-    /// exactly right still reads as an intentional dim-down rather than an
-    /// abrupt cut, and claiming happens immediately either way so an
-    /// independently-running WLED effect cannot keep animating for the
-    /// several seconds decode still needs (see the "claim the strip
-    /// immediately" comment where this is called).
+    /// Claims the strip for realtime control right now. Eases to black over
+    /// the given duration when a real previous frame is actually known
+    /// (unlike <see cref="FadeToBlackAsync"/>, this still claims -- sending a
+    /// single black frame -- rather than no-op'ing when there is nothing to
+    /// fade from). There is deliberately nothing remembered at the very
+    /// moment playback starts most of the time (a prior stop already faded
+    /// to black and released, or this is the first claim since the plugin
+    /// started); an earlier revision guessed a neutral warm-white starting
+    /// point to fade from in that case, on the theory that a wrong guess
+    /// still reads better than an abrupt cut -- reported live as the
+    /// opposite: a real, briefly full-brightness white flash, worse than the
+    /// plain cut it was meant to soften, especially with a controller's own
+    /// "force max brightness" in play. This plugin has no way to read what
+    /// WLED's own, independently-run effect actually looks like right now --
+    /// there is no real starting point to fade from -- so it no longer
+    /// invents one: claiming with a single black frame is the correct
+    /// behaviour when nothing is known, and the fade only ever runs from a
+    /// colour that was genuinely just on the strip.
     /// </summary>
     public async Task ClaimWithFadeToBlackAsync(TimeSpan duration, int framesPerSecond, int ledCount, CancellationToken cancellationToken)
     {
@@ -149,7 +151,14 @@ public sealed class WledRealtimeOutput : ILedFrameOutput, IDisposable
         await _sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var source = _lastFrame ?? NeutralWarmWhiteFrame(ledCount);
+            if (_lastFrame is null)
+            {
+                await SendFrameCoreAsync(new byte[ledCount * _bytesPerLed], cancellationToken).ConfigureAwait(false);
+                _lastFrame = null;
+                return;
+            }
+
+            var source = _lastFrame;
             var stepCount = Math.Max(1, (int)Math.Ceiling(duration.TotalSeconds * framesPerSecond));
             var interval = TimeSpan.FromTicks(duration.Ticks / stepCount);
             for (var step = 1; step <= stepCount; step++)
@@ -173,21 +182,6 @@ public sealed class WledRealtimeOutput : ILedFrameOutput, IDisposable
         {
             _sendGate.Release();
         }
-    }
-
-    /// <summary>A plausible "the strip was probably on and roughly white" guess for <see cref="ClaimWithFadeToBlackAsync"/> when nothing real is known -- (255, 214, 170)-ish per pixel, a warm white rather than a clinical (255,255,255).</summary>
-    private byte[] NeutralWarmWhiteFrame(int ledCount)
-    {
-        var frame = new byte[ledCount * _bytesPerLed];
-        for (var index = 0; index < ledCount; index++)
-        {
-            var offset = index * _bytesPerLed;
-            frame[offset] = 255;
-            frame[offset + 1] = 214;
-            frame[offset + 2] = 170;
-        }
-
-        return frame;
     }
 
     /// <summary>

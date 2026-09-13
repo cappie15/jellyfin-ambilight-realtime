@@ -183,17 +183,21 @@ while actually watching the result: every one of them applies to the running
 picture immediately and saves itself a moment after you stop moving it, no
 restart and no Save button.
 
+Every field is named **Ambilight ...** or **Hue ...** to say which output it
+actually affects — the two run independent pipelines end to end (see
+[How it works](#how-it-works)), so a change to one never touches the other.
+
 | Setting | Default | Notes |
 |---|---|---|
-| WLED brightness | 158% (1-200%) | Above 100% pushes already-dim scenes brighter than the source picture — physical LEDs next to a bright HDR screen otherwise always read as dim, since nothing else in the pipeline can push a pixel brighter than it already is. |
-| Colour intensity | 140% | Pushes each colour away from its own luminance, deepening it without changing brightness. |
-| Black level floor | 1% | Picture edges darker than this go fully off instead of glowing dim. |
-| White LED strength | 50% | Only shown once [RGBW](#rgbw-strips-send-a-real-white-signal) is on. |
-| Sampling edge range | 5% | Fraction of each axis sampled inward from the active-picture edge. Lower is more literal, higher is calmer. |
-| WLED smoothing | 110 ms | Eases each physical LED toward a newly sampled colour instead of snapping to it. |
-| Minimum colour hold | 100 ms | A colour must persist in the picture at least this long before the LEDs follow it, so a single flash frame cannot snap the wall to a colour barely there. |
-| Hue brightness | 169% (1-200%) | Same reasoning as WLED brightness, independent of it. |
-| Hue responsivity | 20 (0-100) | 0 is very reactive, 100 is beautifully smooth. |
+| Ambilight brightness | 130% (1-200%) | Above 100% pushes already-dim scenes brighter than the source picture — physical LEDs next to a bright HDR screen otherwise always read as dim, since nothing else in the pipeline can push a pixel brighter than it already is. |
+| Ambilight colour intensity | 185% | Pushes each colour away from its own luminance, deepening it without changing brightness. |
+| Ambilight black level floor | 3% | Picture edges darker than this go fully off instead of glowing dim; measured perceptually (what "3%" means on a waveform monitor), not as a raw linear-light fraction. |
+| Ambilight white LED strength | 20% | Only shown once [RGBW](#rgbw-strips-send-a-real-white-signal) is on. |
+| Ambilight sampling edge range | 27% | Fraction of each axis sampled inward from the active-picture edge. Lower is more literal, higher is calmer. |
+| Ambilight smoothing | 150 ms (0-2000 ms) | Eases each physical LED toward a newly sampled colour instead of snapping to it. |
+| Ambilight minimum colour hold | 100 ms | A colour must persist in the picture at least this long before the LEDs follow it, so a single flash frame cannot snap the wall to a colour barely there. |
+| Hue brightness | 188% (1-200%) | Same reasoning as Ambilight brightness, independent of it. |
+| Hue responsivity | 0 (0-100) | 0 is very reactive, 100 is beautifully smooth. |
 
 These defaults reflect a validated real-room baseline rather than the
 original untested guesses; every field can still be moved from there.
@@ -316,7 +320,7 @@ the same physical LEDs between a mixed-RGB white and the white channel alone
 at ~12.5 Hz, which cancels the two's considerable difference in colour
 temperature and isolates a genuine brightness gap): the gap held completely
 flat between white values of 100 and 230 out of 255, so no drive value closes
-it. **White LED strength** (default 50%) caps how much of a bright/near-white
+it. **Ambilight white LED strength** (default 20%) caps how much of a bright/near-white
 pixel's shared grey is allowed onto the white die before the rest stays on
 red, green and blue instead — those three, lit together, can reach brightness
 the one white die cannot. Dim greys are unaffected either way, since the
@@ -400,9 +404,9 @@ supply, so it is enforced rather than merely intended:
   server-to-controller UDP access. Inspect Jellyfin logs for `playback start
   received`, `resolved source`, `processed its first decoded frame` and
   `sent its first WLED frame` to locate the failing stage.
-- **Too bright or washed out:** check the Brightness control (1-200%, see
-  Configuration above) and the settings page's WLED brightness warning. On an
-  RGBW strip, also check **White LED strength** — content on the white channel
+- **Too bright or washed out:** check the Ambilight brightness control (1-200%, see
+  Configuration above) and the settings page's brightness warning. On an
+  RGBW strip, also check **Ambilight white LED strength** — content on the white channel
   has a lower physical ceiling than red, green and blue combined, so a value
   too high there can look dim rather than too bright. Gamma detection happens
   at startup; restart Jellyfin after changing WLED's gamma configuration. The

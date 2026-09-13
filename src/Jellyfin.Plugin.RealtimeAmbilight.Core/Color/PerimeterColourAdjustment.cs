@@ -108,7 +108,7 @@ public readonly record struct PerimeterColourAdjustment(
     /// </remarks>
     private static LinearRgb ApplyBlackLevelFloor(LinearRgb colour, float floor)
     {
-        var linearFloor = DecodePerceptualFraction(floor);
+        var linearFloor = PerceptualBrightness.DecodePerceptualFraction(floor);
         var luminance = (0.2126f * colour.Red) + (0.7152f * colour.Green) + (0.0722f * colour.Blue);
         if (luminance <= linearFloor)
         {
@@ -117,15 +117,6 @@ public readonly record struct PerimeterColourAdjustment(
 
         var scale = (luminance - linearFloor) / (luminance * (1f - linearFloor));
         return new LinearRgb(colour.Red * scale, colour.Green * scale, colour.Blue * scale);
-    }
-
-    /// <summary>The exact inverse of <see cref="Output.Rgb24Encoder.ToTransferValue"/>'s BT.709 branch, used only to interpret a percentage knob in perceptual terms -- not part of the actual output encoding, which is chosen independently and may even be linear.</summary>
-    private static float DecodePerceptualFraction(float perceptual)
-    {
-        var value = Math.Clamp(perceptual, 0f, 1f);
-        return value < 0.081f
-            ? value / 4.5f
-            : MathF.Pow((value + 0.099f) / 1.099f, 1f / 0.45f);
     }
 
     /// <summary>"Value" here matches <see cref="HueCorrectionCurve"/>'s own definition (the largest channel), so the two curves read the same pixel the same way.</summary>

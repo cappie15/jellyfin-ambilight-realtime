@@ -34,6 +34,19 @@ public sealed class HueFrameProcessor
     /// </summary>
     private static readonly LogicalSamplingLayout DefaultSamplingLayout = new(12, 8, 12, 8);
 
+    /// <summary>
+    /// How long a freshly (re)connected session eases up from true black,
+    /// matching <c>WledRealtimeOutput.ClaimWithFadeToBlackAsync</c>'s own
+    /// 2000 ms -- a fixed duration independent of the operator's own
+    /// responsivity slider, since at its most reactive setting (0, this
+    /// operator's own default) the ordinary smoothing time constant is only
+    /// ~30 ms, far too fast to read as an intentional fade-in on its own.
+    /// Without this, the very first frame of a session simply snapped
+    /// straight to the source's own brightness the instant real content
+    /// arrived.
+    /// </summary>
+    private const double FadeInMilliseconds = 2000d;
+
     private readonly BlackBorderDetector _borderDetector = new();
     private readonly Func<bool> _ignoreBlackBordersResolver;
     private readonly LogicalSamplingLayout _samplingLayout;
@@ -41,19 +54,21 @@ public sealed class HueFrameProcessor
     private readonly IMonotonicTime _monotonicTime;
     private readonly HueNaturalLightFilter _filter;
     private TimeSpan? _lastProcessedAt;
+    private TimeSpan? _sessionStartedAt;
 
     public HueFrameProcessor(
         IMonotonicTime monotonicTime,
         Func<bool>? ignoreBlackBordersResolver = null,
         int samplingDepthPercent = EdgeSampler.DefaultDepthPercent,
         LogicalSamplingLayout? samplingLayout = null,
-        Func<int>? responsePercentResolver = null)
+        Func<int>? responsePercentResolver = null,
+        Func<int>? floorPercentResolver = null)
     {
         _monotonicTime = monotonicTime ?? throw new ArgumentNullException(nameof(monotonicTime));
         _ignoreBlackBordersResolver = ignoreBlackBordersResolver ?? (static () => true);
         _samplingDepthPercent = Math.Clamp(samplingDepthPercent, EdgeSampler.MinimumDepthPercent, EdgeSampler.MaximumDepthPercent);
         _samplingLayout = samplingLayout ?? DefaultSamplingLayout;
-        _filter = new HueNaturalLightFilter(responsePercentResolver);
+        _filter = new HueNaturalLightFilter(responsePercentResolver, floorPercentResolver);
     }
 
     /// <param name="overallBrightnessFraction">The operator's overall Hue brightness control, 0-1.</param>
@@ -79,20 +94,26 @@ public sealed class HueFrameProcessor
         var now = _monotonicTime.Elapsed;
         var elapsedMilliseconds = _lastProcessedAt is { } last ? (now - last).TotalMilliseconds : 0;
         _lastProcessedAt = now;
+        _sessionStartedAt ??= now;
+        var fadeIn = Math.Clamp((now - _sessionStartedAt.Value).TotalMilliseconds / FadeInMilliseconds, 0d, 1d);
 
         foreach (var channel in channels)
         {
             var mapped = HueChannelMapper.Map(channel.Position, edgeSamples, sceneAverage);
-            result[channel.ChannelId] = _filter.Apply(channel.ChannelId, mapped, elapsedMilliseconds, overallBrightnessFraction);
+            var filtered = _filter.Apply(channel.ChannelId, mapped, elapsedMilliseconds, overallBrightnessFraction);
+            result[channel.ChannelId] = fadeIn >= 1d
+                ? filtered
+                : new LinearRgb(filtered.Red * (float)fadeIn, filtered.Green * (float)fadeIn, filtered.Blue * (float)fadeIn);
         }
 
         return result;
     }
 
-    /// <summary>Forgets smoothing state and frame timing, e.g. after a reconnect.</summary>
+    /// <summary>Forgets smoothing state, frame timing, and the fade-in start time, e.g. after a reconnect.</summary>
     public void Reset()
     {
         _filter.ResetAll();
         _lastProcessedAt = null;
+        _sessionStartedAt = null;
     }
 }

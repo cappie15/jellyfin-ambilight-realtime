@@ -19,18 +19,49 @@ public class HueNaturalLightFilterTests
     }
 
     [Fact]
-    public void FullyBlackNeverGoesBelowTheOnePercentFloorOnceRealColourHasBeenSeen()
+    public void FullyBlackReachesTrueBlackEvenAfterRealColourHasBeenSeen()
     {
+        // The floor is a threshold like WLED's own, not an always-on
+        // minimum: a genuinely black target (smoothed brightness settles at
+        // 0) must reach true black regardless of what came before --
+        // replacing an earlier fixed 1% minimum that could never actually
+        // reach black at all, which is exactly why Hue was reported as
+        // never going completely dark.
         var filter = new HueNaturalLightFilter();
-        // Establish real colour first: the floor exists for a black cut
-        // mid-session, not for a channel that has never shown anything yet.
         filter.Apply(0, new LinearRgb(1f, 1f, 1f), elapsedMilliseconds: 0);
 
-        var result = filter.Apply(0, new LinearRgb(0f, 0f, 0f), elapsedMilliseconds: 33);
+        // A gap long enough to count as a reconnect (>= 2000 ms) snaps
+        // straight to the target rather than continuing to ease in from the
+        // old value -- see AReconnectGapSnapsInsteadOfEasingInFromTheOldValue
+        // -- so this reaches exactly 0 in one call instead of only
+        // asymptotically approaching it over many small steps.
+        var result = filter.Apply(0, new LinearRgb(0f, 0f, 0f), elapsedMilliseconds: 5000);
 
-        var brightness = MaxComponent(result);
-        Assert.True(brightness >= (float)HueNaturalLightFilter.MinimumBrightnessFraction - 1e-4f);
-        Assert.True(brightness > 0f);
+        Assert.Equal(0f, MaxComponent(result));
+    }
+
+    [Fact]
+    public void ADimTargetJustAboveTheFloorSurvivesRescaledWhileOneBelowItDoesNot()
+    {
+        var filter = new HueNaturalLightFilter(floorPercentResolver: () => 5);
+        // A perceptual 5% floor decodes to roughly linear 0.011 -- comfortably
+        // between these two dim targets' own linear brightness.
+        var belowFloor = filter.Apply(0, new LinearRgb(0.005f, 0.005f, 0.005f), elapsedMilliseconds: 0);
+        Assert.Equal(0f, MaxComponent(belowFloor));
+
+        var otherFilter = new HueNaturalLightFilter(floorPercentResolver: () => 5);
+        var aboveFloor = otherFilter.Apply(0, new LinearRgb(0.05f, 0.05f, 0.05f), elapsedMilliseconds: 0);
+        Assert.True(MaxComponent(aboveFloor) > 0f);
+    }
+
+    [Fact]
+    public void SettingTheFloorToZeroLetsAnyNonZeroTargetThrough()
+    {
+        var filter = new HueNaturalLightFilter(floorPercentResolver: () => 0);
+
+        var result = filter.Apply(0, new LinearRgb(0.001f, 0.001f, 0.001f), elapsedMilliseconds: 0);
+
+        Assert.True(MaxComponent(result) > 0f);
     }
 
     [Fact]
@@ -59,8 +90,10 @@ public class HueNaturalLightFilterTests
         // before content starts), and lighting up warm-white right then --
         // before any real colour has ever actually been shown -- reads as a
         // visible flash immediately after playback starts ("gaat nog even
-        // naar geel"), not as a considerate floor. Held at true off instead
-        // until the first real (non-black) frame actually arrives.
+        // naar geel"), not as a considerate floor. The threshold-based floor
+        // (see ADimTargetJustAboveTheFloorSurvivesRescaledWhileOneBelowItDoesNot)
+        // holds this at true black naturally, with no special-case needed:
+        // a genuinely zero brightness is always at or below any floor.
         var filter = new HueNaturalLightFilter();
 
         var result = filter.Apply(0, new LinearRgb(0f, 0f, 0f), elapsedMilliseconds: 0);
@@ -134,13 +167,17 @@ public class HueNaturalLightFilterTests
     }
 
     [Fact]
-    public void OverallBrightnessDimmingStillLeavesTheFloorIntact()
+    public void OverallBrightnessAtZeroReachesTrueBlackRatherThanBeingHeldAboveTheFloor()
     {
+        // 0% overall brightness means off, the same as WLED's own overall
+        // brightness reaching zero -- the floor is a threshold on the
+        // resulting brightness, not a minimum added back afterward, so
+        // dimming everything to zero correctly still produces zero.
         var filter = new HueNaturalLightFilter();
 
         var result = filter.Apply(0, new LinearRgb(1f, 1f, 1f), elapsedMilliseconds: 0, overallBrightnessFraction: 0d);
 
-        Assert.True(MaxComponent(result) >= (float)HueNaturalLightFilter.MinimumBrightnessFraction - 1e-4f);
+        Assert.Equal(0f, MaxComponent(result));
     }
 
     [Fact]

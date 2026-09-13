@@ -72,23 +72,31 @@ public sealed class HueNaturalLightFilter
     private readonly Func<int> _responsePercentResolver;
 
     /// <summary>
-    /// Minimum background light while synchronisation is active, applied in
-    /// the brightness calculation rather than by flooring R/G/B directly.
-    /// </summary>
-    public const double MinimumBrightnessFraction = 0.01d;
-
-    /// <summary>
     /// Approximate warm-white (2700 K design target, per this project's
     /// documented end-of-session default) linear-light ratios, seeded as a
     /// channel's starting hue direction before any real target has been
-    /// seen. Since the 1% floor is withheld until a real colour has actually
-    /// been shown (see the "HasSeenRealColour" gate below), this direction
-    /// is only ever multiplied by a brightness of zero before that point --
-    /// it exists so the eventual first real frame eases in from a sane
-    /// starting hue rather than an arbitrary one, not so it is ever itself
-    /// visibly rendered.
+    /// seen. The floor (see <see cref="_floorPercentResolver"/>) is a
+    /// threshold like WLED's own, not an always-on minimum, so this
+    /// direction is only ever multiplied by a genuinely non-zero brightness
+    /// once real content has actually pushed one through -- it exists so
+    /// the eventual first real frame eases in from a sane starting hue
+    /// rather than an arbitrary one, not so it is ever itself visibly
+    /// rendered on its own.
     /// </summary>
     private static readonly LinearRgb WarmWhiteFallback = new(1f, 0.7f, 0.45f);
+
+    /// <summary>
+    /// The operator's Hue black-level floor, re-read on every
+    /// <see cref="Apply"/> call for the same reason
+    /// <see cref="_responsePercentResolver"/> is. Same meaning and same
+    /// perceptual-percentage convention as WLED's own black level floor
+    /// (<see cref="Color.PerimeterColourAdjustment"/>): below this fraction
+    /// of perceptual brightness, the light goes to true black instead of
+    /// holding a dim, always-on glow -- replacing an earlier fixed 1%
+    /// minimum that could never actually reach black at all, which is
+    /// exactly why Hue was reported as "never going completely dark".
+    /// </summary>
+    private readonly Func<int> _floorPercentResolver;
 
     private readonly Dictionary<int, ChannelState> _channels = [];
 
@@ -97,9 +105,10 @@ public sealed class HueNaturalLightFilter
     /// to 100 (beautifully smooth). Re-read on every <see cref="Apply"/>
     /// call -- see <see cref="_responsePercentResolver"/>'s own remarks.
     /// </param>
-    public HueNaturalLightFilter(Func<int>? responsePercentResolver = null)
+    public HueNaturalLightFilter(Func<int>? responsePercentResolver = null, Func<int>? floorPercentResolver = null)
     {
         _responsePercentResolver = responsePercentResolver ?? (static () => 50);
+        _floorPercentResolver = floorPercentResolver ?? (static () => 1);
     }
 
     /// <param name="target">This frame's raw mapped colour for the channel.</param>
@@ -143,7 +152,6 @@ public sealed class HueNaturalLightFilter
         if (targetBrightness > 1e-6f)
         {
             state.LastValidHueColour = targetColour;
-            state.HasSeenRealColour = true;
         }
 
         var colourMix = hasPreviousState ? Mix(elapsedMilliseconds, colourTimeConstantMilliseconds) : 1d;
@@ -165,20 +173,19 @@ public sealed class HueNaturalLightFilter
         state.Initialized = true;
 
         var dimmed = state.SmoothedBrightness * Math.Clamp(overallBrightnessFraction, 0d, 2d);
-        // The 1% floor (and the warm-white fallback it would be tinted by,
-        // via state.LastValidHueColour/state.SmoothedColour above) exists so
-        // a black cut *mid-session* -- after real colour has actually been
-        // seen -- reads as a dim, calm glow rather than flickering to an
-        // undefined hue. Applying that same floor before any real colour has
-        // ever been seen for this channel is a different situation: it means
-        // a session has just (re)connected and genuinely has nothing to show
-        // yet, and lighting up warm-white at that exact moment reads as a
-        // visible flash rather than a floor -- reported live as "gaat nog
-        // even naar geel" right after a film starts. Held at true off until
-        // the first real (non-black) frame actually arrives instead.
-        var floored = state.HasSeenRealColour
-            ? MinimumBrightnessFraction + (dimmed * (1d - MinimumBrightnessFraction))
-            : dimmed;
+        // A genuine threshold, like WLED's own black-level floor, not an
+        // always-on minimum: below it the light goes to true black, above
+        // it the remaining headroom rescales smoothly back up. Naturally
+        // stays at true black before any real colour has ever been seen for
+        // this channel too (dimmed is already 0 then), so there is no
+        // separate "held off until first frame" special case needed the way
+        // an always-on floor would have required -- that also fixed a
+        // visible warm-white flash right at connect an earlier revision had
+        // (reported live as "gaat nog even naar geel" right after a film
+        // starts), since a threshold floor never adds anything to a
+        // genuinely-zero brightness.
+        var linearFloor = Color.PerceptualBrightness.DecodePerceptualFraction(Math.Clamp(_floorPercentResolver(), 0, 20) / 100f);
+        var floored = dimmed <= linearFloor ? 0d : (dimmed - linearFloor) / (1d - linearFloor);
 
         return new LinearRgb(
             Math.Clamp(state.SmoothedColour.Red * (float)floored, 0f, 1f),
@@ -206,13 +213,5 @@ public sealed class HueNaturalLightFilter
         public LinearRgb LastValidHueColour = WarmWhiteFallback;
         public double SmoothedBrightness;
         public bool Initialized;
-
-        /// <summary>
-        /// True once at least one genuinely non-black frame has been seen for
-        /// this channel. Gates the 1% floor/warm-white fallback: they exist
-        /// for a black cut *after* real colour has been shown, not for the
-        /// moment a session first connects and has nothing to show yet.
-        /// </summary>
-        public bool HasSeenRealColour;
     }
 }

@@ -179,6 +179,34 @@ public sealed class HueEntertainmentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task StoppingWithNoRealFrameEverProcessedSkipsTheFadeWithoutError()
+    {
+        // Mirrors WledRealtimeOutput.FadeToBlackAsync's own no-op when
+        // nothing is remembered to fade from: a session that starts and
+        // stops before any analysis frame ever arrived has no channel
+        // colours to ease toward black, so StopAsync must complete cleanly
+        // (and apply the end-of-session behaviour) rather than fail or hang.
+        var lightId = Guid.NewGuid();
+        var (service, bridge, lightControl, credentialStore, channelFactory) = CreateHarness(out var coordinator);
+        var configurationId = ConfigureSinglePairedLight(bridge, lightId);
+        lightControl.StateByLightId[lightId] = new HueLightSnapshotEntry(lightId, On: true, null, null, null, null, null);
+        credentialStore.Credentials = new HueCredentials("bridge-1", "app-key", "client-key", "thumb");
+        _configuration.HueEnabled = true;
+        _configuration.HueEntertainmentConfigurationId = configurationId;
+
+        await service.StartAsync(CancellationToken.None);
+        coordinator.TryPost(new PlaybackStarted("session-1", 0));
+        await WaitForStateAsync(service, HueEntertainmentState.Streaming);
+
+        coordinator.TryPost(new PlaybackStopped("session-1"));
+        await WaitForStateAsync(service, HueEntertainmentState.Ready);
+
+        Assert.Equal(lightId, Assert.Single(lightControl.WarmWhiteDimmedLightIds));
+        var channel = Assert.Single(channelFactory.Created);
+        Assert.True(channel.Disposed);
+    }
+
+    [Fact]
     public async Task ReconnectsAfterASessionWhoseChannelThrewOnClose()
     {
         var lightId = Guid.NewGuid();

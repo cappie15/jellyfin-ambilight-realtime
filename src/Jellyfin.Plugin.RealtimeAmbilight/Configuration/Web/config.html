@@ -301,22 +301,22 @@
             <p class="fieldDescription" style="margin-bottom:1.1em">Every slider here applies to the picture immediately and saves itself a moment after you stop moving it, so you can watch the TV or the LEDs instead of the screen while adjusting.</p>
 
             <div class="inputContainer">
-                <input is="emby-input" id="brightnessPercent" type="range" min="1" max="200" step="1" label="WLED brightness" />
+                <input is="emby-input" id="brightnessPercent" type="range" min="1" max="200" step="1" label="Ambilight brightness" />
                 <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. Above 100% pushes already-dim scenes brighter than the source picture. <strong>Default: 158%.</strong></div>
             </div>
 
             <div class="inputContainer">
-                <input is="emby-input" id="saturationPercent" type="range" min="50" max="200" step="5" label="Colour intensity" />
+                <input is="emby-input" id="saturationPercent" type="range" min="50" max="200" step="5" label="Ambilight colour intensity" />
                 <div class="fieldDescription">Now: <strong id="saturationValue"></strong>. <strong>Default: 140%.</strong></div>
             </div>
 
             <div class="inputContainer">
-                <input is="emby-input" id="blackLevelFloorPercent" type="range" min="0" max="20" step="1" label="Black level floor" />
+                <input is="emby-input" id="blackLevelFloorPercent" type="range" min="0" max="20" step="1" label="Ambilight black level floor" />
                 <div class="fieldDescription">Now: <strong id="blackLevelFloorValue"></strong>. Picture edges darker than this go fully off instead of glowing dim; brightness above it eases back up smoothly, same as it always looked, just measured the way a waveform monitor would (not linear light -- gamma makes a big practical difference near black). <strong>Default: 3%.</strong></div>
             </div>
 
             <div id="whiteChannelStrengthContainer" class="inputContainer">
-                <input is="emby-input" id="whiteChannelStrengthPercent" type="range" min="20" max="100" step="1" label="White LED strength" />
+                <input is="emby-input" id="whiteChannelStrengthPercent" type="range" min="20" max="100" step="1" label="Ambilight white LED strength" />
                 <div class="fieldDescription">
                     Now: <strong id="whiteChannelStrengthValue"></strong>. A single white LED cannot reach the
                     combined brightness of red, green and blue lit together, so a bright/near-white scene can
@@ -327,17 +327,17 @@
             </div>
 
             <div class="inputContainer">
-                <input is="emby-input" id="samplingDepthPercent" type="range" min="1" max="30" step="1" label="Sampling edge range" />
+                <input is="emby-input" id="samplingDepthPercent" type="range" min="1" max="30" step="1" label="Ambilight sampling edge range" />
                 <div class="fieldDescription">Now: <strong id="samplingDepthValue"></strong>. Lower is more literal; higher is calmer. <strong>Default: 5%.</strong></div>
             </div>
 
             <div class="inputContainer">
-                <input is="emby-input" id="wledSmoothingMilliseconds" type="range" min="0" max="2000" step="10" label="WLED smoothing" />
+                <input is="emby-input" id="wledSmoothingMilliseconds" type="range" min="0" max="2000" step="10" label="Ambilight smoothing" />
                 <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED into its new colour; left is more reactive, right is smoother. <strong>Default: 110 ms.</strong></div>
             </div>
 
             <div class="inputContainer">
-                <input is="emby-input" id="minimumColourHoldMilliseconds" type="range" min="0" max="1500" step="50" label="Minimum colour hold" />
+                <input is="emby-input" id="minimumColourHoldMilliseconds" type="range" min="0" max="1500" step="50" label="Ambilight minimum colour hold" />
                 <div class="fieldDescription">Now: <strong id="minimumColourHoldValue"></strong>. A colour must stay in the picture at least this long before the LEDs follow it, so one flash cut cannot snap the wall to a colour barely there. <strong>Default: 100 ms.</strong></div>
             </div>
 
@@ -349,6 +349,11 @@
             <div class="inputContainer">
                 <input is="emby-input" id="hueResponsePercent" type="range" min="0" max="100" step="10" label="Hue responsivity" />
                 <div class="fieldDescription">Now: <strong id="hueResponseValue"></strong>. Reactive tracks a cut instantly; smooth eases in over a second or more. <strong>Default: 20.</strong></div>
+            </div>
+
+            <div class="inputContainer">
+                <input is="emby-input" id="hueBlackLevelFloorPercent" type="range" min="0" max="20" step="1" label="Hue black level floor" />
+                <div class="fieldDescription">Now: <strong id="hueBlackLevelFloorValue"></strong>. Below this, the light goes to true black instead of holding a dim glow -- same meaning as Ambilight's own black level floor. <strong>Default: 1%.</strong></div>
             </div>
         </div>
 

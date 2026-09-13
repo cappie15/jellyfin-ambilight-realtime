@@ -387,4 +387,17 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// hardware-shaped settings.
     /// </summary>
     public int HueResponsePercent { get; set; }
+
+    /// <summary>
+    /// Below this fraction of perceptual brightness, a Hue light goes to
+    /// true black instead of holding a dim, always-on glow; above it, the
+    /// remaining headroom rescales smoothly back up. Same meaning and same
+    /// perceptual-percentage convention as WLED's own
+    /// <see cref="BlackLevelFloorPercent"/>. Replaces an earlier fixed 1%
+    /// minimum brightness that could never actually reach true black at
+    /// all, which is exactly why Hue was reported as never going
+    /// completely dark; 1% is kept as the default only because it matches
+    /// that earlier behaviour, not because it is otherwise special.
+    /// </summary>
+    public int HueBlackLevelFloorPercent { get; set; } = 1;
 }

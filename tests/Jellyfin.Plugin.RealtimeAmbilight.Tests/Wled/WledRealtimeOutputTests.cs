@@ -95,21 +95,19 @@ public class WledRealtimeOutputTests
     }
 
     [Fact]
-    public async Task ClaimWithFadeToBlackFadesFromANeutralGuessWhenNothingIsRemembered()
+    public async Task ClaimWithFadeToBlackSendsASingleBlackFrameWhenNothingIsRemembered()
     {
+        // No fade when there is nothing real to fade from -- a guessed
+        // starting colour (an earlier revision tried a neutral warm-white
+        // guess) is not "softer" than a cut, it is a fake colour that was
+        // never really on the strip, reported live as a visible flash.
         var sender = new CapturingUdpSender();
         var output = CreateOutput(WledRealtimeProtocol.Ddp, sender);
 
         await output.ClaimWithFadeToBlackAsync(TimeSpan.FromMilliseconds(40), 100, ledCount: 2, CancellationToken.None);
 
-        Assert.Equal(4, sender.Datagrams.Count);
-        var first = ExtractRgb24(sender.Datagrams[0].Payload);
-        var last = ExtractRgb24(sender.Datagrams[^1].Payload);
-
-        // Neutral warm-white guess (255, 214, 170), not pure white and not
-        // pure black: there is nothing real remembered to fade from yet.
-        Assert.True(first[0] > 150, $"expected the first step to still be mostly bright, got R={first[0]}");
-        Assert.All(last, component => Assert.Equal(0, component));
+        var sent = Assert.Single(sender.Datagrams);
+        Assert.All(ExtractRgb24(sent.Payload), component => Assert.Equal(0, component));
     }
 
     [Fact]

@@ -70,6 +70,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     private IReadOnlyList<HueEntertainmentChannel> _channels = [];
     private IReadOnlyDictionary<Guid, Guid> _lightIdsByServiceId = new Dictionary<Guid, Guid>();
     private byte[]? _lastPacket;
+    private IReadOnlyDictionary<int, LinearRgb>? _lastChannelColours;
     private DateTimeOffset _lastSend = DateTimeOffset.MinValue;
     private DateTimeOffset _nextRetryAt = DateTimeOffset.MinValue;
     private int _consecutiveFailures;
@@ -389,7 +390,11 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             // snapshotted "configuration" parameter above), so the Live
             // tuning panel's slider takes effect immediately, mid-stream, not
             // only on the next reconnect.
-            _frameProcessor = new HueFrameProcessor(new PlaybackMonotonicTimeAdapter(), () => true, responsePercentResolver: () => Plugin.Instance?.Configuration.HueResponsePercent ?? 40);
+            _frameProcessor = new HueFrameProcessor(
+                new PlaybackMonotonicTimeAdapter(),
+                () => true,
+                responsePercentResolver: () => Plugin.Instance?.Configuration.HueResponsePercent ?? 40,
+                floorPercentResolver: () => Plugin.Instance?.Configuration.HueBlackLevelFloorPercent ?? 1);
 
             if (_snapshot?.PlaybackSessionId != sessionId)
             {
@@ -429,6 +434,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             _channel = channel;
             _consecutiveFailures = 0;
             _lastPacket = null;
+            _lastChannelColours = null;
             _pendingFrames.Clear();
             _stateMachine.Connected();
             _logger.LogInformation("Hue Entertainment connected to {ConfigurationName} on {Host}.", selected.Name, configuration.HueBridgeHost);
@@ -527,6 +533,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                 .ToArray();
             packet = HueStreamPacketizer.Packetize(configuration.HueEntertainmentConfigurationId, channelColours)[0];
             _lastPacket = packet;
+            _lastChannelColours = colours;
         }
         else if (DateTimeOffset.UtcNow - _lastSend < KeepAliveInterval)
         {
@@ -583,8 +590,23 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     /// failure to close the local socket can never prevent the light command
     /// that actually matters to the operator from running.
     /// </remarks>
+    /// <summary>How long <see cref="StopAsync"/> eases the last real colours to black before disposing the channel, matching <c>WledRealtimeOutput</c>'s own fade duration.</summary>
+    private static readonly TimeSpan StopFadeDuration = TimeSpan.FromMilliseconds(2000);
+
     private async Task StopAsync(PluginConfiguration configuration)
     {
+        if (_channel is not null && _lastChannelColours is { Count: > 0 } lastColours)
+        {
+            try
+            {
+                await FadeToBlackAsync(configuration, lastColours).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                _logger.LogWarning(exception, "Hue Entertainment could not fade out cleanly at stop; disposing anyway.");
+            }
+        }
+
         try
         {
             _channel?.Dispose();
@@ -600,6 +622,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
 
         _frameProcessor?.Reset();
         _pendingFrames.Clear();
+        _lastChannelColours = null;
 
         try
         {
@@ -619,6 +642,37 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         }
 
         // No finally clearing _lifecycleTask here -- see LifecycleTaskIsFree's remarks.
+    }
+
+    /// <summary>
+    /// Eases the lights from their last real colours to black over
+    /// <see cref="StopFadeDuration"/> before the channel is disposed and the
+    /// configured end-of-session behaviour takes over -- mirroring
+    /// <c>WledRealtimeOutput.FadeToBlackAsync</c>, since Hue's own DTLS
+    /// stream is exactly as capable of a smooth transition as WLED's is, and
+    /// an instant cut straight to the end-behaviour command read the same
+    /// way an instant cut on WLED did before that was fixed.
+    /// </summary>
+    private async Task FadeToBlackAsync(PluginConfiguration configuration, IReadOnlyDictionary<int, LinearRgb> source)
+    {
+        var stepCount = Math.Max(1, (int)Math.Ceiling(StopFadeDuration.TotalMilliseconds / PumpInterval.TotalMilliseconds));
+        for (var step = 1; step <= stepCount; step++)
+        {
+            var remaining = (float)(stepCount - step) / stepCount;
+            var channelColours = _channels
+                .Select(c => new HueStreamPacketizer.ChannelColour(
+                    (byte)c.ChannelId,
+                    source.TryGetValue(c.ChannelId, out var colour)
+                        ? new LinearRgb(colour.Red * remaining, colour.Green * remaining, colour.Blue * remaining)
+                        : default))
+                .ToArray();
+            var packet = HueStreamPacketizer.Packetize(configuration.HueEntertainmentConfigurationId, channelColours)[0];
+            _channel?.SendPacket(packet);
+            if (step < stepCount)
+            {
+                await Task.Delay(PumpInterval, _shutdown.Token).ConfigureAwait(false);
+            }
+        }
     }
 
     private async Task ApplyEndBehaviourAsync(PluginConfiguration configuration, HueCredentials credentials)

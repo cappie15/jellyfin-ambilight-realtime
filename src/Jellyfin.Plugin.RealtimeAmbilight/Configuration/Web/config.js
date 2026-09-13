@@ -249,6 +249,8 @@ export default function (view) {
         });
         const blackFloor = Number(byId("blackLevelFloorPercent").value);
         byId("blackLevelFloorValue").textContent = blackFloor === 0 ? "0% (off)" : `${blackFloor}%`;
+        const hueBlackFloor = Number(byId("hueBlackLevelFloorPercent").value);
+        byId("hueBlackLevelFloorValue").textContent = hueBlackFloor === 0 ? "0% (off)" : `${hueBlackFloor}%`;
         byId("wallColourCorrectionValue").textContent = `${byId("wallColourCorrectionPercent").value}%`;
         sideNames.forEach(side => {
             ["brightness", "redGain", "greenGain", "blueGain"].forEach(field => {
@@ -1535,6 +1537,7 @@ export default function (view) {
                 byId("hueEnabled").checked = config.HueEnabled === true;
                 byId("hueBrightnessPercent").value = config.HueBrightnessPercent || 100;
                 byId("hueResponsePercent").value = config.HueResponsePercent ?? 40;
+                byId("hueBlackLevelFloorPercent").value = config.HueBlackLevelFloorPercent ?? 1;
                 // Jellyfin's plugin configuration API returns an enum as its
                 // string name ("WarmWhiteDim"), not the numeric value the
                 // <select>'s own options use -- the same mismatch already
@@ -1646,6 +1649,7 @@ export default function (view) {
             HueEntertainmentConfigurationName: byId("hueEntertainmentConfig").selectedOptions[0]?.textContent || "",
             HueBrightnessPercent: Number(byId("hueBrightnessPercent").value),
             HueResponsePercent: Number(byId("hueResponsePercent").value),
+            HueBlackLevelFloorPercent: Number(byId("hueBlackLevelFloorPercent").value),
             HueEndBehaviour: Number(byId("hueEndBehaviour").value)
         };
         numericFields.forEach(field => { config[fieldKey(field)] = Number(byId(field).value); });
@@ -1671,7 +1675,7 @@ export default function (view) {
     // ever merges the tuning fields into whatever was last loaded, so it can
     // never clobber an in-progress, not-yet-saved edit sitting open in a
     // connection modal elsewhere on the page.
-    const tuningFields = ["brightnessPercent", "saturationPercent", "blackLevelFloorPercent", "whiteChannelStrengthPercent", "samplingDepthPercent", "wledSmoothingMilliseconds", "minimumColourHoldMilliseconds", "hueBrightnessPercent", "hueResponsePercent"];
+    const tuningFields = ["brightnessPercent", "saturationPercent", "blackLevelFloorPercent", "whiteChannelStrengthPercent", "samplingDepthPercent", "wledSmoothingMilliseconds", "minimumColourHoldMilliseconds", "hueBrightnessPercent", "hueResponsePercent", "hueBlackLevelFloorPercent"];
     let tuningSaveTimer = null;
 
     function scheduleTuningSave() {
@@ -1772,9 +1776,10 @@ export default function (view) {
             HueBridgeId: loadedConfig?.HueBridgeId || "",
             HueEntertainmentConfigurationId: loadedConfig?.HueEntertainmentConfigurationId || "00000000-0000-0000-0000-000000000000",
             HueEntertainmentConfigurationName: loadedConfig?.HueEntertainmentConfigurationName || "",
-            HueBrightnessPercent: 169,
+            HueBrightnessPercent: 188,
             HueEndBehaviour: 0,
-            HueResponsePercent: 20
+            HueResponsePercent: 0,
+            HueBlackLevelFloorPercent: 1
         };
     }
 
@@ -2126,4 +2131,5 @@ export default function (view) {
     byId("hueUnlink").addEventListener("click", unlinkHue);
     byId("hueBrightnessPercent").addEventListener("input", setHueBrightnessLabel);
     byId("hueResponsePercent").addEventListener("input", setHueResponseLabel);
+    byId("hueBlackLevelFloorPercent").addEventListener("input", setColourLabels);
 }
