@@ -222,7 +222,7 @@ public sealed class HueEntertainmentServiceTests : IDisposable
                 "TV room",
                 "screen",
                 "inactive",
-                [new HueEntertainmentChannel(0, new HuePosition(0, 0, 0), [unresolvableServiceId])]),
+                [new HueEntertainmentChannel(0, new HuePosition(0, 0, 0), [new HueChannelMember(unresolvableServiceId, 0)])]),
         ];
         bridge.LightIdsByServiceId = new Dictionary<Guid, Guid>(); // deliberately no mapping at all
         credentialStore.Credentials = new HueCredentials("bridge-1", "app-key", "client-key", "thumb");
@@ -255,7 +255,7 @@ public sealed class HueEntertainmentServiceTests : IDisposable
                 "TV room",
                 "screen",
                 "inactive",
-                [new HueEntertainmentChannel(0, new HuePosition(0, 0, 0), [serviceId])]),
+                [new HueEntertainmentChannel(0, new HuePosition(0, 0, 0), [new HueChannelMember(serviceId, 0)])]),
         ];
         bridge.LightIdsByServiceId = new Dictionary<Guid, Guid> { [serviceId] = lightId };
         return configurationId;

@@ -73,6 +73,20 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     private DateTimeOffset _lastSend = DateTimeOffset.MinValue;
     private DateTimeOffset _nextRetryAt = DateTimeOffset.MinValue;
     private int _consecutiveFailures;
+
+    /// <summary>
+    /// Mirrors <c>JellyfinWledOutputService.RunPumpAsync</c>'s own
+    /// pendingFrames queue: the shared analysis decoder runs ~5 s ahead of
+    /// the actual playback position (<c>FfmpegAnalysisWorker.DecoderLead</c>),
+    /// so the newest published <see cref="AnalysisFrame"/> is not what the
+    /// picture looks like right now -- it is what it will look like in a
+    /// few seconds. Sending it immediately, as this queue previously did not
+    /// exist to prevent, is what made Hue lights lag noticeably behind the
+    /// picture regardless of how reactive <c>HueResponsePercent</c> was set:
+    /// that control only smooths a frame that already arrived on time, it
+    /// cannot correct one that arrived at the wrong time to begin with.
+    /// </summary>
+    private readonly Queue<(DateTimeOffset DueAt, AnalysisFrame Frame)> _pendingFrames = new();
     private HueSessionSnapshot? _snapshot;
     private Task? _pump;
     private Task? _lifecycleTask;
@@ -239,8 +253,17 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             case HueEntertainmentState.Recovering:
                 if (currentSession is null)
                 {
-                    _stateMachine.RecoveryAbandoned();
-                    _channel = null;
+                    // Route through the same stop path Streaming/Paused use
+                    // below, not RecoveryAbandoned(): that left the lights
+                    // showing whatever colour they had when the connection
+                    // dropped, forever, since it never runs the configured
+                    // end-of-session behaviour (WarmWhiteDim/RestorePreviousState/
+                    // TurnOff) -- to an operator that reads exactly like the
+                    // lights being stuck on the paused frame. StopRequested()
+                    // already lists Recovering as a valid starting state, and
+                    // StopAsync already no-ops safely on a null _channel.
+                    _stateMachine.StopRequested();
+                    _lifecycleTask = StopAsync(configuration);
                 }
                 else if (DateTimeOffset.UtcNow >= _nextRetryAt && LifecycleTaskIsFree())
                 {
@@ -319,7 +342,39 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                 return;
             }
 
-            _channels = selected.Channels;
+            // Replaces each channel's bridge-reported position with the
+            // average of its members' own real positions -- see the doc
+            // comment on ResolveChannelPositions for why the raw one can be
+            // wrong for a channel grouping several lights/segments together.
+            _channels = selected.ResolveChannelPositions();
+            // A channel grouping more than one member under the same
+            // channel_id/position is the bridge's own doing (however the
+            // Entertainment Area was set up in the Hue app), not something
+            // this plugin's own DTLS packet can address around: the wire
+            // format is one RGB triplet per channel_id, so every member
+            // sharing a channel necessarily shows the same colour. Most
+            // often seen on a gradient lightstrip added without dragging
+            // each of its segments to its own position marker. Purely
+            // informational -- there is nothing to fix on this side.
+            foreach (var mergedChannel in _channels.Where(static c => c.Members.Count > 1))
+            {
+                _logger.LogWarning(
+                    "Hue Entertainment channel {ChannelId} in '{ConfigurationName}' groups {Count} light segments together; they will show one shared colour (now averaged from each segment's own real position rather than the bridge's single blended point). The DTLS stream can only address by channel_id, so per-segment control beyond this needs the plugin to define its own entertainment_configuration channel list.",
+                    mergedChannel.ChannelId,
+                    selected.Name,
+                    mergedChannel.Members.Count);
+            }
+
+            // Temporary, verbose, once-per-connect: logs every channel's own
+            // id/resolved-position/member-count so a real gradient-segment
+            // report can be checked against the bridge's actual
+            // configuration shape instead of guessed at -- remove once that
+            // is confirmed.
+            _logger.LogInformation(
+                "Hue Entertainment '{ConfigurationName}' channels: {Channels}",
+                selected.Name,
+                string.Join(" | ", _channels.Select(c => $"id={c.ChannelId} pos=({c.Position.X:F2},{c.Position.Y:F2},{c.Position.Z:F2}) members={c.Members.Count}")));
+
             // A channel member's own id is an *entertainment service* id,
             // not the light resource id CLIP v2 light calls need -- resolved
             // once per connect (cheap: one bridge call) rather than assuming
@@ -374,6 +429,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             _channel = channel;
             _consecutiveFailures = 0;
             _lastPacket = null;
+            _pendingFrames.Clear();
             _stateMachine.Connected();
             _logger.LogInformation("Hue Entertainment connected to {ConfigurationName} on {Host}.", selected.Name, configuration.HueBridgeHost);
         }
@@ -396,7 +452,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     private List<Guid> ResolveLightIds(IEnumerable<HueEntertainmentChannel> channels)
     {
         var lightIds = new List<Guid>();
-        foreach (var serviceId in channels.SelectMany(c => c.MemberServiceIds).Distinct())
+        foreach (var serviceId in channels.SelectMany(c => c.Members).Select(m => m.ServiceId).Distinct())
         {
             if (_lightIdsByServiceId.TryGetValue(serviceId, out var lightId))
             {
@@ -440,9 +496,30 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         var brightnessFraction = Math.Clamp(configuration.HueBrightnessPercent, 1, 200) / 100d;
         byte[]? packet = null;
 
-        if (_stateMachine.State == HueEntertainmentState.Streaming && _latestFrames.TryTake(out var frame) && frame is not null)
+        if (_stateMachine.State == HueEntertainmentState.Streaming && _latestFrames.TryTake(out var newFrame) && newFrame is not null)
         {
-            var colours = _frameProcessor.Process(frame, _channels, brightnessFraction);
+            // The decoder runs ahead of (or, right after a restart, sometimes
+            // behind) the actual playback position -- schedule against that
+            // gap exactly like JellyfinWledOutputService.RunPumpAsync already
+            // does for WLED, rather than rendering whatever the newest frame
+            // happens to be the instant it arrives.
+            var lead = TimeSpan.FromTicks(newFrame.PositionTicks - _coordinator.CurrentPositionTicks);
+            var dueAt = DateTimeOffset.UtcNow + (lead > TimeSpan.Zero ? lead : TimeSpan.Zero);
+            _pendingFrames.Enqueue((dueAt, newFrame));
+        }
+
+        AnalysisFrame? dueFrame = null;
+        var now = DateTimeOffset.UtcNow;
+        while (_pendingFrames.TryPeek(out var pending) && pending.DueAt <= now)
+        {
+            // Keep only the newest frame that has actually become due --
+            // an older one still queued behind it is already stale.
+            dueFrame = _pendingFrames.Dequeue().Frame;
+        }
+
+        if (dueFrame is not null)
+        {
+            var colours = _frameProcessor.Process(dueFrame, _channels, brightnessFraction);
             var channelColours = _channels
                 .Select(c => new HueStreamPacketizer.ChannelColour(
                     (byte)c.ChannelId,
@@ -522,6 +599,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         }
 
         _frameProcessor?.Reset();
+        _pendingFrames.Clear();
 
         try
         {

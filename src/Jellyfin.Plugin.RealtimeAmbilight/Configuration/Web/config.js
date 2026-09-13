@@ -18,6 +18,19 @@ export default function (view) {
     // swatch dots and the curve chart's wedges/lines -- one source so the two
     // views of the same six colours can never drift apart.
     const wedgeColours = { Red: "#e6483c", Yellow: "#d6c22e", Green: "#4caf50", Cyan: "#26a69a", Blue: "#4a6fd6", Magenta: "#c04fb0" };
+
+    // Mirrors CalibrationWizard.SwatchColours server-side (60% value, not
+    // 100% -- a fully saturated colour at maximum brightness is rare in real
+    // playback content). Purely descriptive, so the operator can see exactly
+    // what is being sent to the TV for this step rather than guessing.
+    const wizardSwatchColours = {
+        White: [153, 153, 153], Grey20: [51, 51, 51], Grey40: [102, 102, 102],
+        Red: [153, 0, 0], Yellow: [153, 153, 0], Green: [0, 153, 0],
+        Cyan: [0, 153, 153], Blue: [0, 0, 153], Magenta: [153, 0, 153],
+    };
+    // "White" reads fine as-is; the two grey steps read much better as "20%
+    // grey"/"40% grey" than the bare identifier used for routing/state.
+    const wizardSwatchDisplayNames = { Grey20: "20% grey", Grey40: "40% grey" };
     // Above this, a reachable device's own ping figure (and that card's state
     // label) turns amber -- still "there", just slow enough to call out. WLED
     // and the Hue bridge are both LAN devices normally answering in a few ms,
@@ -35,6 +48,19 @@ export default function (view) {
         });
     }
     resetHueAnchors(null);
+
+    // The wizard's 20%/40%-grey steps: an independent temperature+tint
+    // correction at each of those two brightness levels, on top of White's
+    // own flat gain (see Core.Color.GreyBalanceCurve). Kept in their own
+    // small state object for the same reason hueAnchors is: no matching
+    // Advanced-tab raw slider exists for these either.
+    const greyBalanceFields = ["Grey20TemperatureDelta", "Grey20TintDelta", "Grey40TemperatureDelta", "Grey40TintDelta"];
+    let greyBalance = {};
+    function resetGreyBalance(source) {
+        greyBalance = {};
+        greyBalanceFields.forEach(field => { greyBalance[field] = Number(source?.[field] ?? 0); });
+    }
+    resetGreyBalance(null);
 
     // Direction each colour's hue-shift slider actually rotates the wheel:
     // +1 means "positive slider value = toward the next (higher-hue)
@@ -112,13 +138,14 @@ export default function (view) {
     const show = (id, visible) => { byId(id).style.display = visible ? "block" : "none"; };
     const escapeHtml = text => String(text).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char]));
 
-    // The eight clips ship embedded in the plugin itself and are extracted
-    // and registered as a real Jellyfin library on the operator's own click
-    // (TestVideoLibrary, server-side) -- no Dashboard trip, no manual library
-    // of their own to build. A real library, not just files on disk: the
-    // Ambilight pipeline only ever reacts to an actual Jellyfin playback
-    // session, so the clips have to be a real, playable library item.
-    function renderTestVideoRows(items) {
+    // The two clips ship embedded in the plugin itself and are extracted
+    // and registered, alongside the operator's own custom-clips folder, as a
+    // real Jellyfin library on the operator's own click (TestVideoLibrary,
+    // server-side) -- no Dashboard trip, no manual library of their own to
+    // build. A real library, not just files on disk: the Ambilight pipeline
+    // only ever reacts to an actual Jellyfin playback session, so the clips
+    // have to be a real, playable library item.
+    function renderTestVideoRows(items, customClipsFolderPath) {
         const serverId = window.ApiClient.serverId?.() ?? "";
         const rows = items.slice().sort((a, b) => a.Name.localeCompare(b.Name)).map(item => {
             const playUrl = `${window.location.origin}/web/#/details?id=${encodeURIComponent(item.Id)}&serverId=${encodeURIComponent(serverId)}`;
@@ -127,7 +154,9 @@ export default function (view) {
         const notice = items.length === 0
             ? "<p class=\"fieldDescription\">Set up just now; Jellyfin is still scanning. Close and reopen this in a few seconds.</p>"
             : "";
-        return `${rows}${notice}<div class="raTestVideoRow"><span class="fieldDescription">Done tuning?</span><button type="button" id="removeTestVideos" class="raLink">Remove test videos</button></div>`;
+        return `${rows}${notice}`
+            + `<p class="fieldDescription" style="margin-top:.6em">Want more variety? Drop your own clips (that you hold the rights to -- a sunrise, sports, a film, nature footage) into <code>${escapeHtml(customClipsFolderPath)}</code> on the server, then rescan.</p>`
+            + `<div class="raTestVideoRow"><button type="button" id="rescanTestVideos" class="raLink">Rescan for new clips</button><span class="fieldDescription">Done tuning?</span><button type="button" id="removeTestVideos" class="raLink">Remove test videos</button></div>`;
     }
 
     function findTestVideoItems() {
@@ -151,14 +180,20 @@ export default function (view) {
         });
     }
 
-    function wireSetupTestVideosButton() {
-        byId("setupTestVideos")?.addEventListener("click", () => {
-            byId("testVideosPanel").innerHTML = "<p class=\"fieldDescription\">Setting up&hellip; extracting the clips and scanning the new library, this takes a few seconds.</p>";
+    // Setup is idempotent: once already set up it just rescans, which is
+    // also what "I dropped new clips into my own folder" needs -- one
+    // endpoint, one button label change, no separate rescan-only route.
+    function wireSetupTestVideosButton(alreadySetUp) {
+        const button = byId(alreadySetUp ? "rescanTestVideos" : "setupTestVideos");
+        button?.addEventListener("click", () => {
+            byId("testVideosPanel").innerHTML = alreadySetUp
+                ? "<p class=\"fieldDescription\">Rescanning&hellip;</p>"
+                : "<p class=\"fieldDescription\">Setting up&hellip; extracting the clips and scanning the new library, this takes a few seconds.</p>";
             window.ApiClient.ajax({
                 type: "POST",
                 url: window.ApiClient.getUrl("RealtimeAmbilight/Calibration/TestVideos/Setup")
             }).then(loadTestVideos).catch(() => {
-                byId("testVideosPanel").innerHTML = "<p class=\"fieldDescription\">Could not set up the test videos right now.</p>";
+                byId("testVideosPanel").innerHTML = "<p class=\"fieldDescription\">Could not reach the test-video library right now.</p>";
             });
         });
     }
@@ -171,15 +206,19 @@ export default function (view) {
         panel.innerHTML = "<p class=\"fieldDescription\">Loading&hellip;</p>";
         window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Calibration/TestVideos/Status")).then(status => {
             const isSetUp = status?.IsSetUp ?? status?.isSetUp ?? false;
+            const customClipsFolderPath = status?.CustomClipsFolderPath ?? status?.customClipsFolderPath ?? "";
             if (!isSetUp) {
-                panel.innerHTML = "<p class=\"fieldDescription\">Eight short clips (sunrise, action, nature, motorsport, brightness range, a monochrome scene, and 4:3/21:9 aspect-ratio tests) for confirming calibration against real content. One click adds them as their own temporary library; nothing else on your server is touched.</p><button type=\"button\" id=\"setupTestVideos\" class=\"raised\">Set up test videos</button>";
-                wireSetupTestVideosButton();
+                panel.innerHTML = `<p class="fieldDescription">Two short synthetic clips (4:3 and 21:9 bars) for testing the black-border detector -- geometry no real footage can guarantee. One click adds them, plus your own folder for real content, as their own temporary library; nothing else on your server is touched.</p>`
+                    + `<p class="fieldDescription">Want to tune against real content too (a sunrise, sports, a film, nature footage)? This plugin can't ship or download that for you -- copyrighted video can't be bundled into a public plugin -- but drop in clips you already hold the rights to and this same library will include them. The folder is created for you once you set up: <code>${escapeHtml(customClipsFolderPath)}</code>.</p>`
+                    + "<button type=\"button\" id=\"setupTestVideos\" class=\"raised\">Set up test videos</button>";
+                wireSetupTestVideosButton(false);
                 return;
             }
 
             findTestVideoItems().then(items => {
-                panel.innerHTML = renderTestVideoRows(items);
+                panel.innerHTML = renderTestVideoRows(items, customClipsFolderPath);
                 wireRemoveTestVideosButton();
+                wireSetupTestVideosButton(true);
             });
         }).catch(() => {
             panel.innerHTML = "<p class=\"fieldDescription\">Could not check the test videos right now.</p>";
@@ -692,10 +731,10 @@ export default function (view) {
         byId("openCalibrationPattern").href = url;
     }
 
-    // Mirrors CalibrationWizard.TuningOrder server-side: White, then every RGB
-    // primary and secondary. Only used as a fallback bound before the
-    // server's own StepCount is known.
-    const wizardStepCountFallback = 7;
+    // Mirrors CalibrationWizard.TuningOrder server-side: White, the 20%/40%
+    // grey steps, then every RGB primary and secondary. Only used as a
+    // fallback bound before the server's own StepCount is known.
+    const wizardStepCountFallback = 9;
     let wizardStepIndex = 0;
     let wizardStarted = false;
 
@@ -703,6 +742,7 @@ export default function (view) {
         const tuning = {};
         colourTuningFields.forEach(field => { tuning[fieldKey(field)] = Number(byId(field).value); });
         hueAnchorFields.forEach(field => { tuning[field] = hueAnchors[field]; });
+        greyBalanceFields.forEach(field => { tuning[field] = greyBalance[field]; });
         return { WallColourHex: byId("wallColourHex").value, Tuning: tuning };
     }
 
@@ -711,6 +751,63 @@ export default function (view) {
     // primary/secondary steps instead shows that one colour's own three
     // anchor sliders (hue/brightness/intensity, see hueStepSpecs).
     const wizardWhiteRange = 60;
+
+    // The wizard's 20%/40%-grey steps, right after White: a strip's white
+    // balance can drift with brightness, not just at maximum output, so
+    // these two get their own temperature (same push-pull mechanic as
+    // White's own slider) and tint (green/magenta -- an axis White does not
+    // need) correction, independent of White's own flat gain.
+    const greyStepLabels = { Grey20: "20% grey", Grey40: "40% grey" };
+
+    function greyControlHtml(colourName, idPrefix) {
+        return `<div style="border-left:3px solid currentColor;padding-left:.8em;margin-bottom:1em">
+            <strong>${greyStepLabels[colourName]}</strong>
+            <div class="fieldDescription">On top of White's own colour temperature, in case this strip's white balance drifts at this brightness.</div>
+            <div class="inputContainer">
+                <input is="emby-input" id="${idPrefix}Temperature" type="range" min="-60" max="60" step="1" label="Colour temperature" />
+                <div class="fieldDescription">Cooler &harr; <strong id="${idPrefix}TemperatureValue"></strong> &harr; Warmer</div>
+            </div>
+            <div class="inputContainer">
+                <input is="emby-input" id="${idPrefix}Tint" type="range" min="-60" max="60" step="1" label="Tint" />
+                <div class="fieldDescription">Magenta &harr; <strong id="${idPrefix}TintValue"></strong> &harr; Greener</div>
+            </div>
+        </div>`;
+    }
+
+    function wireGreyControl(colourName, idPrefix) {
+        const temperatureField = `${colourName}TemperatureDelta`;
+        const tintField = `${colourName}TintDelta`;
+        const temperatureInput = byId(`${idPrefix}Temperature`);
+        const tintInput = byId(`${idPrefix}Tint`);
+
+        temperatureInput.value = greyBalance[temperatureField];
+        tintInput.value = greyBalance[tintField];
+
+        const updateTemperatureLabel = () => {
+            const value = Number(temperatureInput.value);
+            byId(`${idPrefix}TemperatureValue`).textContent = value === 0 ? "centred" : (value > 0 ? `Warmer (${value})` : `Cooler (${-value})`);
+        };
+        updateTemperatureLabel();
+        temperatureInput.addEventListener("input", () => {
+            greyBalance[temperatureField] = Number(temperatureInput.value);
+            updateTemperatureLabel();
+            retune();
+        });
+
+        const updateTintLabel = () => {
+            const value = Number(tintInput.value);
+            byId(`${idPrefix}TintValue`).textContent = value === 0 ? "centred" : (value > 0 ? `Greener (${value})` : `Magenta (${-value})`);
+        };
+        updateTintLabel();
+        tintInput.addEventListener("input", () => {
+            greyBalance[tintField] = Number(tintInput.value);
+            updateTintLabel();
+            retune();
+        });
+
+        addStepButtons(temperatureInput);
+        addStepButtons(tintInput);
+    }
 
     function anchorControlHtml(colourName, idPrefix) {
         const spec = hueStepSpecs[colourName];
@@ -721,11 +818,11 @@ export default function (view) {
                 <div class="fieldDescription">${spec.lowLabel} &harr; <strong id="${idPrefix}HueValue"></strong> &harr; ${spec.highLabel}</div>
             </div>
             <div class="inputContainer">
-                <input is="emby-input" id="${idPrefix}Brightness" type="range" min="50" max="100" step="1" label="Brightness" />
+                <input is="emby-input" id="${idPrefix}Brightness" type="range" min="20" max="100" step="1" label="Brightness" />
                 <div class="fieldDescription">Now: <strong id="${idPrefix}BrightnessValue"></strong></div>
             </div>
             <div class="inputContainer">
-                <input is="emby-input" id="${idPrefix}Intensity" type="range" min="50" max="100" step="1" label="Intensity" />
+                <input is="emby-input" id="${idPrefix}Intensity" type="range" min="50" max="200" step="1" label="Intensity" />
                 <div class="fieldDescription">Now: <strong id="${idPrefix}IntensityValue"></strong></div>
             </div>
         </div>`;
@@ -805,6 +902,12 @@ export default function (view) {
             return;
         }
 
+        if (greyStepLabels[colourName]) {
+            container.innerHTML = greyControlHtml(colourName, "wizardGrey");
+            wireGreyControl(colourName, "wizardGrey");
+            return;
+        }
+
         if (hueStepSpecs[colourName]) {
             container.innerHTML = anchorControlHtml(colourName, "wizardAnchor");
             wireAnchorControl(colourName, "wizardAnchor");
@@ -874,10 +977,22 @@ export default function (view) {
         const colourName = state.ColourName ?? state.colourName ?? "";
         const isLastStep = state.IsLastStep ?? state.isLastStep ?? (stepIndex === stepCount - 1);
         wizardStepIndex = stepIndex;
-        byId("wizardStepLabel").textContent = `${stepIndex + 1} of ${stepCount}, ${colourName} tuning`;
+        const displayName = wizardSwatchDisplayNames[colourName] ?? colourName;
+        byId("wizardStepLabel").textContent = `${stepIndex + 1} of ${stepCount}, ${displayName} tuning`;
+        const swatch = wizardSwatchColours[colourName];
+        if (swatch) {
+            const [r, g, b] = swatch;
+            const percent = Math.round((Math.max(r, g, b) / 255) * 100);
+            byId("wizardSwatchSwab").style.background = `rgb(${r},${g},${b})`;
+            byId("wizardSwatchText").textContent = `Sending: RGB(${r}, ${g}, ${b}) — ${displayName} at ${percent}% intensity`;
+        }
         renderStepControls(colourName);
+        byId("wizardNeutralizedNote").hidden = colourName === "White";
         byId("wizardPrev").disabled = stepIndex === 0;
-        byId("wizardNext").disabled = isLastStep;
+        // Hidden, not just disabled, on the last step: a disabled-but-still-
+        // visible button next to "Stop & release LEDs" read as broken --
+        // "Finish" is the only action left at that point.
+        byId("wizardNext").hidden = isLastStep;
         byId("finishCalibrationWizard").textContent = isLastStep ? "✓ Done, finish calibration" : "Stop & release LEDs";
         byId("calibrationPreviewStatus").textContent = describeStatus(state);
         if (isLastStep) {
@@ -1408,6 +1523,7 @@ export default function (view) {
             .then(config => {
                 loadedConfig = config;
                 resetHueAnchors(config);
+                resetGreyBalance(config);
                 byId("enabled").checked = config.Enabled !== false;
                 byId("holdWhilePaused").checked = config.HoldWhilePaused !== false;
                 byId("ignoreBlackBorders").checked = config.IgnoreBlackBorders !== false;

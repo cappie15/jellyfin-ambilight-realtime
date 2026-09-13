@@ -39,6 +39,51 @@ public sealed class HueCorrectionCurveTests
     }
 
     [Fact]
+    public void IntensityAt100PercentHasNoEffectOnAnAlreadyFullySaturatedColour()
+    {
+        // A calibration swatch (like every real HSV colour at S=1) has no
+        // more "saturation" left for a same-or-lower multiplier to add --
+        // this is the case an operator reported as Intensity "doing
+        // nothing" at exactly 100%, and it is mathematically correct that
+        // it should not, for a swatch that starts fully saturated.
+        var curve = new HueCorrectionCurve(
+            red: HueAnchor.Identity,
+            yellow: HueAnchor.Identity,
+            green: HueAnchor.Identity,
+            cyan: HueAnchor.Identity,
+            blue: HueAnchor.Identity,
+            magenta: new HueAnchor(0f, 1f, 1f));
+        var pureMagenta = new LinearRgb(1f, 0f, 1f);
+
+        Assert.Equal(pureMagenta, curve.Apply(pureMagenta));
+    }
+
+    [Fact]
+    public void IntensityAboveHalfSaturationPercentPushesAnAlreadyFullySaturatedColourFurtherFromGrey()
+    {
+        // Above 100%, Intensity switches to a direct RGB-domain push away
+        // from the colour's own luminance (the same technique the global
+        // Saturation control already uses), specifically because HSV's own
+        // saturation is bounded at 1.0 and cannot be pushed past that by
+        // scaling the HSV parameter alone.
+        var curve = new HueCorrectionCurve(
+            red: HueAnchor.Identity,
+            yellow: HueAnchor.Identity,
+            green: HueAnchor.Identity,
+            cyan: HueAnchor.Identity,
+            blue: HueAnchor.Identity,
+            magenta: new HueAnchor(0f, 1f, 1.5f));
+        var dimMagenta = new LinearRgb(0.4f, 0f, 0.4f);
+
+        var boosted = curve.Apply(dimMagenta);
+
+        // Pushed further from its own luminance: red/blue rise, green (the
+        // channel already below the other two) is pushed lower still.
+        Assert.True(boosted.Red > dimMagenta.Red, $"expected red boosted above {dimMagenta.Red}, got {boosted.Red}");
+        Assert.True(boosted.Green < dimMagenta.Green, $"expected green pushed below {dimMagenta.Green}, got {boosted.Green}");
+    }
+
+    [Fact]
     public void ARedHueShiftTowardsOrangeMovesRedTowardsYellowNotTowardsMagenta()
     {
         // +15 degrees on red should read as "a bit orange": more green

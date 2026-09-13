@@ -14,6 +14,14 @@ namespace Jellyfin.Plugin.RealtimeAmbilight;
 /// <summary>Dashboard-facing throughput at each pipeline stage, Hz. Null means no session is active.</summary>
 public sealed record PipelinePerformanceSnapshot(double? AnalyseFps, double? SampleFps, double? WledRenderFps, double? HueSendFps = null, double? SourceFps = null, string? WledProtocol = null);
 
+/// <summary>
+/// A cheap, downsampled look at what the LEDs are actually showing right
+/// now, in physical order per side -- <c>#rrggbb</c> strings, ready to use
+/// directly as CSS colours. <see langword="null"/> whenever there is
+/// nothing to show (no active session, or nothing sent yet).
+/// </summary>
+public sealed record LivePreviewSnapshot(IReadOnlyList<string> Top, IReadOnlyList<string> Right, IReadOnlyList<string> Bottom, IReadOnlyList<string> Left);
+
 /// <summary>Runs the latest-only frame pump for the reference 831-led WLED.</summary>
 public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
 {
@@ -26,6 +34,9 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     /// its default.
     /// </summary>
     private const int StopFadeMilliseconds = 2500;
+
+    /// <summary>How long claiming the strip at playback start eases down to black over, instead of an instant cut. See <see cref="Core.Wled.WledRealtimeOutput.ClaimWithFadeToBlackAsync"/>.</summary>
+    private const int StartFadeMilliseconds = 2000;
 
     private readonly PlaybackEventCoordinator _coordinator;
     private readonly WledDiscoveryService _discoveryService;
@@ -86,6 +97,18 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private int _calibrationPhotoWidth;
     private int _calibrationPhotoHeight;
     private PerimeterColourAdjustment _calibrationAdjustment = PerimeterColourAdjustment.None;
+
+    /// <summary>
+    /// The last physical-LED frame actually sent to WLED, for
+    /// <see cref="GetLivePreview"/>. A plain reference, not a clone: each
+    /// sampled frame is a freshly allocated array (see
+    /// <see cref="Core.Output.AmbilightFrameProcessor.Sample"/>), never
+    /// mutated again once queued, so holding this extra reference costs
+    /// nothing beyond the pointer itself -- no per-frame copy, only the
+    /// downsampling in <see cref="GetLivePreview"/> costs anything, and only
+    /// when something actually polls it.
+    /// </summary>
+    private LinearRgb[]? _latestPhysicalFrame;
 
     /// <summary>
     /// The colour-tuning wizard's current step, shared between the settings
@@ -464,10 +487,13 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
 
                     // Claim the strip immediately. Otherwise WLED keeps showing
                     // whatever effect it was running until the first analysed
-                    // frame lands, which is seconds into the item.
+                    // frame lands, which is seconds into the item -- but ease
+                    // down to black over StartFadeMilliseconds instead of an
+                    // instant cut, which read as the ambilight "just turning
+                    // off" the moment playback began.
                     try
                     {
-                        await _scheduler.SendFrameAsync(new byte[_ledCount * _bytesPerLed], _shutdown.Token).ConfigureAwait(false);
+                        await _output.ClaimWithFadeToBlackAsync(TimeSpan.FromMilliseconds(StartFadeMilliseconds), 30, _ledCount, _shutdown.Token).ConfigureAwait(false);
                         lastFrameSent = DateTimeOffset.UtcNow;
                         lastSend = lastFrameSent;
                         _activityLog.Info("WLED: playback started, LEDs claimed.");
@@ -586,6 +612,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
                         // scheduled one once it finally arrived, which is what
                         // caused the strip to visibly flicker between the two.
                         await _scheduler.SendFrameAsync(_scheduler.EncodeTarget(pending.Target), _shutdown.Token).ConfigureAwait(false);
+                        Volatile.Write(ref _latestPhysicalFrame, pending.Target);
                         if (!loggedSentFrame)
                         {
                             _logger.LogInformation("Realtime Ambilight sent its first WLED frame.");
@@ -728,6 +755,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             configuration.YellowHueShiftDegrees, configuration.YellowBrightnessPercent, configuration.YellowIntensityPercent,
             configuration.CyanHueShiftDegrees, configuration.CyanBrightnessPercent, configuration.CyanIntensityPercent,
             configuration.MagentaHueShiftDegrees, configuration.MagentaBrightnessPercent, configuration.MagentaIntensityPercent,
-            configuration.WhiteChannelStrengthPercent);
+            configuration.WhiteChannelStrengthPercent,
+            configuration.Grey20TemperatureDelta, configuration.Grey20TintDelta,
+            configuration.Grey40TemperatureDelta, configuration.Grey40TintDelta);
     }
 }

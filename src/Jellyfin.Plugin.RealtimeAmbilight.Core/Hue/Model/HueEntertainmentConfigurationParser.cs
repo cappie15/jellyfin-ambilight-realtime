@@ -81,8 +81,60 @@ public static class HueEntertainmentConfigurationParser
             }
         }
 
-        configuration = new HueEntertainmentConfiguration(id, name, configurationType, status, channels);
+        var serviceLocations = ParseServiceLocations(entry);
+        configuration = new HueEntertainmentConfiguration(id, name, configurationType, status, channels, serviceLocations);
         return true;
+    }
+
+    /// <summary>
+    /// <c>locations.service_locations[]</c>: each entertainment service's own
+    /// real physical extent -- one position for an ordinary light, two (its
+    /// endpoints) for an elongated multi-segment device. Absent entirely on
+    /// older bridge firmware, so a missing/malformed <c>locations</c> object
+    /// is not an error, just nothing to resolve channel positions from.
+    /// </summary>
+    private static Dictionary<Guid, IReadOnlyList<HuePosition>> ParseServiceLocations(JsonElement entry)
+    {
+        var result = new Dictionary<Guid, IReadOnlyList<HuePosition>>();
+        if (!entry.TryGetProperty("locations", out var locations) || locations.ValueKind != JsonValueKind.Object
+            || !locations.TryGetProperty("service_locations", out var serviceLocationsElement) || serviceLocationsElement.ValueKind != JsonValueKind.Array)
+        {
+            return result;
+        }
+
+        foreach (var entryElement in serviceLocationsElement.EnumerateArray())
+        {
+            if (entryElement.ValueKind != JsonValueKind.Object
+                || !entryElement.TryGetProperty("service", out var serviceElement)
+                || serviceElement.ValueKind != JsonValueKind.Object
+                || !serviceElement.TryGetProperty("rid", out var ridElement)
+                || ridElement.ValueKind != JsonValueKind.String
+                || !Guid.TryParse(ridElement.GetString(), out var serviceId)
+                || !entryElement.TryGetProperty("positions", out var positionsElement)
+                || positionsElement.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            var positions = new List<HuePosition>();
+            foreach (var positionElement in positionsElement.EnumerateArray())
+            {
+                if (positionElement.ValueKind == JsonValueKind.Object)
+                {
+                    positions.Add(new HuePosition(
+                        ReadDouble(positionElement, "x"),
+                        ReadDouble(positionElement, "y"),
+                        ReadDouble(positionElement, "z")));
+                }
+            }
+
+            if (positions.Count > 0)
+            {
+                result[serviceId] = positions;
+            }
+        }
+
+        return result;
     }
 
     private static bool TryParseChannel(JsonElement channelElement, out HueEntertainmentChannel channel)
@@ -102,7 +154,7 @@ public static class HueEntertainmentConfigurationParser
                 ReadDouble(positionElement, "z"))
             : default;
 
-        var members = new List<Guid>();
+        var members = new List<HueChannelMember>();
         if (channelElement.TryGetProperty("members", out var membersElement) && membersElement.ValueKind == JsonValueKind.Array)
         {
             foreach (var memberElement in membersElement.EnumerateArray())
@@ -114,7 +166,10 @@ public static class HueEntertainmentConfigurationParser
                     && ridElement.ValueKind == JsonValueKind.String
                     && Guid.TryParse(ridElement.GetString(), out var rid))
                 {
-                    members.Add(rid);
+                    var index = memberElement.TryGetProperty("index", out var indexElement) && indexElement.TryGetInt32(out var parsedIndex)
+                        ? parsedIndex
+                        : 0;
+                    members.Add(new HueChannelMember(rid, index));
                 }
             }
         }

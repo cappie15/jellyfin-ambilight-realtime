@@ -203,12 +203,17 @@ public sealed class HueBridgeClient : IHueBridgeClient, IDisposable
         using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        // Temporary: log the untouched bridge response once, to check the
+        // parser's interpretation of "members" against the literal bridge
+        // data rather than trusting the parsed model alone -- remove once
+        // the gradient-segment report is resolved.
+        _logger.LogInformation("Hue Entertainment raw entertainment_configuration response: {Json}", json);
         return HueEntertainmentConfigurationParser.ParseList(json);
     }
 
     /// <summary>
     /// Maps each channel member's <c>entertainment</c> service id (from
-    /// <see cref="HueEntertainmentChannel.MemberServiceIds"/>) to the actual
+    /// <see cref="HueEntertainmentChannel.Members"/>) to the actual
     /// <c>light</c> resource id it renders to -- required before any plain
     /// CLIP v2 light call (<see cref="HueLightControl"/>), since those two
     /// ids are different resources on the bridge. See

@@ -1,16 +1,18 @@
 namespace Jellyfin.Plugin.RealtimeAmbilight;
 
 /// <summary>
-/// The settings page's colour-tuning wizard: a fixed, logical order of seven
-/// steps (White plus every RGB primary and secondary). Every step's edges are
-/// sampled through the ordinary Ambilight pipeline, same as real video, from
-/// a rendered flat-colour swatch at that step's own canonical hue (see
-/// <see cref="SwatchColours"/>) -- not a photo, so nothing about a photo's
-/// own white balance or exposure can bias the reading, White included (a
-/// real "white" photo is rarely perfectly neutral; a synthetic
-/// (255,255,255) swatch always is). Builds the six-anchor
-/// <see cref="Core.Color.HueCorrectionCurve"/> plus White's own red/blue
-/// gain.
+/// The settings page's colour-tuning wizard: a fixed, logical order of nine
+/// steps (White, 20% grey, 40% grey, then every RGB primary and secondary).
+/// Every step's edges are sampled through the ordinary Ambilight pipeline,
+/// same as real video, from a rendered flat-colour swatch at that step's own
+/// canonical hue (see <see cref="SwatchColours"/>) -- not a photo, so
+/// nothing about a photo's own white balance or exposure can bias the
+/// reading, White included (a real "white" photo is rarely perfectly
+/// neutral; a synthetic swatch always is). Builds the six-anchor
+/// <see cref="Core.Color.HueCorrectionCurve"/>, White's own red/blue gain,
+/// and the three-anchor <see cref="Core.Color.GreyBalanceCurve"/> the two
+/// grey steps add on top of it for a strip whose white balance drifts with
+/// brightness.
 /// </summary>
 /// <remarks>
 /// An earlier revision replayed each anchor a second time against the
@@ -23,28 +25,42 @@ namespace Jellyfin.Plugin.RealtimeAmbilight;
 public static class CalibrationWizard
 {
     public static readonly IReadOnlyList<string> TuningOrder =
-        ["White", "Red", "Green", "Blue", "Yellow", "Cyan", "Magenta"];
+        ["White", "Grey20", "Grey40", "Red", "Green", "Blue", "Yellow", "Cyan", "Magenta"];
 
     /// <summary>
     /// Canonical sRGB byte triple for each step's own hue at full saturation
-    /// and value (red 0°, yellow 60°, green 120°, cyan 180°, blue 240°,
-    /// magenta 300° -- the same six angles <c>HueCorrectionCurve</c> anchors
-    /// on), rendered flat and sampled through the real edge-sampling pipeline
-    /// exactly as a photo would be. White is included too, at (255,255,255):
-    /// a perfectly neutral synthetic swatch means the White step starts from
-    /// an exact (r=g=b) reading every time, matching the RGBW extraction's
-    /// own identity case exactly at centre.
+    /// but 60% value, not 100% (red 0°, yellow 60°, green 120°, cyan 180°,
+    /// blue 240°, magenta 300° -- the same six angles
+    /// <c>HueCorrectionCurve</c> anchors on), rendered flat and sampled
+    /// through the real edge-sampling pipeline exactly as a photo would be.
+    /// White is included too, at 60% value (153,153,153): a perfectly
+    /// neutral synthetic swatch means the White step starts from an exact
+    /// (r=g=b) reading every time, matching the RGBW extraction's own
+    /// identity case exactly at centre.
     /// </summary>
+    /// <remarks>
+    /// 60%, not 100%: a fully saturated colour at maximum value is rare in
+    /// real playback content -- most on-screen colour sits at more moderate
+    /// brightness -- so a correction tuned only at the one brightness real
+    /// content almost never reaches is tuned against the wrong case. 60% is
+    /// a single representative mid-brightness level, not a true fix for a
+    /// strip whose hue genuinely shifts across the brightness range (that
+    /// would need per-brightness anchors and roughly triples the wizard's
+    /// own length); it was chosen as the simplest change that still measures
+    /// against a level real content actually reaches.
+    /// </remarks>
     public static readonly IReadOnlyDictionary<string, (byte Red, byte Green, byte Blue)> SwatchColours =
         new Dictionary<string, (byte, byte, byte)>(StringComparer.OrdinalIgnoreCase)
         {
-            ["White"] = (255, 255, 255),
-            ["Red"] = (255, 0, 0),
-            ["Yellow"] = (255, 255, 0),
-            ["Green"] = (0, 255, 0),
-            ["Cyan"] = (0, 255, 255),
-            ["Blue"] = (0, 0, 255),
-            ["Magenta"] = (255, 0, 255),
+            ["White"] = (153, 153, 153),
+            ["Grey20"] = (51, 51, 51),
+            ["Grey40"] = (102, 102, 102),
+            ["Red"] = (153, 0, 0),
+            ["Yellow"] = (153, 153, 0),
+            ["Green"] = (0, 153, 0),
+            ["Cyan"] = (0, 153, 153),
+            ["Blue"] = (0, 0, 153),
+            ["Magenta"] = (153, 0, 153),
         };
 }
 

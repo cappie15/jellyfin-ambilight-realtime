@@ -222,7 +222,7 @@ specific to the developer's installation.
 
 ### Room calibration
 
-The **Ambilight** card's "Color calibration" section walks a seven-step
+The **Ambilight** card's "Color calibration" section walks a nine-step
 wizard -- white, then every RGB primary and secondary (red, yellow, green,
 cyan, blue, magenta) -- each against a plain, rendered solid-colour swatch at
 that colour's own canonical hue, with three sliders per colour: a **hue**
@@ -266,22 +266,31 @@ even on a phone, so a step can be repeated by tapping the same spot while
 watching the TV instead of the phone. The preview never writes WLED
 configuration, and real playback always takes priority over it.
 
-Once the seven steps are done, confirm against real content the same way you
-would watch anything else: play a video with the always-on **Live tuning**
-panel open (see [above](#live-tuning)) and adjust there while it plays. A
-"Test videos" toggle on that same panel can set up eight short clips for
-exactly this -- a colour-temperature sweep, a fast-cut scene, a calm scene, a
-motion/flicker stress test, the full black-to-white brightness range, a
-deliberately monochrome scene, and 4:3/21:9 aspect-ratio content for the
-black-border detector -- purely synthetic, ffmpeg-generated (no real footage,
-so no licensing question), extracted from the plugin itself and registered as
+Once the nine steps are done, confirm against real content the same way you
+would watch anything else: add whatever real content you already own the
+rights to (a sunrise, sports, a film, motorsport, nature footage) to an
+ordinary Jellyfin library, play it, and adjust the always-on **Live tuning**
+panel while it plays (see [above](#live-tuning)) -- no plugin-specific step
+needed, it works exactly like any other playback. A "Test videos" toggle on
+that same panel additionally sets up two short synthetic clips (4:3 and
+21:9 aspect-ratio bars) for the one thing real footage can't reliably
+provide: exact, known black-bar geometry to test the black-border detector
+against. Purely synthetic, ffmpeg-generated (no real footage, so no
+licensing question), extracted from the plugin itself and registered as
 their own temporary Jellyfin library with one click; a matching button
-removes that library and deletes the files again once you are done. If the
-strip ever seems to read left and right swapped, a ninth clip (a static
-red-left/blue-right split screen) confirms that in ten seconds -- the far
-more likely cause is the physical strip's own wiring direction (routing the
-data cable from behind the TV reverses left/right versus the viewer's own
-front-facing view) rather than a plugin bug.
+removes that library and deletes the files again once you are done. The
+same click also creates an empty folder next to those two clips (its exact
+path is shown in the panel) for your own real clips -- this plugin can't
+ship or download third-party video for you, but anything you already hold
+the rights to and drop in there is picked up by the same "Rescan" button, so
+every installer can build the same richer tuning set from their own content.
+If the
+strip ever seems to read left and right swapped, that is far more likely the
+physical strip's own wiring direction (routing the data cable from behind the
+TV reverses left/right versus the viewer's own front-facing view) than a
+plugin bug -- a quick way to confirm is to play any clip with clearly
+different content on each side and watch which edge of the picture each end
+of the strip actually follows.
 
 Output is temporally dithered: WLED drives its LEDs straight from the byte
 value, and linear light gives the darkest tones the fewest of the 256

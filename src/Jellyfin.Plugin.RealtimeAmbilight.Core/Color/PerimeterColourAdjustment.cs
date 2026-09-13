@@ -15,7 +15,8 @@ public readonly record struct PerimeterColourAdjustment(
     ColourAdjustment Left,
     float BlackLevelFloor = 0f,
     HueCorrectionCurve? Curve = null,
-    float WhiteChannelCeiling = 1f)
+    float WhiteChannelCeiling = 1f,
+    GreyBalanceCurve? GreyBalance = null)
 {
     public static PerimeterColourAdjustment None => new(
         ColourAdjustment.None,
@@ -25,10 +26,12 @@ public readonly record struct PerimeterColourAdjustment(
         ColourAdjustment.None,
         0f,
         null,
-        1f);
+        1f,
+        null);
 
     public bool IsIdentity => Global.IsIdentity && Top.IsIdentity && Right.IsIdentity && Bottom.IsIdentity && Left.IsIdentity
-        && BlackLevelFloor <= 0f && (Curve is null || Curve.IsIdentity) && WhiteChannelCeiling >= 1f;
+        && BlackLevelFloor <= 0f && (Curve is null || Curve.IsIdentity) && WhiteChannelCeiling >= 1f
+        && (GreyBalance is null || GreyBalance.IsIdentity);
 
     /// <summary>
     /// How much of an RGBW strip's shared grey should still go to the
@@ -57,18 +60,20 @@ public readonly record struct PerimeterColourAdjustment(
 
     /// <remarks>
     /// The hue-correction curve (from the colour-tuning wizard's Red/Green/
-    /// Blue/Yellow/Cyan/Magenta steps) runs between the black-level floor and
-    /// the shared per-installation adjustment (brightness/saturation/white
+    /// Blue/Yellow/Cyan/Magenta steps) and the grey-balance curve (from its
+    /// 20%/40%/White steps) both run between the black-level floor and the
+    /// shared per-installation adjustment (brightness/saturation/white
     /// balance/wall-colour correction), which stays exactly where it always
-    /// was: those remain general multipliers applied around the curve, not
-    /// replaced by it.
+    /// was: those remain general multipliers applied around the curves, not
+    /// replaced by them.
     /// </remarks>
     public LinearRgb Apply(LinearRgb colour, int physicalLedIndex, LedLayout layout)
     {
         ArgumentNullException.ThrowIfNull(layout);
         var gated = BlackLevelFloor > 0f ? ApplyBlackLevelFloor(colour, BlackLevelFloor) : colour;
         var curved = Curve is { IsIdentity: false } curve ? curve.Apply(gated) : gated;
-        var shared = Global.Apply(curved);
+        var greyBalanced = GreyBalance is { IsIdentity: false } greyBalance ? ApplyGreyBalance(curved, greyBalance) : curved;
+        var shared = Global.Apply(greyBalanced);
         var side = physicalLedIndex < layout.TopLedCount
             ? Top
             : physicalLedIndex < layout.TopLedCount + layout.RightLedCount
@@ -95,5 +100,13 @@ public readonly record struct PerimeterColourAdjustment(
 
         var scale = (luminance - floor) / (luminance * (1f - floor));
         return new LinearRgb(colour.Red * scale, colour.Green * scale, colour.Blue * scale);
+    }
+
+    /// <summary>"Value" here matches <see cref="HueCorrectionCurve"/>'s own definition (the largest channel), so the two curves read the same pixel the same way.</summary>
+    private static LinearRgb ApplyGreyBalance(LinearRgb colour, GreyBalanceCurve curve)
+    {
+        var value = MathF.Max(colour.Red, MathF.Max(colour.Green, colour.Blue));
+        var gain = curve.GainAt(value);
+        return new LinearRgb(colour.Red * gain.RedGain, colour.Green * gain.GreenGain, colour.Blue * gain.BlueGain);
     }
 }

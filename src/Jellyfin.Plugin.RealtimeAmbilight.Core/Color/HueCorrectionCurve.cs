@@ -90,9 +90,35 @@ public sealed class HueCorrectionCurve
         }
 
         var newHue = Wrap360(hue + hueShift);
-        var newSaturation = Math.Clamp(saturation * saturationMultiplier, 0f, 1f);
+        var newSaturation = Math.Clamp(saturation * Math.Min(saturationMultiplier, 1f), 0f, 1f);
         var newValue = Math.Clamp(value * brightnessMultiplier, 0f, 1f);
-        return FromHsv(newHue, newSaturation, newValue);
+        var reconstructed = FromHsv(newHue, newSaturation, newValue);
+        return saturationMultiplier > 1f ? BoostBeyondFullSaturation(reconstructed, saturationMultiplier - 1f) : reconstructed;
+    }
+
+    /// <summary>
+    /// HSV saturation is bounded at 1.0 by definition, so a swatch already
+    /// sampled at full saturation (every calibration swatch is) cannot be
+    /// pushed any further by scaling the HSV <c>S</c> parameter alone --
+    /// measured directly against an operator's own report that Magenta's
+    /// Intensity slider did nothing above 100%, because there was nothing
+    /// left in HSV terms to push. This instead pushes the already-reconstructed
+    /// colour further away from its own luminance directly in RGB, the same
+    /// technique <see cref="ColourAdjustment"/>'s global Saturation control
+    /// already uses to boost past 100% -- unbounded by an intermediate
+    /// saturation ceiling, only by the eventual output clamp further down
+    /// the pipeline. Only ever called for the excess above 1.0, so a
+    /// saturationMultiplier of 1.0 or below always takes the unmodified,
+    /// already-validated HSV path above.
+    /// </summary>
+    private static LinearRgb BoostBeyondFullSaturation(LinearRgb colour, float excess)
+    {
+        var luminance = (0.2126f * colour.Red) + (0.7152f * colour.Green) + (0.0722f * colour.Blue);
+        var scale = 1f + excess;
+        return new LinearRgb(
+            luminance + ((colour.Red - luminance) * scale),
+            luminance + ((colour.Green - luminance) * scale),
+            luminance + ((colour.Blue - luminance) * scale));
     }
 
     private float Average(Func<HueAnchor, float> select)

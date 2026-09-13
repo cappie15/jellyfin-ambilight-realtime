@@ -1,5 +1,150 @@
 # Current state
 
+## 2026-09-13 (later still): defaults promoted again, playback-start no longer cuts to black instantly
+
+- **Default promotion round 2**: pulled the operator's live config off this host and promoted the general (non-anchor, non-installation-specific) settings that had drifted since the last promotion round: `SamplingDepthPercent` 5→27, `BrightnessPercent` 158→130, `SaturationPercent` 140→185, `RedGainPercent` 100→150, `BlueGainPercent` 100→50, `BlackLevelFloorPercent` 1→3, `WledSmoothingMilliseconds` 110→150, `WhiteChannelStrengthPercent` 50→20, `HueBrightnessPercent` 169→188, `HueResponsePercent` 20→0. Explicitly did NOT promote the six hue-anchor values (Yellow/Cyan/Magenta hue-shift/brightness were tuned against the masking bug fixed earlier this session and are likely overcorrected now -- operator should retune those six steps first) or the per-side trims/WallColourHex/device-and-bridge identifiers (installation-specific, per established convention). Separately confirmed: `OutputFramesPerSecond` 30→60 and `AnalysisWidth`/`AnalysisHeight` 160×90→320×180 -- these were previously kept conservative on purpose for weaker installs, but the operator has since run the higher values long enough on their own reference host to call it validated, and said so explicitly when asked.
+- **Playback start no longer cuts straight to black**: the "claim the strip immediately" step (so an independently-running WLED effect doesn't keep animating for the several seconds decode still needs) sent one instant, fully-black frame. Replaced with `WledRealtimeOutput.ClaimWithFadeToBlackAsync` (new), which eases to black over 2000ms instead. Since a prior stop-fade already reached black and released (nulling `_lastFrame`), and WLED's own live per-pixel output cannot be read back over its API, there is usually nothing real to fade *from* -- rather than skip the fade in that case, it eases down from a neutral warm-white guess `(255, 214, 170)` instead of skipping the fade or no-op'ing the way the existing stop-side `FadeToBlackAsync` deliberately does. Two new tests cover both the neutral-guess and the real-remembered-frame cases.
+
+## 2026-09-13 (later still): 20%/40% grey steps added; dead Next button removed
+
+Two follow-ups after the anchor-slider masking fix, both requested together:
+
+- **Dead "Next" button on the last step**: Magenta (the last of the six hue
+  anchors) already disabled the Next button correctly, but a disabled button
+  sitting right next to "Stop & release LEDs" read as broken. Now `hidden`,
+  not just `disabled`, once `IsLastStep` -- Finish is the only action left.
+- **Two new wizard steps: 20% grey and 40% grey**, right after White
+  (`CalibrationWizard.TuningOrder` grew from 7 to 9 steps: White, Grey20,
+  Grey40, then the six hue anchors as before). Motivated by the same class
+  of problem as the anchor-masking fix: a strip's white balance can drift
+  with brightness, and White's own flat red/blue gain is a single value with
+  no way to correct that drift at lower duty cycles. Each new step gets its
+  own **Temperature** (same red/blue push-pull mechanic as White's slider)
+  and **Tint** (green/magenta, a new axis White does not expose) control,
+  ±60 like White's own range. New model: `GreyBalanceCurve` (new file,
+  `Core/Color/GreyBalanceCurve.cs`) -- three anchors (20% grey, 40% grey,
+  White) each an independent per-channel gain, piecewise-linearly
+  interpolated by the pixel's own value. The three anchor positions are not
+  round numbers: they are the *exact* linear-light value the 20%/40%/White
+  swatches decode to (sRGB bytes 51/102/153), so tuning while looking at a
+  swatch lands exactly on that anchor. Defaults to fully identity (no
+  additional correction) at all three points, so an existing install's
+  behaviour is completely unchanged until the operator actually visits these
+  two new steps. Applied in `PerimeterColourAdjustment.Apply` between the
+  hue-anchor curve and the shared Global adjustment (multiplicative, on top
+  of White's own flat gain, not replacing it) -- and, like the six hue
+  anchors, the wizard's live preview neutralizes the general
+  brightness/saturation/etc. while auditioning these two steps too (only the
+  literal White step is exempt), for the same masking reason documented in
+  the anchor-slider fix above. New config fields:
+  `Grey20TemperatureDelta`/`Grey20TintDelta`/`Grey40TemperatureDelta`/`Grey40TintDelta`,
+  all defaulting to 0.
+- Also, on the operator's own separate finding that a secondary colour
+  (Yellow/Cyan/Magenta) lights two physical LED channels at once and so can
+  start out measurably brighter than a primary, widened the anchor
+  Brightness floor from 50% to 20% (`PerimeterColourTuning.Anchor`) --
+  Intensity's floor stays at 50%.
+
+227/227 tests pass (4 new: masking repro + fix, grey-balance anchor-snap and
+midpoint-blend). Not yet deployed to the live server.
+
+## 2026-09-13 (later still): found and fixed why several wizard anchor sliders felt dead
+
+The operator reported, one at a time while actually using the wizard against
+their own live server: Red intensity only doing anything near 90%, Red
+brightness doing nothing at all, Green's "yellower" hue-shift doing nothing
+while "bluer" worked, Blue's hue-shift working both ways but feeling coarse,
+and Yellow's hue-shift doing nothing while its brightness worked. Rather than
+treating these as four unrelated reports, pulled the operator's own live
+config (`/var/lib/jellyfin/plugins/configurations/Jellyfin.Plugin.RealtimeAmbilight.xml`)
+and worked the actual numbers through `PerimeterColourAdjustment.Apply`
+(`SaturationPercent=180`, `BrightnessPercent=158` on that install): the
+per-anchor curve runs *first*, then the operator's own overall
+Saturation/Brightness runs on top and clamps to 0-1. At 180% saturation that
+second stage aggressively stretches every channel away from grey and clips
+negative values to zero -- so a moderate anchor correction (e.g. Red
+Intensity at 90%, a small pull toward grey) gets stretched negative and
+clipped straight back to invisible, and it takes pushing well past 85% before
+enough of the correction survives the clip to show at all. The same clamp
+asymmetry, depending on which side of zero a hue-shift direction lands a
+channel on, explains the "one direction does nothing" reports and the
+"coarse steps" feel (only the outer portion of each slider's range survives
+the clip). Verified this numerically end to end for Red before touching any
+code (see `AnAggressiveOverallSaturationClipsAWeakenedAnchorsIntensityBackToInvisible`
+in `PerimeterColourTuningTests.cs`), then confirmed the fix restores a real,
+visible effect (`NeutralizingGeneralAdjustmentsMakesThatSameWeakenedAnchorVisibleAgain`).
+
+**Fix**: `PerimeterColourTuning.WithGeneralAdjustmentsNeutralized()` (new)
+resets every general/shared multiplier (overall brightness, saturation,
+white balance, wall correction, all four per-side trims) to neutral while
+leaving the six hue anchors, `BlackLevelFloorPercent` and
+`WhiteChannelStrengthPercent` untouched. `WledDiscoveryController.RetuneAsync`
+applies it whenever the armed wizard step is anything but White (the White
+step directly tests those same general fields, so there is nothing to
+isolate it from). Real playback and Finish are entirely unaffected -- only
+the live preview shown while dialling in Red/Green/Blue/Yellow/Cyan/Magenta
+skips the general multipliers, and the wizard now says so in a note under
+the controls so the operator knows why the picture changes again once real
+content plays. Also, on the operator's own separate finding that a secondary
+colour (Yellow/Cyan/Magenta) lights two physical LED channels at once and
+so can start out measurably brighter than a primary, widened the anchor
+Brightness floor from 50% to 20% (`PerimeterColourTuning.Anchor`) -- Intensity's
+floor stays at 50%, that one was never reported as too narrow.
+
+## 2026-09-13 (later still): wizard swatches to 60%, test-video library narrowed to two clips
+
+Two follow-ups after v0.4.0 shipped:
+
+- **Wizard swatches now 60% value, not 100%** (`CalibrationWizard.SwatchColours`
+  in `CalibrationPreview.cs`): a fully saturated colour at maximum brightness
+  is rare in real playback content, so a hue correction tuned only at that
+  one level was tuned against the case real content almost never reaches.
+  Offered the operator a choice between three depths (full per-brightness
+  anchors and interpolation, an averaged-over-3-levels single anchor, or
+  just shifting the one sampled level) -- they picked the simplest: shift
+  the swatch level to 60%, wizard stays at seven steps. The wizard's colour
+  page also now states exactly what is being sent and at what intensity
+  (e.g. "Sending: RGB(153, 0, 0) — Red at 60% intensity") next to a colour
+  swatch chip, so it is explicit rather than implied.
+- **Test-video library narrowed from nine clips to two** (`TestVideoLibrary.cs`):
+  the operator asked to replace the seven general-tuning clips with ten
+  downloaded YouTube videos (sunrise, football, film, action, motorsport,
+  nature categories) and asked about embedding YouTube on the TV page.
+  Declined: those categories are commercial/broadcast content, and bundling
+  downloaded YouTube video into the plugin's own repo and release zips for
+  every installer to receive would be copyright infringement, unlike the
+  synthetic ffmpeg-generated clips this library was built around specifically
+  to avoid that question. A YouTube iframe would also not work technically --
+  same reason a bare `<video>` tag never did: the Ambilight pipeline only
+  reacts to a real Jellyfin playback session. The actual fix for "tune
+  against real content" already existed with zero code changes: add real
+  clips you own the rights to into an ordinary Jellyfin library and play them
+  normally while the Live tuning panel is open. Kept only the two clips real
+  footage cannot substitute for -- pillarbox 4:3 and letterbox 21:9, whose
+  exact black-bar geometry the black-border detector needs -- removed the
+  other seven `.mp4` resource files, updated the settings-page copy, and
+  updated the README's calibration section to describe the real-library path
+  as the primary route and the two-clip library as the border-detector
+  special case.
+- **Follow-up the same session**: the operator then placed 10 downloaded
+  clips directly in the repo and asked for them to be usable by other
+  installers too. Still declined for the same reason -- redistributing that
+  content to every installer through the plugin's own release zips is a
+  copyright problem regardless of who did the downloading -- but added a
+  real answer instead of just repeating no: `TestVideoLibrary` now also
+  provisions an empty, plugin-never-touches-it `YourOwnClips` folder
+  (`TestVideoLibrary.CustomClipsFolderPath`) alongside the two synthetic
+  clips, in the *same* library. Every installer can drop in real content
+  they hold the rights to and click the new "Rescan" button
+  (`SetupAsync` is now idempotent: already-set-up calls
+  `ILibraryManager.QueueLibraryScan()` instead of failing) to pick it up --
+  so the "usable by other users" goal is met by giving everyone the same
+  one-click mechanism for their *own* content, not by shipping any one
+  person's downloads. `RemoveAsync` only ever deletes the synthetic
+  subfolder; the operator's own folder and its contents are never touched
+  by the plugin. `TestVideos/Status` now also returns the folder path so the
+  settings page can display it before and after setup.
+
 ## 2026-09-13 (later the same day): Jellyfin 12 actually shipped as v0.4.0
 
 The operator upgraded the reference host to Jellyfin 12.0.0 (confirmed live:

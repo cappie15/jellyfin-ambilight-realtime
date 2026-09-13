@@ -94,8 +94,9 @@ public class HueEntertainmentConfigurationParserTests
         var configuration = HueEntertainmentConfigurationParser.ParseList(Fixture).Single();
 
         var gradientChannel = configuration.Channels.Single(c => c.ChannelId == 30);
-        Assert.Equal(2, gradientChannel.MemberServiceIds.Count);
-        Assert.All(gradientChannel.MemberServiceIds, id => Assert.Equal(gradientChannel.MemberServiceIds[0], id));
+        Assert.Equal(2, gradientChannel.Members.Count);
+        Assert.All(gradientChannel.Members, member => Assert.Equal(gradientChannel.Members[0].ServiceId, member.ServiceId));
+        Assert.Equal([0, 1], gradientChannel.Members.Select(m => m.Index));
     }
 
     [Fact]

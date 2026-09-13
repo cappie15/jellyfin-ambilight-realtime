@@ -332,7 +332,7 @@
             </div>
 
             <div class="inputContainer">
-                <input is="emby-input" id="wledSmoothingMilliseconds" type="range" min="0" max="500" step="10" label="WLED smoothing" />
+                <input is="emby-input" id="wledSmoothingMilliseconds" type="range" min="0" max="2000" step="10" label="WLED smoothing" />
                 <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED into its new colour; left is more reactive, right is smoother. <strong>Default: 110 ms.</strong></div>
             </div>
 
@@ -609,11 +609,16 @@
                     <div style="border:1px solid rgba(127,127,127,.35);border-radius:.6em;padding:1em 1.2em;margin-top:1em">
                         <div id="wizardNotStarted">
                             <button is="emby-button" type="button" id="startCalibrationWizard" class="raised">Start calibration</button>
-                            <div class="fieldDescription" style="margin-top:.5em">Opens the TV link above and begins the seven-step wizard.</div>
+                            <div class="fieldDescription" style="margin-top:.5em">Opens the TV link above and begins the nine-step wizard.</div>
                         </div>
                         <div id="wizardActive" hidden>
                             <div class="fieldDescription">Step <strong id="wizardStepLabel">1 of 7, White tuning</strong></div>
+                            <div class="fieldDescription" id="wizardSwatchLabel" style="display:flex;align-items:center;gap:.5em;margin-top:.3em">
+                                <span id="wizardSwatchSwab" style="display:inline-block;width:1em;height:1em;border-radius:.2em;border:1px solid rgba(127,127,127,.5)"></span>
+                                <span id="wizardSwatchText"></span>
+                            </div>
                             <div id="wizardStepControls" style="margin-top:.6em"></div>
+                            <div class="fieldDescription" id="wizardNeutralizedNote" hidden style="margin-top:.4em">Your own overall brightness/saturation/white-balance are set aside just for this preview, so this step's own correction always stays visible -- they come back exactly as set once you play real content.</div>
                             <div style="display:flex;gap:.7em;flex-wrap:wrap;align-items:center;margin-top:.6em">
                                 <button is="emby-button" type="button" id="wizardPrev" class="raised">&#9664; Back</button>
                                 <button is="emby-button" type="button" id="wizardNext" class="raised">Next &#9654;</button>
@@ -624,7 +629,7 @@
                     </div>
 
                     <p class="fieldDescription" style="margin-top:1.2em">Brightness, smoothing and minimum colour hold now live in the Live tuning panel below the signal chain, where changes apply immediately.</p>
-                    <p class="fieldDescription" style="margin-top:.4em">Once the seven steps above are done, confirm against real content: play something varied (a sunrise, a sports match, a movie scene, motorsport, nature footage) and adjust the Live tuning panel while it plays.</p>
+                    <p class="fieldDescription" style="margin-top:.4em">Once the nine steps above are done, confirm against real content: play something varied (a sunrise, a sports match, a movie scene, motorsport, nature footage) and adjust the Live tuning panel while it plays.</p>
 
                     <div style="margin-top:1em">
                     <details id="advancedColourControls">
@@ -635,9 +640,9 @@
                         <div style="padding:.8em 0 0 1.25em">
                         <div class="fieldDescription" style="margin-top:.5em"><strong>Raw white balance.</strong> What the wizard's per-step controls actually move; start at 100% and use those instead unless you need an exact independent value.</div>
                         <div style="display:flex;gap:1.5em;flex-wrap:wrap;align-items:flex-start">
-                            <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="redGainPercent" type="range" min="50" max="150" step="1" label="Red" /><div class="fieldDescription">Now: <strong id="redGainValue"></strong></div></div></div>
+                            <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="redGainPercent" type="range" min="40" max="160" step="1" label="Red" /><div class="fieldDescription">Now: <strong id="redGainValue"></strong></div></div></div>
                             <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="greenGainPercent" type="range" min="50" max="150" step="1" label="Green" /><div class="fieldDescription">Now: <strong id="greenGainValue"></strong></div></div></div>
-                            <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="blueGainPercent" type="range" min="50" max="150" step="1" label="Blue" /><div class="fieldDescription">Now: <strong id="blueGainValue"></strong></div></div></div>
+                            <div style="flex:1 1 13em;min-width:11em"><div class="inputContainer"><input is="emby-input" id="blueGainPercent" type="range" min="40" max="160" step="1" label="Blue" /><div class="fieldDescription">Now: <strong id="blueGainValue"></strong></div></div></div>
                         </div>
 
                         <div class="fieldDescription" style="margin-top:1em"><strong>Wall behind the TV.</strong> A coloured wall absorbs one primary colour more than the others; this adds a little of it back, within what the LEDs can do.</div>

@@ -94,6 +94,40 @@ public class WledRealtimeOutputTests
         await Assert.ThrowsAsync<ArgumentException>(() => output.SendFrameAsync(new byte[6], CancellationToken.None));
     }
 
+    [Fact]
+    public async Task ClaimWithFadeToBlackFadesFromANeutralGuessWhenNothingIsRemembered()
+    {
+        var sender = new CapturingUdpSender();
+        var output = CreateOutput(WledRealtimeProtocol.Ddp, sender);
+
+        await output.ClaimWithFadeToBlackAsync(TimeSpan.FromMilliseconds(40), 100, ledCount: 2, CancellationToken.None);
+
+        Assert.Equal(4, sender.Datagrams.Count);
+        var first = ExtractRgb24(sender.Datagrams[0].Payload);
+        var last = ExtractRgb24(sender.Datagrams[^1].Payload);
+
+        // Neutral warm-white guess (255, 214, 170), not pure white and not
+        // pure black: there is nothing real remembered to fade from yet.
+        Assert.True(first[0] > 150, $"expected the first step to still be mostly bright, got R={first[0]}");
+        Assert.All(last, component => Assert.Equal(0, component));
+    }
+
+    [Fact]
+    public async Task ClaimWithFadeToBlackFadesFromTheRealLastFrameWhenOneIsRemembered()
+    {
+        var sender = new CapturingUdpSender();
+        var output = CreateOutput(WledRealtimeProtocol.Ddp, sender);
+        var frame = new byte[] { 10, 20, 30, 10, 20, 30 };
+        await output.SendFrameAsync(frame, CancellationToken.None);
+
+        await output.ClaimWithFadeToBlackAsync(TimeSpan.FromMilliseconds(40), 100, ledCount: 2, CancellationToken.None);
+
+        var last = ExtractRgb24(sender.Datagrams[^1].Payload);
+        Assert.All(last, component => Assert.Equal(0, component));
+    }
+
+    private static byte[] ExtractRgb24(byte[] ddpPacket) => ddpPacket[10..];
+
     private static WledRealtimeOutput CreateOutput(
         WledRealtimeProtocol protocol,
         CapturingUdpSender sender)

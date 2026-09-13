@@ -53,7 +53,14 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public int OutputDelayMilliseconds { get; set; }
 
-    public int OutputFramesPerSecond { get; set; } = 30;
+    /// <summary>
+    /// Was kept at a conservative 30 for weaker future installs even after
+    /// real-room tuning suggested higher; the operator has since run 60 on
+    /// their own reference host long enough to call it validated rather than
+    /// exploratory, so this now reflects that. Installs on weaker hardware
+    /// can still lower it.
+    /// </summary>
+    public int OutputFramesPerSecond { get; set; } = 60;
 
     /// <summary>
     /// Holds the last frame on the LEDs for as long as playback stays paused.
@@ -86,11 +93,11 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// <see cref="EdgeSampler.DefaultDepthPercent"/> (ten percent) was the
     /// original recommendation -- enough of the picture to be stable without
     /// letting the centre dominate an edge -- but real-room tuning settled on
-    /// five instead, closer to the picture's actual edge without losing that
-    /// stability, and this default now reflects that rather than the original
-    /// untested guess.
+    /// 27 instead (revised up from an earlier 5 once more real content had
+    /// been watched against it), and this default now reflects that rather
+    /// than the original untested guess.
     /// </summary>
-    public int SamplingDepthPercent { get; set; } = 5;
+    public int SamplingDepthPercent { get; set; } = 27;
 
     /// <summary>
     /// Sends byte values proportional to light output, which is what a
@@ -108,13 +115,13 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// a bright HDR screen otherwise always read as dim, since nothing else
     /// in the pipeline can push a pixel brighter than it already is.
     /// </summary>
-    public int BrightnessPercent { get; set; } = 158;
+    public int BrightnessPercent { get; set; } = 130;
 
     /// <summary>
     /// Colour intensity as a percentage. Above 100 pushes each colour away from
     /// its own luminance, which deepens it without changing how bright it is.
     /// </summary>
-    public int SaturationPercent { get; set; } = 140;
+    public int SaturationPercent { get; set; } = 185;
 
     /// <summary>
     /// Per-channel gains as percentages. Used today only by the wizard's
@@ -124,11 +131,11 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// <c>Hue*</c>/<c>...Brightness*</c>/<c>...Intensity*</c> properties
     /// below instead -- see <see cref="Core.Color.PerimeterColourTuning"/>.
     /// </summary>
-    public int RedGainPercent { get; set; } = 100;
+    public int RedGainPercent { get; set; } = 150;
 
     public int GreenGainPercent { get; set; } = 100;
 
-    public int BlueGainPercent { get; set; } = 100;
+    public int BlueGainPercent { get; set; } = 50;
 
     /// <summary>
     /// The colour-tuning wizard's six primary/secondary anchors: how far to
@@ -165,10 +172,25 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public int MagentaIntensityPercent { get; set; } = 100;
 
     /// <summary>
+    /// The wizard's 20%-grey and 40%-grey steps, right after White: a strip's
+    /// white balance can drift with brightness, not just at maximum output,
+    /// so these two add an independent temperature (red/blue push-pull, same
+    /// mechanic as White's own slider) and tint (green/magenta push-pull, an
+    /// axis White does not expose) correction at those two brightness levels,
+    /// clamped to ±60 like White's own slider. Both default to 0 (no
+    /// additional correction beyond White's own flat gain) -- see
+    /// <see cref="Core.Color.GreyBalanceCurve"/>.
+    /// </summary>
+    public int Grey20TemperatureDelta { get; set; }
+    public int Grey20TintDelta { get; set; }
+    public int Grey40TemperatureDelta { get; set; }
+    public int Grey40TintDelta { get; set; }
+
+    /// <summary>
     /// Below this fraction of picture-edge luminance, a physical LED is driven
     /// fully off instead of a dim, often colour-cast glow. Zero disables it.
     /// </summary>
-    public int BlackLevelFloorPercent { get; set; } = 1;
+    public int BlackLevelFloorPercent { get; set; } = 3;
 
     /// <summary>
     /// The apparent paint colour behind the television. A white value means no
@@ -219,13 +241,20 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public bool IgnoreBlackBorders { get; set; } = true;
 
-    public int AnalysisWidth { get; set; } = 160;
+    /// <summary>
+    /// Was kept at a conservative 160 for weaker future installs even after
+    /// real-room tuning suggested higher; the operator has since run 320 on
+    /// their own reference host long enough to call it validated rather than
+    /// exploratory, so this now reflects that. Installs on weaker hardware
+    /// can still lower it.
+    /// </summary>
+    public int AnalysisWidth { get; set; } = 320;
 
     /// <summary>
     /// Derived from <see cref="AnalysisWidth"/> at 16:9 by the settings page.
     /// Kept serialized for backwards compatibility with existing configuration.
     /// </summary>
-    public int AnalysisHeight { get; set; } = 90;
+    public int AnalysisHeight { get; set; } = 180;
 
     /// <summary>
     /// Lets the settings page write the one WLED setting it can fix directly
@@ -259,7 +288,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// Engine" before building this -- see
     /// <see cref="Core.Output.WledTemporalSmoother"/>.
     /// </summary>
-    public int WledSmoothingMilliseconds { get; set; } = 110;
+    public int WledSmoothingMilliseconds { get; set; } = 150;
 
     /// <summary>
     /// Sends RGBW32 instead of RGB24, so a strip with its own white LEDs
@@ -294,7 +323,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// levels up to 230/255 without narrowing); re-check while watching a
     /// bright scene, not a synthetic swatch, and adjust from there.
     /// </summary>
-    public int WhiteChannelStrengthPercent { get; set; } = 50;
+    public int WhiteChannelStrengthPercent { get; set; } = 20;
 
     /// <summary>
     /// Master switch for the Hue Entertainment integration. Off by default
@@ -332,7 +361,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// a pixel brighter than its own tonemapped source value, so content
     /// that never reaches peak brightness always reads as dim on the bulb.
     /// </summary>
-    public int HueBrightnessPercent { get; set; } = 169;
+    public int HueBrightnessPercent { get; set; } = 188;
 
     /// <summary>What the paired lights do once a synchronised session ends.</summary>
     public Core.Hue.HueEndBehaviour HueEndBehaviour { get; set; } = Core.Hue.HueEndBehaviour.WarmWhiteDim;
@@ -350,5 +379,5 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// it applies immediately, unlike <see cref="SendWhiteChannel"/>'s own
     /// hardware-shaped settings.
     /// </summary>
-    public int HueResponsePercent { get; set; } = 20;
+    public int HueResponsePercent { get; set; }
 }

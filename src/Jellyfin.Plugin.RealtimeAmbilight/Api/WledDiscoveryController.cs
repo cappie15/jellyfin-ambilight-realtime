@@ -506,14 +506,35 @@ public sealed class CalibrationController : ControllerBase
     /// without re-fetching or re-sampling a photo: this is what makes a slider
     /// feel live on the TV instead of requiring Save.
     /// </summary>
+    /// <remarks>
+    /// Every wizard step's preview neutralises the operator's own overall
+    /// brightness/saturation/wall correction (see
+    /// <see cref="PerimeterColourTuning.WithGeneralAdjustmentsNeutralized"/>)
+    /// -- an aggressively tuned Saturation applied after the curve can
+    /// otherwise clamp a small anchor correction straight back to
+    /// invisible, and an operator's own coloured wall correction (which
+    /// multiplies into the same red/green/blue gains White's slider moves)
+    /// can otherwise make a "warmer" push read as greener instead, since the
+    /// wall's own green/blue boost does not track the slider at all. White
+    /// is the one step that keeps its own red/green/blue gain as sent
+    /// (<c>preserveWhiteBalanceGain: true</c>) since that is exactly what
+    /// its slider directly tests; the six hue-anchor steps reset those
+    /// three to neutral too, since they drive the separate
+    /// <see cref="HueCorrectionCurve"/> instead. Real playback (via Finish)
+    /// always uses the true, un-neutralised values regardless of what the
+    /// preview showed.
+    /// </remarks>
     [HttpPost("Retune")]
     [ProducesResponseType(typeof(CalibrationPreviewResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<CalibrationPreviewResponse>> RetuneAsync(
         [FromBody] CalibrationWizardMoveRequest request,
         CancellationToken cancellationToken)
     {
+        var isWhiteStep = string.Equals(_outputService.Wizard.ColourName, "White", StringComparison.OrdinalIgnoreCase);
+        var tuning = request.ToTuning().WithGeneralAdjustmentsNeutralized(preserveWhiteBalanceGain: isWhiteStep);
+
         var retuned = await _outputService
-            .RetuneCalibrationAsync(request.ToTuning().ToAdjustment(), cancellationToken)
+            .RetuneCalibrationAsync(tuning.ToAdjustment(), cancellationToken)
             .ConfigureAwait(false);
         return Ok(new CalibrationPreviewResponse(retuned, retuned ? "Live." : "Nothing is being previewed yet."));
     }
@@ -541,13 +562,13 @@ public sealed class CalibrationController : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Whether <see cref="TestVideoLibrary.LibraryName"/> is currently registered, so the settings page knows whether to offer "set up" or the clip list.</summary>
+    /// <summary>Whether <see cref="TestVideoLibrary.LibraryName"/> is currently registered, so the settings page knows whether to offer "set up" or the clip list. Always includes <see cref="TestVideoLibrary.CustomClipsFolderPath"/> so the operator knows where to drop in their own clips regardless of setup state.</summary>
     [HttpGet("TestVideos/Status")]
     [ProducesResponseType(typeof(TestVideoLibraryStatusResponse), StatusCodes.Status200OK)]
     public ActionResult<TestVideoLibraryStatusResponse> GetTestVideoLibraryStatus()
-        => Ok(new TestVideoLibraryStatusResponse(_testVideoLibrary.IsSetUp));
+        => Ok(new TestVideoLibraryStatusResponse(_testVideoLibrary.IsSetUp, _testVideoLibrary.CustomClipsFolderPath));
 
-    /// <summary>Extracts the embedded test clips and registers them as a real Jellyfin library, so the operator never has to do that by hand.</summary>
+    /// <summary>Extracts the embedded test clips and registers them (plus the operator's own custom-clips folder) as a real Jellyfin library. Safe to call again once already set up -- rescans instead of duplicating, so it also serves as "pick up what I just dropped in".</summary>
     [HttpPost("TestVideos/Setup")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SetupTestVideosAsync(CancellationToken cancellationToken)
@@ -594,13 +615,16 @@ public sealed class CalibrationWizardMoveRequest
             Value("BlueHueShiftDegrees", 0), Value("BlueBrightnessPercent"), Value("BlueIntensityPercent"),
             Value("YellowHueShiftDegrees", 0), Value("YellowBrightnessPercent"), Value("YellowIntensityPercent"),
             Value("CyanHueShiftDegrees", 0), Value("CyanBrightnessPercent"), Value("CyanIntensityPercent"),
-            Value("MagentaHueShiftDegrees", 0), Value("MagentaBrightnessPercent"), Value("MagentaIntensityPercent"));
+            Value("MagentaHueShiftDegrees", 0), Value("MagentaBrightnessPercent"), Value("MagentaIntensityPercent"),
+            WhiteChannelStrengthPercent: 100,
+            Grey20TemperatureDelta: Value("Grey20TemperatureDelta", 0), Grey20TintDelta: Value("Grey20TintDelta", 0),
+            Grey40TemperatureDelta: Value("Grey40TemperatureDelta", 0), Grey40TintDelta: Value("Grey40TintDelta", 0));
     }
 }
 
 public sealed record CalibrationPreviewResponse(bool Active, string Message);
 
-public sealed record TestVideoLibraryStatusResponse(bool IsSetUp);
+public sealed record TestVideoLibraryStatusResponse(bool IsSetUp, string CustomClipsFolderPath);
 
 /// <summary>The wizard state the TV pattern page polls for and the settings page reads back after moving it.</summary>
 public sealed record CalibrationWizardStateResponse(

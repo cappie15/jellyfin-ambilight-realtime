@@ -77,6 +77,22 @@ public sealed class PerimeterColourTuningTests
     }
 
     [Fact]
+    public void AnAnchorsBrightnessFloorIs20PercentNotTheIntensityFloorOf50()
+    {
+        // Widened on the operator's own finding that a secondary colour
+        // (Yellow/Cyan/Magenta) lights two physical LED channels at once, so
+        // it can start out measurably brighter than a primary and need more
+        // than a 50%-floor's worth of headroom to dim back down.
+        var atTwenty = PerimeterColourTuning.Default with { RedBrightnessPercent = 20 };
+        var belowTwenty = PerimeterColourTuning.Default with { RedBrightnessPercent = 5 };
+        var layout = new LedLayout(1, 1, 1, 1);
+        var source = new LinearRgb(1f, 0f, 0f);
+
+        Assert.Equal(0.2f, atTwenty.ToAdjustment().Apply(source, 0, layout).Red, 3);
+        Assert.Equal(0.2f, belowTwenty.ToAdjustment().Apply(source, 0, layout).Red, 3);
+    }
+
+    [Fact]
     public void OneAnchorsBrightnessChangeAffectsOnlyThatColourNotTheWholeWheel()
     {
         var tuning = PerimeterColourTuning.Default with { RedBrightnessPercent = 60 };
@@ -157,6 +173,60 @@ public sealed class PerimeterColourTuningTests
         var boosted = tuning.ToAdjustment().Apply(new LinearRgb(0.4f, 0.4f, 0.4f), 0, layout);
 
         Assert.Equal(0.6f, boosted.Red, 3);
+    }
+
+    [Fact]
+    public void AnAggressiveOverallSaturationClipsAWeakenedAnchorsIntensityBackToInvisible()
+    {
+        // Reproduces an operator's own real settings: 180% overall saturation
+        // stretches every channel away from grey *after* the anchor curve
+        // runs, and clamps to 0-1 -- so a 90% Red Intensity (a small pull
+        // toward grey) gets pulled negative by that stretch and clipped
+        // straight back to zero, as if the slider had never moved.
+        var tuning = PerimeterColourTuning.Default with { SaturationPercent = 180, RedIntensityPercent = 90 };
+        var layout = new LedLayout(1, 1, 1, 1);
+
+        var result = tuning.ToAdjustment().Apply(new LinearRgb(0.28f, 0f, 0f), 0, layout);
+
+        Assert.Equal(0f, result.Green);
+        Assert.Equal(0f, result.Blue);
+    }
+
+    [Fact]
+    public void NeutralizingGeneralAdjustmentsMakesThatSameWeakenedAnchorVisibleAgain()
+    {
+        var tuning = PerimeterColourTuning.Default with { SaturationPercent = 180, RedIntensityPercent = 90 };
+        var layout = new LedLayout(1, 1, 1, 1);
+
+        var result = tuning.WithGeneralAdjustmentsNeutralized().ToAdjustment().Apply(new LinearRgb(0.28f, 0f, 0f), 0, layout);
+
+        Assert.True(result.Green > 0f, $"expected a visible green tint from the 90% intensity anchor, got {result.Green}");
+        Assert.Equal(result.Green, result.Blue, 5);
+    }
+
+    [Fact]
+    public void NeutralizingGeneralAdjustmentsLeavesTheAnchorCurveAndBlackLevelFloorAlone()
+    {
+        var tuning = PerimeterColourTuning.Default with
+        {
+            SaturationPercent = 180,
+            BrightnessPercent = 158,
+            RedGainPercent = 130,
+            RedHueShiftDegrees = 10,
+            RedBrightnessPercent = 70,
+            RedIntensityPercent = 80,
+            WhiteChannelStrengthPercent = 55,
+        };
+
+        var neutralized = tuning.WithGeneralAdjustmentsNeutralized();
+
+        Assert.Equal(100, neutralized.SaturationPercent);
+        Assert.Equal(100, neutralized.BrightnessPercent);
+        Assert.Equal(100, neutralized.RedGainPercent);
+        Assert.Equal(10, neutralized.RedHueShiftDegrees);
+        Assert.Equal(70, neutralized.RedBrightnessPercent);
+        Assert.Equal(80, neutralized.RedIntensityPercent);
+        Assert.Equal(55, neutralized.WhiteChannelStrengthPercent);
     }
 
     [Fact]

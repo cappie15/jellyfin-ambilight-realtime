@@ -58,7 +58,11 @@ public readonly record struct PerimeterColourTuning(
     int MagentaHueShiftDegrees = 0,
     int MagentaBrightnessPercent = 100,
     int MagentaIntensityPercent = 100,
-    int WhiteChannelStrengthPercent = 100)
+    int WhiteChannelStrengthPercent = 100,
+    int Grey20TemperatureDelta = 0,
+    int Grey20TintDelta = 0,
+    int Grey40TemperatureDelta = 0,
+    int Grey40TintDelta = 0)
 {
     public static PerimeterColourTuning Default => new(
         100, 100, 100, 100, 100, 0, "#ffffff", 100,
@@ -66,6 +70,73 @@ public readonly record struct PerimeterColourTuning(
         100, 100, 100, 100,
         100, 100, 100, 100,
         100, 100, 100, 100);
+
+    /// <summary>
+    /// A copy with every general/shared multiplier reset to neutral (100%,
+    /// or the wall colour's own "no correction" white) -- the six hue
+    /// anchors, <see cref="BlackLevelFloorPercent"/> and
+    /// <see cref="WhiteChannelStrengthPercent"/> untouched.
+    /// </summary>
+    /// <remarks>
+    /// Used for the wizard's own live preview while auditioning one of the
+    /// six hue-anchor steps, and (with <paramref name="preserveWhiteBalanceGain"/>)
+    /// while auditioning White itself.
+    /// An aggressively tuned overall Saturation/Brightness applies *after*
+    /// the curve (see <see cref="ToAdjustment"/>'s own remark) and clamps to
+    /// 0-1, so it can silently swallow a small anchor correction before it
+    /// ever reaches the LEDs -- measured directly against an operator's own
+    /// real 180% saturation: the Intensity anchor's effect was clipped away
+    /// entirely above roughly 85%, and one hue-shift direction disappeared
+    /// while the other kept working, purely because of which side of the
+    /// clamp the post-curve stretch landed on. Neutralizing the general
+    /// multipliers for this one preview removes that interaction so every
+    /// step of every anchor slider has a real, visible effect regardless of
+    /// how the operator has tuned the rest of the picture.
+    /// </remarks>
+    /// <param name="preserveWhiteBalanceGain">
+    /// True for the White step itself: <see cref="RedGainPercent"/>/
+    /// <see cref="GreenGainPercent"/>/<see cref="BlueGainPercent"/> are what
+    /// its own slider directly tests, so those three are left as sent
+    /// rather than reset to 100 -- but <see cref="WallColourHex"/>/
+    /// <see cref="WallColourCorrectionPercent"/> are still neutralized here
+    /// too, since they multiply into those same three gains
+    /// (<see cref="ToAdjustment"/>) without the White slider touching them:
+    /// measured directly against an operator's own real warm-toned wall
+    /// (<c>#cabfaf</c>, correcting green ~13% and blue ~38% brighter to
+    /// compensate for what the wall itself absorbs), pushing the White
+    /// slider toward "warmer" (which only lowers the raw blue gain) left
+    /// the wall's own untouched green correction increasingly dominant over
+    /// the shrinking blue channel, so white read as drifting green instead
+    /// of orange. Real playback always applies the true wall correction
+    /// regardless of this preview-only neutralization.
+    /// </param>
+    public PerimeterColourTuning WithGeneralAdjustmentsNeutralized(bool preserveWhiteBalanceGain = false)
+        => this with
+        {
+            BrightnessPercent = 100,
+            SaturationPercent = 100,
+            RedGainPercent = preserveWhiteBalanceGain ? RedGainPercent : 100,
+            GreenGainPercent = preserveWhiteBalanceGain ? GreenGainPercent : 100,
+            BlueGainPercent = preserveWhiteBalanceGain ? BlueGainPercent : 100,
+            WallColourHex = "#ffffff",
+            WallColourCorrectionPercent = 100,
+            TopBrightnessPercent = 100,
+            TopRedGainPercent = 100,
+            TopGreenGainPercent = 100,
+            TopBlueGainPercent = 100,
+            RightBrightnessPercent = 100,
+            RightRedGainPercent = 100,
+            RightGreenGainPercent = 100,
+            RightBlueGainPercent = 100,
+            BottomBrightnessPercent = 100,
+            BottomRedGainPercent = 100,
+            BottomGreenGainPercent = 100,
+            BottomBlueGainPercent = 100,
+            LeftBrightnessPercent = 100,
+            LeftRedGainPercent = 100,
+            LeftGreenGainPercent = 100,
+            LeftBlueGainPercent = 100,
+        };
 
     public PerimeterColourAdjustment ToAdjustment()
     {
@@ -91,7 +162,34 @@ public readonly record struct PerimeterColourTuning(
             Side(LeftBrightnessPercent, LeftRedGainPercent, LeftGreenGainPercent, LeftBlueGainPercent),
             Math.Clamp(BlackLevelFloorPercent, 0, 20) / 100f,
             BuildCurve(),
-            Percent(WhiteChannelStrengthPercent, 20, 100));
+            Percent(WhiteChannelStrengthPercent, 20, 100),
+            BuildGreyBalanceCurve());
+    }
+
+    /// <summary>
+    /// White itself is always the identity anchor here: its own colour
+    /// temperature is the flat <see cref="RedGainPercent"/>/
+    /// <see cref="BlueGainPercent"/> gain above, not this curve: this curve
+    /// only carries how much the 20%/40% grey steps deviate from that.
+    /// </summary>
+    private GreyBalanceCurve BuildGreyBalanceCurve()
+        => new(
+            GreyPoint(Grey20TemperatureDelta, Grey20TintDelta),
+            GreyPoint(Grey40TemperatureDelta, Grey40TintDelta),
+            GreyBalancePoint.Identity);
+
+    /// <summary>
+    /// Same push-pull mechanic as the White step's own colour-temperature
+    /// slider (temperature moves red against blue), plus a second,
+    /// independent green-against-magenta axis the White step does not need
+    /// since these two grey steps are the only ones asking for it. Both
+    /// clamped to +-60, the same range the White step's own slider uses.
+    /// </summary>
+    private static GreyBalancePoint GreyPoint(int temperatureDelta, int tintDelta)
+    {
+        var temperature = Math.Clamp(temperatureDelta, -60, 60) / 100f;
+        var tint = Math.Clamp(tintDelta, -60, 60) / 100f;
+        return new GreyBalancePoint(1f + temperature, 1f + tint, 1f - temperature);
     }
 
     private HueCorrectionCurve BuildCurve()
@@ -106,16 +204,32 @@ public readonly record struct PerimeterColourTuning(
     /// <summary>
     /// Hue-shift clamped to +-21 degrees (70% of the previous +-30, per the
     /// operator's own hands-on finding: the extreme +-30 was never actually
-    /// the correct colour, only ever too far off). Brightness/intensity
-    /// clamped to 50-100%: a boost above the calibration photo's own value
-    /// was never meaningful ("de uiterste waarden kunnen nooit de correcte
-    /// kleur zijn"), only dimming down from it is.
+    /// the correct colour, only ever too far off). Brightness stays capped
+    /// at 100%: a boost above the calibration photo's own value was never
+    /// meaningful ("de uiterste waarden kunnen nooit de correcte kleur
+    /// zijn"), only dimming down from it is. Its floor was widened from 50%
+    /// to 20% on the operator's own finding that a secondary colour
+    /// (Yellow/Cyan/Magenta) lights two physical LED channels at once
+    /// rather than one, so it can run measurably brighter than a primary to
+    /// begin with and 50% was not always enough headroom to dim it back
+    /// down to match.
+    /// <para>
+    /// Intensity's ceiling, unlike Brightness's, was widened past 100% (to
+    /// 200%, matching <see cref="SaturationPercent"/>'s own global range) --
+    /// the swatch's own 100% saturation is a mathematical ceiling, not a
+    /// physical one: a real strip's gamut at a given hue (magenta especially,
+    /// which needs simultaneous red and blue channel drive) can render
+    /// measurably less vivid than that ideal regardless of what the anchor
+    /// asks for, so an operator needs to be able to push past "the swatch's
+    /// own value" for the same reason Brightness (and the shared, global
+    /// Brightness/Saturation controls) already can.
+    /// </para>
     /// </summary>
     private static HueAnchor Anchor(int hueShiftDegrees, int brightnessPercent, int intensityPercent)
         => new(
             Math.Clamp(hueShiftDegrees, -21, 21),
-            Percent(brightnessPercent, 50, 100),
-            Percent(intensityPercent, 50, 100));
+            Percent(brightnessPercent, 20, 100),
+            Percent(intensityPercent, 50, 200));
 
     private static ColourAdjustment Side(int brightness, int red, int green, int blue)
         => new(
