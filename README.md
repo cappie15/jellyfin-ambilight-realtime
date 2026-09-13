@@ -25,11 +25,14 @@ milliseconds behind.
 - **Free, open source, self-hosted.** Nothing leaves your server; no cloud
   account, subscription or companion app required.
 
-> **Status: pre-alpha.** The live pipeline works end to end on the developer's
-> host, but this has been verified on exactly one Jellyfin server, one WLED
-> controller and one Hue bridge. Build and packaging scripts are available —
-> see [Installing](#installing). Compatibility beyond this setup is not
-> established; read on before you commit an evening to it.
+> **Status: pre-alpha overall.** The WLED output has been tuned and validated
+> against real hardware across multiple hands-on rounds and works correctly
+> with the current defaults; **Hue Entertainment is pre-alpha and not yet
+> reliable** — treat it as something to help test, not a lighting setup to
+> depend on. Both have been verified on exactly one Jellyfin server, one WLED
+> controller and one Hue bridge; compatibility beyond this setup is not
+> established. Build and packaging scripts are available — see
+> [Installing](#installing).
 
 ## Vibe coding disclosure
 
@@ -167,79 +170,74 @@ Packaging implementation: [build/package.sh](build/package.sh).
 Everything is configured from the plugin's own page in the Jellyfin dashboard.
 Each field carries its own explanation and names its default.
 
+### Live tuning
+
+A dedicated panel below the signal chain holds the fields worth adjusting
+while actually watching the result: every one of them applies to the running
+picture immediately and saves itself a moment after you stop moving it, no
+restart and no Save button.
+
+| Setting | Default | Notes |
+|---|---|---|
+| WLED brightness | 158% (1-200%) | Above 100% pushes already-dim scenes brighter than the source picture — physical LEDs next to a bright HDR screen otherwise always read as dim, since nothing else in the pipeline can push a pixel brighter than it already is. |
+| Colour intensity | 140% | Pushes each colour away from its own luminance, deepening it without changing brightness. |
+| Black level floor | 1% | Picture edges darker than this go fully off instead of glowing dim. |
+| White LED strength | 50% | Only shown once [RGBW](#rgbw-strips-send-a-real-white-signal) is on. |
+| Sampling edge range | 5% | Fraction of each axis sampled inward from the active-picture edge. Lower is more literal, higher is calmer. |
+| WLED smoothing | 110 ms | Eases each physical LED toward a newly sampled colour instead of snapping to it. |
+| Minimum colour hold | 100 ms | A colour must persist in the picture at least this long before the LEDs follow it, so a single flash frame cannot snap the wall to a colour barely there. |
+| Hue brightness | 169% (1-200%) | Same reasoning as WLED brightness, independent of it. |
+| Hue responsivity | 20 (0-100) | 0 is very reactive, 100 is beautifully smooth. |
+
+These defaults reflect a validated real-room baseline rather than the
+original untested guesses; every field can still be moved from there.
+
+### Everything else
+
 | Setting | Default | Notes |
 |---|---|---|
 | Playback device | *not bound* | Binds one Jellyfin device to this installation. Unbound means every device drives the LEDs. |
-| WLED controller | `10.0.0.8`, HTTP port 80 | Developer defaults: select your own controller with mDNS discovery or manual entry. |
-| Realtime protocol | Auto | Raw RGB up to 490 LEDs, DDP above it. |
-| LED delay | 0 ms | Raise only when the LEDs visibly run ahead of the picture. |
-| LED updates / analysis | 30 fps | Analysing faster than the output rate gains nothing. |
-| Hold while paused | on | Holds the last colours; keepalive frames are sent every second. Off releases via WLED's timeout. |
-| Stop fade | 250 ms | Fades to black before transmission ceases. |
-| LED counts | 265 / 150 / 266 / 150 | Clockwise from the top-left corner. |
-| Analysis width | 160 px | Height follows from 16:9, so 160 × 90. |
-| Sampling depth | 10% | Samples inward from each active-picture edge. |
-| Ignore black borders | on | Detects letterbox/pillarbox bars before sampling. |
-| Brightness | 100% (1-200%) | Global colour control, plus per-side trims. Above 100% pushes already-dim scenes brighter than the source picture — physical LEDs next to a bright HDR screen otherwise always read as dim, since nothing else in the pipeline can push a pixel brighter than it already is. |
-| Saturation / RGB gains | 100% | Global colour controls, with additional per-side trims. |
-| WLED smoothing | 0 ms (off) | Eases each physical LED toward a newly sampled colour instead of snapping to it. Off by default; raise it only if colour visibly "steps" at low brightness. |
-| Send a real white signal (RGBW) | off | Uses the strip's own white LED for grey/white content instead of mixing it from red, green and blue. See [RGBW strips](#rgbw-strips-send-a-real-white-signal) below. |
-| Wall colour | white | White leaves wall compensation neutral. |
-| Automatic LED gamma detection | on | Reads WLED settings at startup; falls back to the manual correction setting. |
+| WLED controller | `10.0.0.8`, HTTP port 80 | Developer defaults: select your own controller with mDNS discovery or manual entry. **Restart Jellyfin** after changing. |
+| Realtime protocol | Auto | Raw RGB up to 490 LEDs, DDP above it; the protocol actually resolved from Auto shows on the WLED overview card. Advanced, rarely needed — restart after changing. |
+| LED delay | 0 ms | Raise only when the LEDs visibly run ahead of the picture. Applies immediately. |
+| LED updates | 30 fps | The output rate; **restart Jellyfin** after changing. Analysis itself is no longer separately configurable — it always follows the source's own frame rate. |
+| Hold while paused | on | Holds the last colours; keepalive frames are sent every second. Off releases via WLED's timeout. Applies immediately. |
+| Fade out / fade in | fixed, 2.5 s each | Fades to black before transmission ceases at stop, and fades up from black over the same span at the start of a new session — not a picture-relative fade (nothing to fade toward yet at start), a brightness ramp applied to whatever real content is already arriving. Not user-configurable. |
+| LED counts | 265 / 150 / 266 / 150 | Clockwise from the top-left corner, viewed from the front. **Restart Jellyfin** after changing. |
+| Analysis width | 160 px | Height follows from 16:9, so 160 × 90. Takes effect on the next playback session, no restart needed. |
+| Ignore black borders | on | Detects letterbox/pillarbox bars before sampling. Applies immediately. |
+| RGB gains, per-side trims, wall colour, hue-anchor curve | 100% / white / untouched | Calibration, not day-to-day tuning — see [Room calibration](#room-calibration). Applies immediately. |
+| Send a real white signal (RGBW) | off | Uses the strip's own white LED for grey/white content instead of mixing it from red, green and blue. See [RGBW strips](#rgbw-strips-send-a-real-white-signal) below. Changes the wire format itself, so this one **does** need a Jellyfin restart. |
+| Automatic LED gamma detection | on | Reads WLED settings at startup; falls back to the manual correction setting. **Restart Jellyfin** after changing. |
 
 Select your playback device and controller, set the actual LED counts, save and
 restart Jellyfin before the first playback test. The default 831-LED layout is
 specific to the developer's installation.
 
-Structural settings — WLED endpoint, protocol, LED counts, output FPS, sampling
-depth and gamma detection — are read when the output service starts, so
-**restart Jellyfin** after changing them. Restart after analysis-setting changes
-as well. Delay, enable, hold while paused, fade, colour tuning and black-border
-handling take effect during operation.
-
 ### Room calibration
 
-The settings page is organised into five tabs -- **TV**, **WLED**, **Ambilight**,
-**Advanced** and **Hue** -- so the sliders that matter for calibration are not
-mixed in with connection and performance settings. The **Ambilight** tab has a
-short flow for the things that differ between installations: overall level, the
-wall behind the television, and each side on its own.
+The **Ambilight** card's "Color calibration" section walks a seven-step
+wizard -- white, then every RGB primary and secondary (red, yellow, green,
+cyan, blue, magenta) -- each against a plain, rendered solid-colour swatch at
+that colour's own canonical hue, with three sliders per colour: a **hue**
+nudge (how far this colour actually sits from where the strip should show
+it, e.g. "a touch pinker"), its own **brightness**, and its own
+**intensity**. Those six calibrated points build one smooth correction curve
+around the whole colour wheel -- shown back to the operator as an actual
+chart once the wizard finishes, not just numbers -- so a colour between two
+calibrated points is corrected smoothly too, not just the six points
+themselves. White keeps its own, separate colour-temperature control
+(warmer/cooler).
 
-Global brightness, colour intensity and a **black level floor** live at the
-top: a picture edge darker than the floor drives that LED fully off instead of
-a dim, often colour-cast glow, rather than every dark scene keeping a faint
-wash of light around the whole room.
-
-Pick the wall's paint colour from a list of soft, contemporary interior
-tones -- warm off-whites, greiges, dusty sage and blue, muted clay -- the kind
-of colour actually behind a TV today, not swatches sampled evenly across the
-full colour wheel; choose "Custom…" for the exact colour with a picker. The
-plugin applies a bounded inverse reflectance correction, so it adds back a
-little of the primary the wall absorbs most. It cannot make a very dark wall
-reflect light it does not have.
-
-The precise pass walks six primary/secondary colours -- red, yellow, green,
-cyan, blue, magenta -- each against a plain, solid colour swatch rather than
-a photo, with three sliders per colour: a **hue** nudge (how far this colour
-actually sits from where the strip should show it, e.g. "a touch pinker"),
-its own **brightness**, and its own **intensity**. Those six calibrated
-points build one smooth correction curve around the whole colour wheel --
-shown back to the operator as an actual chart once the wizard finishes, not
-just numbers -- so a colour between two calibrated points is corrected
-smoothly too, not just the six points themselves. White keeps its own,
-separate colour-temperature control (warmer/cooler). Once the seven swatch
-steps are done, check the result against real content the same way you would
-watch anything else: play a video in Jellyfin as usual, with the always-on
-**Live tuning** panel open, and adjust brightness, smoothing or responsivity
-there while it plays.
-
-Click **Start calibration** on the **Ambilight** tab first -- the TV link is
-only reachable while a calibration is actually running. On an internet-facing
-Jellyfin an always-on, unauthenticated page is its own exposure however
-little it can do, so the whole TV-facing surface answers as if it did not
-exist until Start is pressed, and again the moment the wizard finishes or
-**Stop & release LEDs** is clicked. Open the short link **once**, full-screen,
-in the TV's own browser -- it is deliberately as short as an address can be,
+Click **Start calibration** first -- the TV link is only reachable while a
+calibration is actually running. On an internet-facing Jellyfin an always-on,
+unauthenticated page is its own exposure however little it can do, so the
+whole TV-facing surface answers as if it did not exist until Start is
+pressed, again the moment the wizard finishes or **Stop & release LEDs** is
+clicked, and on its own after 20 minutes of inactivity even if nobody clicks
+either -- an admin who closes the tab mid-calibration does not leave that
+surface reachable forever. Open the short link **once**, full-screen, in the
+TV's own browser -- it is deliberately as short as an address can be,
 because a remote control types it one arrow key at a time, and it is always
 plain `http://`: typed bare, some TV browsers guess `https://` first, which
 fails with no certificate on a local address. The TV page polls the plugin
@@ -247,23 +245,14 @@ every 1.5 s and shows a small "Continue on your phone" hint throughout; on the
 last step, the settings page's button becomes **"Done — finish calibration"**,
 and the TV shows a clear finished screen once pressed.
 
-Every step, White included, shows one of the operator's own curated photos --
-cropped to 16:9 and resized to 1080p, embedded in the plugin itself so
-nothing is fetched from the internet and every photo loads instantly -- shown
-**full-screen**, never a flat colour swatch. Its own edges are sampled by
-exactly the same code path real Jellyfin playback uses (the browser draws the
-photo to a canvas, downsizes it, and the plugin runs it through the ordinary
-edge-sampling and colour pipeline), so a single well-chosen photo can carry
-useful colour at more than one edge at once -- a forest-and-sky photo tunes
-green at the bottom and blue at the top together. Sampling itself now weighs
-the picture's true outer edge more heavily than the inner edge of the
-sampled band, on a linear ramp, so the reading reflects what is actually at
-the border rather than being pulled toward the band's more central content.
-One continuous LED strip usually runs the whole way round a TV, so the
-wizard tunes brightness, saturation and white balance for **all four sides
-at once**, not one side at a time; a separate, explicitly optional
-"fine-tune each side" section still exists below it for the rare strip that
-genuinely needs it.
+Every step is a rendered flat swatch, sampled by exactly the same code path
+real Jellyfin playback uses (the browser draws it to a canvas and the plugin
+runs it through the ordinary edge-sampling and colour pipeline), shown
+**full-screen**. One continuous LED strip usually runs the whole way round a
+TV, so the wizard tunes brightness, saturation and white balance for **all
+four sides at once**, not one side at a time; a separate, explicitly
+optional "fine-tune each side" section still exists below it for the rare
+strip that genuinely needs it.
 
 Every slider updates the LEDs live as you drag it -- no Save, no round trip
 -- and each one has small **&minus;/+** buttons beside it, in a proper row
@@ -271,21 +260,22 @@ even on a phone, so a step can be repeated by tapping the same spot while
 watching the TV instead of the phone. The preview never writes WLED
 configuration, and real playback always takes priority over it.
 
-Three related settings live in **Advanced**, deliberately outside the wizard,
-because they shape ordinary playback rather than the calibration photos
-themselves: **Sampling resolution** (unchanged, and not derived from the
-wizard's photos -- a lower analysis size stays the right choice for a
-resource-constrained host regardless of how the calibration looks),
-**Minimum colour hold**, which holds a physical LED at its last colour
-until a newly sampled colour has persisted in the picture for at least that
-long (off by default; raise it only if fast cuts or flashes make the strip
-feel twitchy, since it trades a little responsiveness for steadiness), and
-**Smoothing**, which eases each physical LED toward a newly sampled colour
-over a configurable time instead of jumping straight to it -- lower is more
-reactive, higher lets colour flow more smoothly at the cost of a real cut or
-fast pan taking a little longer to catch up. Off by default (0 ms); see
-[ADR-012](docs/architecture/adr/ADR-012-wled-temporal-smoothing.md) for what
-was actually measured before building it.
+Once the seven steps are done, confirm against real content the same way you
+would watch anything else: play a video with the always-on **Live tuning**
+panel open (see [above](#live-tuning)) and adjust there while it plays. A
+"Test videos" toggle on that same panel can set up eight short clips for
+exactly this -- a colour-temperature sweep, a fast-cut scene, a calm scene, a
+motion/flicker stress test, the full black-to-white brightness range, a
+deliberately monochrome scene, and 4:3/21:9 aspect-ratio content for the
+black-border detector -- purely synthetic, ffmpeg-generated (no real footage,
+so no licensing question), extracted from the plugin itself and registered as
+their own temporary Jellyfin library with one click; a matching button
+removes that library and deletes the files again once you are done. If the
+strip ever seems to read left and right swapped, a ninth clip (a static
+red-left/blue-right split screen) confirms that in ten seconds -- the far
+more likely cause is the physical strip's own wiring direction (routing the
+data cable from behind the TV reverses left/right versus the viewer's own
+front-facing view) rather than a plugin bug.
 
 Output is temporally dithered: WLED drives its LEDs straight from the byte
 value, and linear light gives the darkest tones the fewest of the 256
@@ -330,7 +320,12 @@ only WLED setting the plugin can write, and the request never names the ABL
 power budget (`maxpwr`) or anything else -- that value is only ever displayed,
 never changed by this plugin.
 
-### Philips Hue Entertainment (optional)
+### Philips Hue Entertainment (optional) — pre-alpha
+
+**Pre-alpha: not yet working reliably.** WLED is the finished, primary output
+and works correctly with the current defaults; Hue does not yet. Enable it
+to help test it, not for a lighting setup you depend on -- the settings page
+itself carries the same warning on the Hue card and its modal.
 
 The **Hue** tab adds Hue lights as a second, fully independent realtime output
 alongside WLED, following the same picture on the same bound TV. Off by
