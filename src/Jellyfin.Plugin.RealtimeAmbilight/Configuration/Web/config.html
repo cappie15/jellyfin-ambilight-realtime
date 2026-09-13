@@ -312,7 +312,7 @@
 
             <div class="inputContainer">
                 <input is="emby-input" id="blackLevelFloorPercent" type="range" min="0" max="20" step="1" label="Black level floor" />
-                <div class="fieldDescription">Now: <strong id="blackLevelFloorValue"></strong>. Picture edges darker than this go fully off instead of glowing dim. <strong>Default: 1%.</strong></div>
+                <div class="fieldDescription">Now: <strong id="blackLevelFloorValue"></strong>. Picture edges darker than this go fully off instead of glowing dim; brightness above it eases back up smoothly, same as it always looked, just measured the way a waveform monitor would (not linear light -- gamma makes a big practical difference near black). <strong>Default: 3%.</strong></div>
             </div>
 
             <div id="whiteChannelStrengthContainer" class="inputContainer">

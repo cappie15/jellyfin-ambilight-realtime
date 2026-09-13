@@ -90,16 +90,42 @@ public readonly record struct PerimeterColourAdjustment(
     /// Scaling by luminance rather than gating each channel separately keeps
     /// the colour's hue and saturation intact as it fades to black.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="floor"/> arrives as a fraction of *perceptual*
+    /// brightness -- what "4%" means on a waveform monitor or any ordinary
+    /// video tool, matching how an operator actually thinks about a black
+    /// level -- and is converted here to the linear-light threshold that
+    /// number actually corresponds to, since every comparison and rescale in
+    /// this method operates in linear light like the rest of this pipeline.
+    /// The two are not close: gamma compresses shadows, so a perceptual 4%
+    /// is linear-light 0.9%, roughly 4.5x dimmer. Treating the raw
+    /// percentage as already linear (the previous behaviour) made the floor
+    /// cut off far more of the source's actual near-black detail than its
+    /// own number suggested, and reported as content that should have eased
+    /// in gradually near black instead jumping in at a noticeably brighter
+    /// level than "4%" implied, the moment it cleared that too-high
+    /// threshold.
+    /// </remarks>
     private static LinearRgb ApplyBlackLevelFloor(LinearRgb colour, float floor)
     {
+        var linearFloor = DecodePerceptualFraction(floor);
         var luminance = (0.2126f * colour.Red) + (0.7152f * colour.Green) + (0.0722f * colour.Blue);
-        if (luminance <= floor)
+        if (luminance <= linearFloor)
         {
             return default;
         }
 
-        var scale = (luminance - floor) / (luminance * (1f - floor));
+        var scale = (luminance - linearFloor) / (luminance * (1f - linearFloor));
         return new LinearRgb(colour.Red * scale, colour.Green * scale, colour.Blue * scale);
+    }
+
+    /// <summary>The exact inverse of <see cref="Output.Rgb24Encoder.ToTransferValue"/>'s BT.709 branch, used only to interpret a percentage knob in perceptual terms -- not part of the actual output encoding, which is chosen independently and may even be linear.</summary>
+    private static float DecodePerceptualFraction(float perceptual)
+    {
+        var value = Math.Clamp(perceptual, 0f, 1f);
+        return value < 0.081f
+            ? value / 4.5f
+            : MathF.Pow((value + 0.099f) / 1.099f, 1f / 0.45f);
     }
 
     /// <summary>"Value" here matches <see cref="HueCorrectionCurve"/>'s own definition (the largest channel), so the two curves read the same pixel the same way.</summary>

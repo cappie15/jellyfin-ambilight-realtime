@@ -43,7 +43,12 @@ public sealed class PerimeterColourTuningTests
         var adjustment = tuning.ToAdjustment();
         var layout = new LedLayout(1, 1, 1, 1);
 
-        var belowFloor = adjustment.Apply(new LinearRgb(0.02f, 0.02f, 0.02f), 0, layout);
+        // The floor percentage is perceptual (what "5%" means on a waveform
+        // monitor), not linear -- gamma compresses shadows, so 5% perceptual
+        // is roughly linear 0.0111, about 4.5x dimmer than the number alone
+        // suggests. 0.005 sits below that; 0.02 (linear) would not, despite
+        // "looking" well below a linear 5%.
+        var belowFloor = adjustment.Apply(new LinearRgb(0.005f, 0.005f, 0.005f), 0, layout);
         Assert.Equal(0f, belowFloor.Red);
         Assert.Equal(0f, belowFloor.Green);
         Assert.Equal(0f, belowFloor.Blue);
@@ -52,6 +57,22 @@ public sealed class PerimeterColourTuningTests
         Assert.Equal(1f, full.Red, 4);
         Assert.Equal(1f, full.Green, 4);
         Assert.Equal(1f, full.Blue, 4);
+    }
+
+    [Fact]
+    public void BlackLevelFloorPercentIsInterpretedPerceptuallyNotLinearly()
+    {
+        // A source pixel at linear-light 0.02 is a genuinely dim shadow
+        // (roughly 15% on a waveform monitor after gamma) -- a 5% black
+        // floor, read the way any video tool means "5%", should leave it
+        // alone rather than gating it as if 5% meant linear 0.05.
+        var tuning = PerimeterColourTuning.Default with { BlackLevelFloorPercent = 5 };
+        var adjustment = tuning.ToAdjustment();
+        var layout = new LedLayout(1, 1, 1, 1);
+
+        var result = adjustment.Apply(new LinearRgb(0.02f, 0.02f, 0.02f), 0, layout);
+
+        Assert.True(result.Red > 0f, $"expected a linear-light 0.02 pixel to survive a perceptual 5% floor, got {result.Red}");
     }
 
     [Fact]

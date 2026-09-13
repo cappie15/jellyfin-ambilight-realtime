@@ -188,7 +188,14 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>
     /// Below this fraction of picture-edge luminance, a physical LED is driven
-    /// fully off instead of a dim, often colour-cast glow. Zero disables it.
+    /// fully off instead of a dim, often colour-cast glow; above it, the
+    /// remaining headroom rescales smoothly back up to full range so there is
+    /// no jump right at the boundary. Zero disables it. The percentage is
+    /// perceptual (what "4%" means on a waveform monitor), not linear-light --
+    /// converted internally (see <see cref="Core.Color.PerimeterColourAdjustment"/>)
+    /// since gamma compresses shadows and a perceptual 4% is roughly
+    /// linear-light 0.9%; treating the raw number as already linear cut off
+    /// far more real shadow detail than its own value suggested.
     /// </summary>
     public int BlackLevelFloorPercent { get; set; } = 3;
 
