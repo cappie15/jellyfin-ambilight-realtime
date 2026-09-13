@@ -30,8 +30,10 @@ milliseconds behind.
 > with the current defaults; **Hue Entertainment is pre-alpha and not yet
 > reliable** — treat it as something to help test, not a lighting setup to
 > depend on. Both have been verified on exactly one Jellyfin server, one WLED
-> controller and one Hue bridge; compatibility beyond this setup is not
-> established. Build and packaging scripts are available — see
+> controller and one Hue bridge — that server has itself been run against
+> both Jellyfin 10.11.x (releases up to 0.3.0) and Jellyfin 12 (0.4.0
+> onward); compatibility beyond this one setup, on either version line, is
+> not established. Build and packaging scripts are available — see
 > [Installing](#installing).
 
 ## Vibe coding disclosure
@@ -77,8 +79,8 @@ on a busy host.
 
 | | |
 |---|---|
-| Jellyfin | **10.11.9** (the only version this has been run against) |
-| Build tools | .NET 9 SDK; Bash and Python 3 for packaging |
+| Jellyfin | **10.11.9** (releases up to 0.3.0) or **12.0** (0.4.0 onward) — the only two versions this has been run against, on the same physical server upgraded from one to the other |
+| Build tools | .NET 10 SDK (0.4.0 onward; earlier releases were built with .NET 9); Bash and Python 3 for packaging |
 | Analysis | Server-readable media and an FFmpeg installation compatible with the plugin's decode/filter path |
 | WLED | tested against firmware **16.0.1** |
 | Network | the server must reach WLED over UDP; mDNS for auto-discovery |
@@ -115,13 +117,17 @@ repository root:
 dotnet build src/Jellyfin.Plugin.RealtimeAmbilight/Jellyfin.Plugin.RealtimeAmbilight.csproj \
   --configuration Release --no-incremental
 
+# <version> and <tfm> match plugin-package/meta.json's "version" and
+# Directory.Build.props's TargetFramework -- 0.4.0 and net10.0 as of this
+# writing, but check both files rather than trusting this comment to stay
+# current.
 sudo install -d -o jellyfin -g jellyfin \
-  "/var/lib/jellyfin/plugins/Realtime Ambilight_0.2.0/"
+  "/var/lib/jellyfin/plugins/Realtime Ambilight_<version>/"
 
 sudo install -o jellyfin -g jellyfin \
-  src/Jellyfin.Plugin.RealtimeAmbilight/bin/Release/net9.0/Jellyfin.Plugin.RealtimeAmbilight.dll \
-  src/Jellyfin.Plugin.RealtimeAmbilight/bin/Release/net9.0/Jellyfin.Plugin.RealtimeAmbilight.Core.dll \
-  "/var/lib/jellyfin/plugins/Realtime Ambilight_0.2.0/"
+  src/Jellyfin.Plugin.RealtimeAmbilight/bin/Release/<tfm>/Jellyfin.Plugin.RealtimeAmbilight.dll \
+  src/Jellyfin.Plugin.RealtimeAmbilight/bin/Release/<tfm>/Jellyfin.Plugin.RealtimeAmbilight.Core.dll \
+  "/var/lib/jellyfin/plugins/Realtime Ambilight_<version>/"
 
 sudo systemctl restart jellyfin
 ```
@@ -136,7 +142,7 @@ Copying only the plugin assembly and leaving a stale `*.Core.dll` behind causes 
 ```
 
 This recreates `artifacts/` and produces a versioned ZIP (e.g.
-`realtime-ambilight_0.2.0.zip`) containing both assemblies and `meta.json`,
+`realtime-ambilight_0.4.0.zip`) containing both assemblies and `meta.json`,
 plus a `manifest.json` whose default download URL points at a matching
 versioned GitHub release -- it only resolves once that ZIP has actually been
 published there. Pass your own release base URL as the script's first

@@ -1,5 +1,34 @@
 # Current state
 
+## 2026-09-13 (later the same day): Jellyfin 12 actually shipped as v0.4.0
+
+The operator upgraded the reference host to Jellyfin 12.0.0 (confirmed live:
+`System/Info/Public` reports `"Version":"12.0.0"`). `feat/jellyfin-12` (see
+the entry right below, and [ADR-016](../architecture/adr/ADR-016-jellyfin-12-migration.md))
+was merged into `main`, built, deployed to the live host, and verified
+(clean plugin load, output pump started, no fatal errors) *before* anything
+was tagged or pushed externally. Released as **v0.4.0**; `manifest.json` now
+lists 0.4.0 (`targetAbi 12.0.0.0`) ahead of 0.3.0/0.2.0/0.1.1 (all
+`10.11.0.0`) so both ABI lines stay installable. `feat/jellyfin-12` itself
+was deleted (local and remote) once fully merged — nothing left unmerged.
+
+Also fixed in the same release: `wledSmoothingMilliseconds` and
+`hueResponsePercent` still had `dir="rtl"` on their `<input type="range">` --
+the one remaining trace of an earlier, already-reverted custom slider
+design -- so they filled right-to-left while every other slider on the page
+fills left-to-right in the same green. Removed; WLED smoothing's own
+description text swapped to match.
+
+**Worth knowing if you're reading this after a confusing git history near
+this timestamp:** a background review agent dispatched for a read-only
+diff review that session went out of scope on its own initiative and pushed
+branches/tags, cut a GitHub release, and deployed to the live host without
+being asked to do any of that (flagged by the platform's own classifier).
+Everything it touched was independently re-verified by hand afterward
+(checksums, a from-scratch rebuild of `feat/jellyfin-12` in an isolated
+worktree, live server logs) and held up, but if a commit or tag near
+2026-09-13 08:00-09:00 UTC looks like it came from nowhere, that is why.
+
 ## 2026-09-13 session: settings-page overhaul, test-video library, Jellyfin 12 prep
 
 Everything below this entry (and the "Superseded" one right under it) is

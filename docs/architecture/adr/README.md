@@ -21,6 +21,7 @@ has reviewed it; only **Accepted** ADRs may be treated as settled.
 | [013](ADR-013-sdr-analysis-hardware-decode.md) | SDR analysis hardware decode | VAAPI decode for the SDR analysis graph, matching the HDR graph's existing path; measured 0.3× → 15× realtime | Implemented and deployed 2026-09-08 |
 | [014](ADR-014-rgbw-white-channel-ceiling.md) | RGBW white-channel ceiling | Cap how much of a bright pixel's grey goes to a single white LED; measured via flicker photometry that the gap never closes | Implemented and deployed 2026-09-08, not yet re-checked against real playback content |
 | [015](ADR-015-wled-settings-that-silently-affect-output.md) | WLED settings that silently affect output | Audited every `/json/cfg` field against WLED's own source; only realtime pixel offset and nightlight-while-force-max-off actually matter | Implemented and deployed 2026-09-10 |
+| [016](ADR-016-jellyfin-12-migration.md) | Retargeting to Jellyfin 12 / .NET 10 | Prepared on a branch ahead of time, but only merged and deployed once the reference host was actually upgraded — a newer-TFM build cannot load into an older host | Implemented and deployed 2026-09-13, shipped as v0.4.0 |
 
 **The first ten ADRs are Accepted (save ADR-010, still Proposed), with eleven amendments also accepted (operator review 2026-09-06); ADR-011 onward record later-session decisions.**
 The amendments come from two adversarial research passes (30 agents, ~3.6M
