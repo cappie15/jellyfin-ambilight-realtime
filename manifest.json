@@ -6,8 +6,16 @@
     "overview": "Realtime HDR-aware ambient lighting for Jellyfin playback",
     "owner": "Realtime Ambilight contributors",
     "category": "General",
-    "imageUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.3.0/ambilight-logo.png",
+    "imageUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.4.0/ambilight-logo.png",
     "versions": [
+      {
+        "version": "0.4.0",
+        "changelog": "Jellyfin 12 support: retargeted to net10.0 and Jellyfin.Controller/Model/Common 12.0.0, now that Jellyfin 12 is out and the developer's own server has been upgraded to it. No code changes were needed -- the plugin never used any of the interfaces Jellyfin 12 changed or removed. A build targeting a newer .NET than the host server cannot load, so this could not ship until the real upgrade happened; installs on Jellyfin 10.11.x should stay on 0.3.0. Also fixes WLED smoothing and Hue responsivity: both still filled right-to-left, the one remaining trace of an earlier, reverted slider redesign, while every other slider on the page fills left-to-right in the same green.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.4.0/realtime-ambilight_0.4.0.zip",
+        "checksum": "72408531195bc9d9ae18b87b738aeb65",
+        "timestamp": "2026-09-13T13:00:00.0000000Z"
+      },
       {
         "version": "0.3.0",
         "changelog": "Simplifies the calibration wizard to seven swatch-only steps (the photo-finetuning phase is gone) and adds a 20-minute idle auto-disarm so an admin who never clicks Finish does not leave the anonymous TV-facing surface reachable forever. Adds a one-click test-video library: nine short, synthetic (ffmpeg-generated, no licensing question) clips embedded in the plugin, extracted and registered as a real temporary Jellyfin library on demand, torn down again with one click. Grows the Live tuning panel from 5 to 9 fields -- colour intensity, black level floor, sampling edge range and white LED strength were already live under the hood and just were not living where that was obvious -- and adds a symmetric 2.5s fade-in at session start alongside the existing fade-out at stop. Collapses the 8-stage signal chain to 6 (three inline stages that never had their own data merge into one \"LED processing\" block) and fixes it to never scroll sideways on a narrow screen. Promotes several defaults (WLED brightness, colour intensity, black level floor, WLED smoothing, minimum colour hold, sampling edge range, Hue brightness, Hue responsivity) from untested guesses to a validated real-room baseline. Labels Hue Entertainment pre-alpha throughout the UI and docs -- the WLED output path is solid; Hue is not yet reliable.",
