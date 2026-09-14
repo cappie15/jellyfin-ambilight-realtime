@@ -18,6 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # config.js is hand-written and otherwise unchecked by CI; this catches
+      # a plain syntax error (an unclosed brace, a stray comma) before it
+      # ships and silently breaks the settings page for every installer.
+      - name: Check config.js syntax
+        run: node --check src/Jellyfin.Plugin.RealtimeAmbilight/Configuration/Web/config.js
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -44,3 +50,28 @@ jobs:
             artifacts/*.zip
             artifacts/manifest.json
           if-no-files-found: error
+
+  ui-smoke-test:
+    name: UI smoke test
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Builds its own plugin package, boots a throwaway Jellyfin container
+      # with it installed, runs the first-time setup wizard through its REST
+      # API, then drives the settings page in a real browser and fails on
+      # any console/page error. See tests/ui-smoke/run.sh for the full flow.
+      - name: Run UI smoke test
+        run: ./tests/ui-smoke/run.sh

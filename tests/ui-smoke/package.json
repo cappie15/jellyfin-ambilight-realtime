@@ -1,0 +1,12 @@
+{
+  "name": "realtime-ambilight-ui-smoke",
+  "private": true,
+  "version": "1.0.0",
+  "description": "CI smoke test: loads the plugin's settings page in a real browser against a throwaway Jellyfin container and fails on console/page errors.",
+  "scripts": {
+    "smoke": "node smoke.js"
+  },
+  "dependencies": {
+    "playwright": "1.63.0"
+  }
+}
