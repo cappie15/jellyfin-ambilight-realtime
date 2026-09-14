@@ -69,29 +69,15 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     private HueCredentials? _credentials;
     private IReadOnlyList<HueEntertainmentChannel> _channels = [];
     private IReadOnlyDictionary<Guid, Guid> _lightIdsByServiceId = new Dictionary<Guid, Guid>();
-    /// <summary>
-    /// What was last actually transmitted, and the current connection
-    /// retry/backoff state -- grouped from five separate fields into one
-    /// small mutable object, since they were being read and reset together
-    /// often enough (every connect, every stop, every transient failure)
-    /// that keeping them as scattered fields obscured which ones belonged
-    /// together.
-    /// </summary>
-    private readonly HueStreamState _streamState = new();
+    private readonly HueSessionSnapshotCoordinator _snapshotCoordinator;
+    private readonly HueFrameTransmitter _transmitter = new();
 
-    /// <summary>
-    /// Mirrors <c>JellyfinWledOutputService.RunPumpAsync</c>'s own
-    /// pendingFrames queue: the shared analysis decoder runs ~5 s ahead of
-    /// the actual playback position (<c>FfmpegAnalysisWorker.DecoderLead</c>),
-    /// so the newest published <see cref="AnalysisFrame"/> is not what the
-    /// picture looks like right now -- it is what it will look like in a
-    /// few seconds. Sending it immediately, as this queue previously did not
-    /// exist to prevent, is what made Hue lights lag noticeably behind the
-    /// picture regardless of how reactive <c>HueResponsePercent</c> was set:
-    /// that control only smooths a frame that already arrived on time, it
-    /// cannot correct one that arrived at the wrong time to begin with.
-    /// </summary>
-    private readonly Queue<(DateTimeOffset DueAt, AnalysisFrame Frame)> _pendingFrames = new();
+    /// <summary>How many connection attempts have failed in a row -- resets to 0 on a successful connect. Drives the exponential backoff in <see cref="ReportTransientFailure"/>.</summary>
+    private int _consecutiveFailures;
+
+    /// <summary>When the next reconnect attempt is allowed, per the exponential backoff in <see cref="ReportTransientFailure"/>.</summary>
+    private DateTimeOffset _nextRetryAt = DateTimeOffset.MinValue;
+
     private HueSessionSnapshot? _snapshot;
     private Task? _pump;
     private Task? _lifecycleTask;
@@ -113,6 +99,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         _activityLog = activityLog ?? throw new ArgumentNullException(nameof(activityLog));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _channelFactory = channelFactory ?? new HueDtlsChannelFactory();
+        _snapshotCoordinator = new HueSessionSnapshotCoordinator(_lightControl, _logger);
         _latestFrames = _coordinator.LatestFrames.Subscribe();
         // Every real state transition, mirrored into the settings page's own
         // "Live activity" log -- Unpaired/Ready are the two quiet, no-news
@@ -270,7 +257,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                     _stateMachine.StopRequested();
                     _lifecycleTask = StopAsync(configuration);
                 }
-                else if (DateTimeOffset.UtcNow >= _streamState.NextRetryAt && LifecycleTaskIsFree())
+                else if (DateTimeOffset.UtcNow >= _nextRetryAt && LifecycleTaskIsFree())
                 {
                     _stateMachine.ConnectRequested();
                     _lifecycleTask = ConnectAndStreamAsync(configuration, currentSession);
@@ -402,7 +389,9 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
 
             if (_snapshot?.PlaybackSessionId != sessionId)
             {
-                _snapshot = await CaptureSnapshotAsync(configuration, credentials, selected, sessionId).ConfigureAwait(false);
+                _snapshot = await _snapshotCoordinator
+                    .CaptureAsync(selected.Channels, _lightIdsByServiceId, configuration, credentials, sessionId, _shutdown.Token)
+                    .ConfigureAwait(false);
             }
 
             // Entertainment streaming changes a light's colour, never its
@@ -411,7 +400,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             // to it. Restoring "off" afterward is already handled by
             // RestoreAsync from this same snapshot; this is only ever turning
             // back on what that will turn back off.
-            var offLightIds = ResolveLightIds(selected.Channels)
+            var offLightIds = _snapshotCoordinator.ResolveLightIds(selected.Channels, _lightIdsByServiceId)
                 .Where(id => _snapshot?.Lights.FirstOrDefault(l => l.LightId == id)?.On == false)
                 .ToArray();
             if (offLightIds.Length > 0)
@@ -436,9 +425,8 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             }
 
             _channel = channel;
-            _streamState.ConsecutiveFailures = 0;
-            _streamState.ForgetTransmitted();
-            _pendingFrames.Clear();
+            _consecutiveFailures = 0;
+            _transmitter.Reset();
             _stateMachine.Connected();
             _logger.LogInformation("Hue Entertainment connected to {ConfigurationName} on {Host}.", selected.Name, configuration.HueBridgeHost);
         }
@@ -450,51 +438,6 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         // No finally clearing _lifecycleTask here -- see LifecycleTaskIsFree's remarks.
     }
 
-    /// <summary>
-    /// Maps each channel's own member ids (entertainment service ids) to the
-    /// light resource ids CLIP v2 light calls actually need, via
-    /// <see cref="_lightIdsByServiceId"/>. A member with no resolved mapping
-    /// is dropped with a warning rather than sent to the bridge as-is, which
-    /// would just 404 -- exactly the failure this whole mapping step exists
-    /// to fix.
-    /// </summary>
-    private List<Guid> ResolveLightIds(IEnumerable<HueEntertainmentChannel> channels)
-    {
-        var lightIds = new List<Guid>();
-        foreach (var serviceId in channels.SelectMany(c => c.Members).Select(m => m.ServiceId).Distinct())
-        {
-            if (_lightIdsByServiceId.TryGetValue(serviceId, out var lightId))
-            {
-                lightIds.Add(lightId);
-            }
-            else
-            {
-                _logger.LogWarning("Hue Entertainment could not resolve entertainment service {ServiceId} to a light; skipping it for snapshot/end-of-session commands.", serviceId);
-            }
-        }
-
-        return lightIds;
-    }
-
-    private async Task<HueSessionSnapshot?> CaptureSnapshotAsync(
-        PluginConfiguration configuration, HueCredentials credentials, HueEntertainmentConfiguration selected, string sessionId)
-    {
-        var lightIds = ResolveLightIds(selected.Channels);
-        var entries = new List<HueLightSnapshotEntry>();
-        foreach (var lightId in lightIds)
-        {
-            var entry = await _lightControl
-                .ReadStateAsync(configuration.HueBridgeHost, credentials.CertificateThumbprintSha256, credentials.ApplicationKey, lightId, _shutdown.Token)
-                .ConfigureAwait(false);
-            if (entry is not null)
-            {
-                entries.Add(entry);
-            }
-        }
-
-        return new HueSessionSnapshot(sessionId, entries);
-    }
-
     private async Task SendFrameOrKeepAliveAsync(PluginConfiguration configuration)
     {
         if (_channel is null || _frameProcessor is null || _channels.Count == 0)
@@ -503,7 +446,6 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         }
 
         var brightnessFraction = Math.Clamp(configuration.HueBrightnessPercent, 1, 200) / 100d;
-        byte[]? packet = null;
 
         if (_stateMachine.State == HueEntertainmentState.Streaming && _latestFrames.TryTake(out var newFrame) && newFrame is not null)
         {
@@ -514,39 +456,11 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             // happens to be the instant it arrives.
             var lead = TimeSpan.FromTicks(newFrame.PositionTicks - _coordinator.CurrentPositionTicks);
             var dueAt = DateTimeOffset.UtcNow + (lead > TimeSpan.Zero ? lead : TimeSpan.Zero);
-            _pendingFrames.Enqueue((dueAt, newFrame));
+            _transmitter.EnqueueFrame(newFrame, dueAt);
         }
 
-        AnalysisFrame? dueFrame = null;
-        var now = DateTimeOffset.UtcNow;
-        while (_pendingFrames.TryPeek(out var pending) && pending.DueAt <= now)
-        {
-            // Keep only the newest frame that has actually become due --
-            // an older one still queued behind it is already stale.
-            dueFrame = _pendingFrames.Dequeue().Frame;
-        }
-
-        if (dueFrame is not null)
-        {
-            var colours = _frameProcessor.Process(dueFrame, _channels, brightnessFraction);
-            var channelColours = _channels
-                .Select(c => new HueStreamPacketizer.ChannelColour(
-                    (byte)c.ChannelId,
-                    colours.TryGetValue(c.ChannelId, out var colour) ? colour : default(LinearRgb)))
-                .ToArray();
-            packet = HueStreamPacketizer.Packetize(configuration.HueEntertainmentConfigurationId, channelColours)[0];
-            _streamState.LastPacket = packet;
-            _streamState.LastChannelColours = colours;
-        }
-        else if (DateTimeOffset.UtcNow - _streamState.LastSendAt < KeepAliveInterval)
-        {
-            return; // Paused, or no new frame yet: hold, do not resend every 40 ms.
-        }
-        else
-        {
-            packet = _streamState.LastPacket; // Paused: keep the entertainment session valid with the last colours.
-        }
-
+        var packet = _transmitter.BuildNextPacket(
+            _frameProcessor, _channels, brightnessFraction, configuration.HueEntertainmentConfigurationId, KeepAliveInterval, DateTimeOffset.UtcNow);
         if (packet is null)
         {
             return;
@@ -555,7 +469,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         try
         {
             _channel.SendPacket(packet);
-            _streamState.LastSendAt = DateTimeOffset.UtcNow;
+            _transmitter.MarkSent(DateTimeOffset.UtcNow);
             _sendRateMeter.Increment();
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -567,11 +481,11 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
 
     private void ReportTransientFailure(HueEntertainmentIssue issue)
     {
-        _streamState.ConsecutiveFailures++;
-        var exponent = Math.Min(_streamState.ConsecutiveFailures, MaximumConsecutiveFailuresBeforeSlowestBackoff);
+        _consecutiveFailures++;
+        var exponent = Math.Min(_consecutiveFailures, MaximumConsecutiveFailuresBeforeSlowestBackoff);
         var backoffSeconds = Math.Min(MaximumBackoff.TotalSeconds, MinimumBackoff.TotalSeconds * Math.Pow(2, exponent - 1));
         var jitterSeconds = backoffSeconds * (0.8 + (_jitter.NextDouble() * 0.4)); // +/-20% jitter
-        _streamState.NextRetryAt = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(jitterSeconds);
+        _nextRetryAt = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(jitterSeconds);
         _stateMachine.ConnectionLost(issue);
     }
 
@@ -598,7 +512,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
 
     private async Task StopAsync(PluginConfiguration configuration)
     {
-        if (_channel is not null && _streamState.LastChannelColours is { Count: > 0 } lastColours)
+        if (_channel is not null && _transmitter.LastChannelColours is { Count: > 0 } lastColours)
         {
             try
             {
@@ -624,15 +538,18 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         }
 
         _frameProcessor?.Reset();
-        _pendingFrames.Clear();
-        _streamState.ForgetTransmitted();
+        _transmitter.Reset();
 
         try
         {
             var credentials = _credentials;
             if (credentials is not null)
             {
-                await ApplyEndBehaviourAsync(configuration, credentials).ConfigureAwait(false);
+                var snapshot = _snapshot;
+                _snapshot = null;
+                await _snapshotCoordinator
+                    .ApplyEndBehaviourAsync(_channels, _lightIdsByServiceId, configuration, credentials, snapshot, _shutdown.Token)
+                    .ConfigureAwait(false);
             }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -662,64 +579,12 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         for (var step = 1; step <= stepCount; step++)
         {
             var remaining = (float)(stepCount - step) / stepCount;
-            var channelColours = ComputeFadeStepColours(_channels, source, remaining);
+            var channelColours = HueFrameTransmitter.ComputeFadeStepColours(_channels, source, remaining);
             var packet = HueStreamPacketizer.Packetize(configuration.HueEntertainmentConfigurationId, channelColours)[0];
             _channel?.SendPacket(packet);
             if (step < stepCount)
             {
                 await Task.Delay(PumpInterval, _shutdown.Token).ConfigureAwait(false);
-            }
-        }
-    }
-
-    /// <summary>
-    /// One fade-out step's worth of channel colours: each of <paramref name="source"/>'s
-    /// remembered colours scaled toward black by <paramref name="remaining"/>
-    /// (1 = unscaled, 0 = black), keyed to every one of <paramref name="channels"/>
-    /// so a channel with no remembered colour still gets an explicit black
-    /// entry rather than being silently omitted from the packet. Pure
-    /// function, split out from <see cref="FadeToBlackAsync"/> specifically
-    /// so the actual ramp values are directly testable without needing a
-    /// real DTLS channel or the pump's own timing.
-    /// </summary>
-    public static HueStreamPacketizer.ChannelColour[] ComputeFadeStepColours(
-        IReadOnlyList<HueEntertainmentChannel> channels,
-        IReadOnlyDictionary<int, LinearRgb> source,
-        float remaining)
-        => channels
-            .Select(c => new HueStreamPacketizer.ChannelColour(
-                (byte)c.ChannelId,
-                source.TryGetValue(c.ChannelId, out var colour)
-                    ? new LinearRgb(colour.Red * remaining, colour.Green * remaining, colour.Blue * remaining)
-                    : default))
-            .ToArray();
-
-    private async Task ApplyEndBehaviourAsync(PluginConfiguration configuration, HueCredentials credentials)
-    {
-        var lightIds = ResolveLightIds(_channels);
-        var snapshot = _snapshot;
-        _snapshot = null;
-
-        foreach (var lightId in lightIds)
-        {
-            if (configuration.HueEndBehaviour == Core.Hue.HueEndBehaviour.RestorePreviousState
-                && snapshot?.Lights.FirstOrDefault(l => l.LightId == lightId) is { } entry)
-            {
-                await _lightControl
-                    .RestoreAsync(configuration.HueBridgeHost, credentials.CertificateThumbprintSha256, credentials.ApplicationKey, entry, _shutdown.Token)
-                    .ConfigureAwait(false);
-            }
-            else if (configuration.HueEndBehaviour == Core.Hue.HueEndBehaviour.TurnOff)
-            {
-                await _lightControl
-                    .TurnOffAsync(configuration.HueBridgeHost, credentials.CertificateThumbprintSha256, credentials.ApplicationKey, lightId, _shutdown.Token)
-                    .ConfigureAwait(false);
-            }
-            else
-            {
-                await _lightControl
-                    .ApplyWarmWhiteDimAsync(configuration.HueBridgeHost, credentials.CertificateThumbprintSha256, credentials.ApplicationKey, lightId, _shutdown.Token)
-                    .ConfigureAwait(false);
             }
         }
     }
@@ -825,34 +690,5 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         private readonly System.Diagnostics.Stopwatch _stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         public TimeSpan Elapsed => _stopwatch.Elapsed;
-    }
-
-    /// <summary>
-    /// What was last actually transmitted over the DTLS stream, and the
-    /// current connection retry/backoff state.
-    /// </summary>
-    private sealed class HueStreamState
-    {
-        /// <summary>The last packet actually sent -- resent as a keepalive while paused.</summary>
-        public byte[]? LastPacket;
-
-        /// <summary>Per-channel colours behind <see cref="LastPacket"/>, for <see cref="FadeToBlackAsync"/> to ease down from at stop.</summary>
-        public IReadOnlyDictionary<int, LinearRgb>? LastChannelColours;
-
-        /// <summary>When something was last actually sent, so keepalives are not resent needlessly often.</summary>
-        public DateTimeOffset LastSendAt = DateTimeOffset.MinValue;
-
-        /// <summary>When the next reconnect attempt is allowed, per the exponential backoff in <see cref="ReportTransientFailure"/>.</summary>
-        public DateTimeOffset NextRetryAt = DateTimeOffset.MinValue;
-
-        /// <summary>How many connection attempts have failed in a row -- resets to 0 on a successful connect.</summary>
-        public int ConsecutiveFailures;
-
-        /// <summary>Clears what was transmitted, e.g. on a fresh connect or after fully stopping -- leaves the retry/backoff state alone, since that belongs to the connection attempt itself, not to any one stream of frames.</summary>
-        public void ForgetTransmitted()
-        {
-            LastPacket = null;
-            LastChannelColours = null;
-        }
     }
 }

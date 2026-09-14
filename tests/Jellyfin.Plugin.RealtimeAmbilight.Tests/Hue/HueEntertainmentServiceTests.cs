@@ -221,15 +221,15 @@ public sealed class HueEntertainmentServiceTests : IDisposable
             [1] = new LinearRgb(0.8f, 0.4f, 0.2f),
         };
 
-        var atFullBrightness = HueEntertainmentService.ComputeFadeStepColours(channels, source, remaining: 1f);
+        var atFullBrightness = HueFrameTransmitter.ComputeFadeStepColours(channels, source, remaining: 1f);
         Assert.Equal(new LinearRgb(1f, 0.5f, 0.25f), atFullBrightness[0].Colour);
         Assert.Equal(new LinearRgb(0.8f, 0.4f, 0.2f), atFullBrightness[1].Colour);
 
-        var atHalfway = HueEntertainmentService.ComputeFadeStepColours(channels, source, remaining: 0.5f);
+        var atHalfway = HueFrameTransmitter.ComputeFadeStepColours(channels, source, remaining: 0.5f);
         Assert.Equal(new LinearRgb(0.5f, 0.25f, 0.125f), atHalfway[0].Colour);
         Assert.Equal(new LinearRgb(0.4f, 0.2f, 0.1f), atHalfway[1].Colour);
 
-        var atBlack = HueEntertainmentService.ComputeFadeStepColours(channels, source, remaining: 0f);
+        var atBlack = HueFrameTransmitter.ComputeFadeStepColours(channels, source, remaining: 0f);
         Assert.Equal(default, atBlack[0].Colour);
         Assert.Equal(default, atBlack[1].Colour);
     }
@@ -243,7 +243,7 @@ public sealed class HueEntertainmentServiceTests : IDisposable
         };
         var source = new Dictionary<int, LinearRgb>();
 
-        var result = HueEntertainmentService.ComputeFadeStepColours(channels, source, remaining: 1f);
+        var result = HueFrameTransmitter.ComputeFadeStepColours(channels, source, remaining: 1f);
 
         Assert.Equal(default, Assert.Single(result).Colour);
     }

@@ -1,5 +1,15 @@
 # Current state
 
+## 2026-09-14 (later): split HueEntertainmentService.cs into three focused classes
+
+`HueEntertainmentService.cs` had grown to 858 lines across this session's several rounds of fixes (black-level floor, fade in/out, position resolution, the `HueStreamState` grouping refactor). Split out the two most self-contained concerns, both new files under `Hue/`:
+
+- **`HueSessionSnapshotCoordinator`** (internal): reading a light's state before streaming takes over and applying the configured end-of-session behaviour (restore/turn off/warm-white-dim) afterward -- `ResolveLightIds`, `CaptureAsync`, `ApplyEndBehaviourAsync`. Pure light-state bookkeeping via `IHueLightControl`; knows nothing about DTLS, the pump loop, or the state machine.
+- **`HueFrameTransmitter`** (public, for the same reason `ComputeFadeStepColours` already was -- no `InternalsVisibleTo` exists in this project, and the test project is a separate assembly): the pending-frame scheduling queue, packet building, and keepalive pacing that used to be `SendFrameOrKeepAliveAsync`'s own inline logic, plus `ComputeFadeStepColours` (moved from `HueEntertainmentService`, test file updated to call it there instead).
+- The old `HueStreamState` nested class is gone: its transmission fields (`LastPacket`/`LastChannelColours`/`LastSendAt`) moved into `HueFrameTransmitter`, and its two backoff fields (`ConsecutiveFailures`/`NextRetryAt`) became plain fields directly on `HueEntertainmentService` -- with only two fields left, a wrapper object no longer earned its keep.
+
+`HueEntertainmentService` itself (694 lines, down from 858) is left as the actual orchestrator: the pump loop, the state machine dispatch, and the connect/stop lifecycle -- wiring the two new collaborators together rather than doing their work inline. Pure mechanical extraction, no behaviour change: 242/242 tests passed before and after, with no test rewritten beyond the one call-site rename (`HueEntertainmentService.ComputeFadeStepColours` -> `HueFrameTransmitter.ComputeFadeStepColours`).
+
 ## 2026-09-14: per-section "Reset to defaults", and closing the defaults-drift bug for good
 
 - **Per-section reset, replacing the one global button**: each of the four settings modals (TV, WLED, Ambilight/colour calibration, Hue) and the Live Tuning panel now has its own "Reset to defaults" button, resetting only that section's own fields against a confirm dialog, instead of one button at the bottom of the page that reset everything (LED layout, colour calibration, bound TV) at once. A paired Hue bridge's own host/id/entertainment-area selection is never touched by any reset -- unlinking it stays a separate, explicit action, same as before.
