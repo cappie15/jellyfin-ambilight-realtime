@@ -460,14 +460,18 @@ export default function (view) {
     // line per colour no matter what -- see .raColourCell's own CSS remarks.
     function renderColourDeviation() {
         // Clamped to match PerimeterColourTuning.Anchor()'s own server-side
-        // range (hue +-21 deg, brightness/intensity 50-100%) -- a value
-        // saved outside that range by an older build would otherwise show a
-        // number here that is not actually what gets applied.
+        // range (hue +-23 deg, brightness 20-100%, intensity 50-220%) -- a
+        // value saved outside that range by an older build would otherwise
+        // show a number here that is not actually what gets applied. This
+        // clamp had drifted stale before (still +-21/50-100/50-100 after the
+        // server side moved to +-23/20-100/50-220), silently under-reporting
+        // every anchor's own real, applied deviation once any of Brightness's
+        // widened floor or Intensity's widened ceiling was actually used.
         const anchors = hueAnchorColours.map(colour => ({
             colour,
-            hue: Math.max(-21, Math.min(21, hueAnchors[`${colour}HueShiftDegrees`] || 0)),
-            brightness: Math.max(50, Math.min(100, hueAnchors[`${colour}BrightnessPercent`] ?? 100)),
-            intensity: Math.max(50, Math.min(100, hueAnchors[`${colour}IntensityPercent`] ?? 100))
+            hue: Math.max(-23, Math.min(23, hueAnchors[`${colour}HueShiftDegrees`] || 0)),
+            brightness: Math.max(20, Math.min(100, hueAnchors[`${colour}BrightnessPercent`] ?? 100)),
+            intensity: Math.max(50, Math.min(220, hueAnchors[`${colour}IntensityPercent`] ?? 100))
         }));
 
         const signed = value => `${value > 0 ? "+" : ""}${value}%`;
@@ -864,7 +868,7 @@ export default function (view) {
         return `<div style="border-left:3px solid currentColor;padding-left:.8em;margin-bottom:1em">
             <strong>${colourName}</strong>
             <div class="inputContainer">
-                <input is="emby-input" id="${idPrefix}Hue" type="range" min="-21" max="21" step="1" label="Hue" />
+                <input is="emby-input" id="${idPrefix}Hue" type="range" min="-23" max="23" step="1" label="Hue" />
                 <div class="fieldDescription">${spec.lowLabel} &harr; <strong id="${idPrefix}HueValue"></strong> &harr; ${spec.highLabel}</div>
             </div>
             <div class="inputContainer">
@@ -872,7 +876,7 @@ export default function (view) {
                 <div class="fieldDescription">Now: <strong id="${idPrefix}BrightnessValue"></strong></div>
             </div>
             <div class="inputContainer">
-                <input is="emby-input" id="${idPrefix}Intensity" type="range" min="50" max="200" step="1" label="Intensity" />
+                <input is="emby-input" id="${idPrefix}Intensity" type="range" min="50" max="220" step="1" label="Intensity" />
                 <div class="fieldDescription">Now: <strong id="${idPrefix}IntensityValue"></strong></div>
             </div>
         </div>`;

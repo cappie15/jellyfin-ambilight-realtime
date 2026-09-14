@@ -92,12 +92,12 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// Fraction of each axis, as a percentage, sampled inward from every edge.
     /// <see cref="EdgeSampler.DefaultDepthPercent"/> (ten percent) was the
     /// original recommendation -- enough of the picture to be stable without
-    /// letting the centre dominate an edge -- but real-room tuning settled on
-    /// 27 instead (revised up from an earlier 5 once more real content had
-    /// been watched against it), and this default now reflects that rather
-    /// than the original untested guess.
+    /// letting the centre dominate an edge -- but real-room tuning has moved
+    /// this value more than once as more real content was watched against it
+    /// (5, then 27, now 7); this default tracks whatever that tuning most
+    /// recently settled on rather than the original untested guess.
     /// </summary>
-    public int SamplingDepthPercent { get; set; } = 27;
+    public int SamplingDepthPercent { get; set; } = 7;
 
     /// <summary>
     /// Sends byte values proportional to light output, which is what a
@@ -115,13 +115,13 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// a bright HDR screen otherwise always read as dim, since nothing else
     /// in the pipeline can push a pixel brighter than it already is.
     /// </summary>
-    public int BrightnessPercent { get; set; } = 130;
+    public int BrightnessPercent { get; set; } = 158;
 
     /// <summary>
     /// Colour intensity as a percentage. Above 100 pushes each colour away from
     /// its own luminance, which deepens it without changing how bright it is.
     /// </summary>
-    public int SaturationPercent { get; set; } = 185;
+    public int SaturationPercent { get; set; } = 175;
 
     /// <summary>
     /// Per-channel gains as percentages. Used today only by the wizard's
@@ -131,45 +131,47 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// <c>Hue*</c>/<c>...Brightness*</c>/<c>...Intensity*</c> properties
     /// below instead -- see <see cref="Core.Color.PerimeterColourTuning"/>.
     /// </summary>
-    public int RedGainPercent { get; set; } = 150;
+    public int RedGainPercent { get; set; } = 127;
 
     public int GreenGainPercent { get; set; } = 100;
 
-    public int BlueGainPercent { get; set; } = 50;
+    public int BlueGainPercent { get; set; } = 73;
 
     /// <summary>
     /// The colour-tuning wizard's six primary/secondary anchors: how far to
-    /// rotate that colour's own hue (degrees, clamped to ±30 -- half the 60°
-    /// spacing between anchors, so one colour's correction cannot cross into
-    /// its neighbour's), and that colour's own brightness/intensity
-    /// (saturation) multipliers. All default to the identity (0°, 100%,
-    /// 100%); together they build the <see cref="Core.Color.HueCorrectionCurve"/>
-    /// that is now WLED's general colour correction, applied before
-    /// brightness/saturation/wall-colour/per-side trims, which are unchanged.
+    /// rotate that colour's own hue (degrees, clamped to ±23 -- see
+    /// <see cref="Core.Color.PerimeterColourTuning"/>'s own remarks on that
+    /// range), and that colour's own brightness/intensity (saturation)
+    /// multipliers. Defaults below reflect real-room tuning against actual
+    /// HDR10 content (validated 2026-09-14) rather than the identity
+    /// (0°, 100%, 100%) every anchor started at; together they build the
+    /// <see cref="Core.Color.HueCorrectionCurve"/> that is now WLED's
+    /// general colour correction, applied before brightness/saturation/
+    /// wall-colour/per-side trims, which are unchanged.
     /// </summary>
     public int RedHueShiftDegrees { get; set; }
     public int RedBrightnessPercent { get; set; } = 100;
-    public int RedIntensityPercent { get; set; } = 100;
+    public int RedIntensityPercent { get; set; } = 105;
 
-    public int GreenHueShiftDegrees { get; set; }
+    public int GreenHueShiftDegrees { get; set; } = -2;
     public int GreenBrightnessPercent { get; set; } = 100;
-    public int GreenIntensityPercent { get; set; } = 100;
+    public int GreenIntensityPercent { get; set; } = 121;
 
-    public int BlueHueShiftDegrees { get; set; }
-    public int BlueBrightnessPercent { get; set; } = 100;
-    public int BlueIntensityPercent { get; set; } = 100;
+    public int BlueHueShiftDegrees { get; set; } = 2;
+    public int BlueBrightnessPercent { get; set; } = 38;
+    public int BlueIntensityPercent { get; set; } = 173;
 
-    public int YellowHueShiftDegrees { get; set; }
+    public int YellowHueShiftDegrees { get; set; } = -3;
     public int YellowBrightnessPercent { get; set; } = 100;
-    public int YellowIntensityPercent { get; set; } = 100;
+    public int YellowIntensityPercent { get; set; } = 172;
 
-    public int CyanHueShiftDegrees { get; set; }
+    public int CyanHueShiftDegrees { get; set; } = -5;
     public int CyanBrightnessPercent { get; set; } = 100;
-    public int CyanIntensityPercent { get; set; } = 100;
+    public int CyanIntensityPercent { get; set; } = 200;
 
-    public int MagentaHueShiftDegrees { get; set; }
-    public int MagentaBrightnessPercent { get; set; } = 100;
-    public int MagentaIntensityPercent { get; set; } = 100;
+    public int MagentaHueShiftDegrees { get; set; } = 21;
+    public int MagentaBrightnessPercent { get; set; } = 53;
+    public int MagentaIntensityPercent { get; set; } = 198;
 
     /// <summary>
     /// The wizard's 20%-grey and 40%-grey steps, right after White: a strip's
@@ -295,7 +297,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// Engine" before building this -- see
     /// <see cref="Core.Output.WledTemporalSmoother"/>.
     /// </summary>
-    public int WledSmoothingMilliseconds { get; set; } = 150;
+    public int WledSmoothingMilliseconds { get; set; } = 1200;
 
     /// <summary>
     /// Sends RGBW32 instead of RGB24, so a strip with its own white LEDs
@@ -386,7 +388,7 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// it applies immediately, unlike <see cref="SendWhiteChannel"/>'s own
     /// hardware-shaped settings.
     /// </summary>
-    public int HueResponsePercent { get; set; }
+    public int HueResponsePercent { get; set; } = 50;
 
     /// <summary>
     /// Below this fraction of perceptual brightness, a Hue light goes to
@@ -396,8 +398,8 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// <see cref="BlackLevelFloorPercent"/>. Replaces an earlier fixed 1%
     /// minimum brightness that could never actually reach true black at
     /// all, which is exactly why Hue was reported as never going
-    /// completely dark; 1% is kept as the default only because it matches
-    /// that earlier behaviour, not because it is otherwise special.
+    /// completely dark; the default was promoted to 18% once real-room
+    /// tuning (2026-09-14) settled there.
     /// </summary>
-    public int HueBlackLevelFloorPercent { get; set; } = 1;
+    public int HueBlackLevelFloorPercent { get; set; } = 18;
 }

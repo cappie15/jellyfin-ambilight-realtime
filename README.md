@@ -194,15 +194,16 @@ actually affects — the two run independent pipelines end to end (see
 
 | Setting | Default | Notes |
 |---|---|---|
-| Ambilight brightness | 130% (1-200%) | Above 100% pushes already-dim scenes brighter than the source picture — physical LEDs next to a bright HDR screen otherwise always read as dim, since nothing else in the pipeline can push a pixel brighter than it already is. |
-| Ambilight colour intensity | 185% | Pushes each colour away from its own luminance, deepening it without changing brightness. |
+| Ambilight brightness | 158% (1-200%) | Above 100% pushes already-dim scenes brighter than the source picture — physical LEDs next to a bright HDR screen otherwise always read as dim, since nothing else in the pipeline can push a pixel brighter than it already is. |
+| Ambilight colour intensity | 175% | Pushes each colour away from its own luminance, deepening it without changing brightness. |
 | Ambilight black level floor | 3% | Picture edges darker than this go fully off instead of glowing dim; measured perceptually (what "3%" means on a waveform monitor), not as a raw linear-light fraction. |
 | Ambilight white LED strength | 20% | Only shown once [RGBW](#rgbw-strips-send-a-real-white-signal) is on. |
-| Ambilight sampling edge range | 27% | Fraction of each axis sampled inward from the active-picture edge. Lower is more literal, higher is calmer. |
-| Ambilight smoothing | 150 ms (0-2000 ms) | Eases each physical LED toward a newly sampled colour instead of snapping to it. |
+| Ambilight sampling edge range | 7% | Fraction of each axis sampled inward from the active-picture edge. Lower is more literal, higher is calmer. |
+| Ambilight smoothing | 1200 ms (0-2000 ms) | Eases each physical LED toward a newly sampled colour instead of snapping to it. |
 | Ambilight minimum colour hold | 100 ms | A colour must persist in the picture at least this long before the LEDs follow it, so a single flash frame cannot snap the wall to a colour barely there. |
 | Hue brightness | 188% (1-200%) | Same reasoning as Ambilight brightness, independent of it. |
-| Hue responsivity | 0 (0-100) | 0 is very reactive, 100 is beautifully smooth. |
+| Hue responsivity | 50 (0-100) | 0 is very reactive, 100 is beautifully smooth. |
+| Hue black level floor | 18% | Same meaning as Ambilight's own black level floor, applied to the Hue lights instead of the LED strip. |
 
 These defaults reflect a validated real-room baseline rather than the
 original untested guesses; every field can still be moved from there.

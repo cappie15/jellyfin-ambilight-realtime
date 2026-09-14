@@ -202,20 +202,24 @@ public readonly record struct PerimeterColourTuning(
             Anchor(MagentaHueShiftDegrees, MagentaBrightnessPercent, MagentaIntensityPercent));
 
     /// <summary>
-    /// Hue-shift clamped to +-21 degrees (70% of the previous +-30, per the
-    /// operator's own hands-on finding: the extreme +-30 was never actually
-    /// the correct colour, only ever too far off). Brightness stays capped
-    /// at 100%: a boost above the calibration photo's own value was never
-    /// meaningful ("de uiterste waarden kunnen nooit de correcte kleur
-    /// zijn"), only dimming down from it is. Its floor was widened from 50%
-    /// to 20% on the operator's own finding that a secondary colour
-    /// (Yellow/Cyan/Magenta) lights two physical LED channels at once
-    /// rather than one, so it can run measurably brighter than a primary to
-    /// begin with and 50% was not always enough headroom to dim it back
-    /// down to match.
+    /// Hue-shift clamped to +-23 degrees (widened from an earlier +-21 once
+    /// real-room tuning against actual HDR10 content, 2026-09-14, pushed
+    /// Magenta's own shift to exactly that +-21 boundary -- the same reason
+    /// Intensity's own ceiling below was widened -- itself down from a +-30
+    /// this project started with, per the operator's own earlier hands-on
+    /// finding that the extreme +-30 was never actually the correct colour,
+    /// only ever too far off). Brightness stays capped at 100%: a boost
+    /// above the calibration photo's own value was never meaningful ("de
+    /// uiterste waarden kunnen nooit de correcte kleur zijn"), only dimming
+    /// down from it is. Its floor was widened from 50% to 20% on the
+    /// operator's own finding that a secondary colour (Yellow/Cyan/Magenta)
+    /// lights two physical LED channels at once rather than one, so it can
+    /// run measurably brighter than a primary to begin with and 50% was not
+    /// always enough headroom to dim it back down to match.
     /// <para>
     /// Intensity's ceiling, unlike Brightness's, was widened past 100% (to
-    /// 200%, matching <see cref="SaturationPercent"/>'s own global range) --
+    /// 220%, 10% past the range's own previous 200% ceiling, once real-room
+    /// tuning against actual HDR10 content pushed Cyan to exactly 200% --
     /// the swatch's own 100% saturation is a mathematical ceiling, not a
     /// physical one: a real strip's gamut at a given hue (magenta especially,
     /// which needs simultaneous red and blue channel drive) can render
@@ -227,9 +231,9 @@ public readonly record struct PerimeterColourTuning(
     /// </summary>
     private static HueAnchor Anchor(int hueShiftDegrees, int brightnessPercent, int intensityPercent)
         => new(
-            Math.Clamp(hueShiftDegrees, -21, 21),
+            Math.Clamp(hueShiftDegrees, -23, 23),
             Percent(brightnessPercent, 20, 100),
-            Percent(intensityPercent, 50, 200));
+            Percent(intensityPercent, 50, 220));
 
     private static ColourAdjustment Side(int brightness, int red, int green, int blue)
         => new(
