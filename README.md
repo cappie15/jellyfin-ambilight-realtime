@@ -173,8 +173,11 @@ Packaging implementation: [build/package.sh](build/package.sh).
 
 ## Configuration
 
-Everything is configured from the plugin's own page in the Jellyfin dashboard.
-Each field carries its own explanation and names its default.
+Everything is configured from the plugin's own page in the Jellyfin dashboard,
+server-side — no companion app, nothing installed on the TV or any other
+device. Each field carries its own explanation and names its default.
+
+![The settings page's four status cards: TV, WLED, Plugin and Philips Hue](docs/images/settings-overview-cards.png)
 
 ### Live tuning
 
@@ -182,6 +185,8 @@ A dedicated panel below the signal chain holds the fields worth adjusting
 while actually watching the result: every one of them applies to the running
 picture immediately and saves itself a moment after you stop moving it, no
 restart and no Save button.
+
+![The live pipeline status and the Live tuning panel](docs/images/settings-signal-chain-tuning.png)
 
 Every field is named **Ambilight ...** or **Hue ...** to say which output it
 actually affects — the two run independent pipelines end to end (see
@@ -212,7 +217,7 @@ original untested guesses; every field can still be moved from there.
 | LED delay | 0 ms | Raise only when the LEDs visibly run ahead of the picture. Applies immediately. |
 | LED updates | 30 fps | The output rate; **restart Jellyfin** after changing. Analysis itself is no longer separately configurable — it always follows the source's own frame rate. |
 | Hold while paused | on | Holds the last colours; keepalive frames are sent every second. Off releases via WLED's timeout. Applies immediately. |
-| Fade out / fade in | fixed, 2.5 s each | Fades to black before transmission ceases at stop, and fades up from black over the same span at the start of a new session — not a picture-relative fade (nothing to fade toward yet at start), a brightness ramp applied to whatever real content is already arriving. Not user-configurable. |
+| Fade out / fade in | fixed, 2.5 s / 2 s | Eases to black before transmission ceases at stop, from whatever the strip actually last showed. At the start of a new session there is usually nothing real to fade *from* (a prior stop already faded to black and released), so claiming the strip sends black outright rather than guessing at a starting colour; a real fade only runs when something genuine is actually known to fade from. Not user-configurable. |
 | LED counts | 265 / 150 / 266 / 150 | Clockwise from the top-left corner, viewed from the front. **Restart Jellyfin** after changing. |
 | Analysis width | 160 px | Height follows from 16:9, so 160 × 90. Takes effect on the next playback session, no restart needed. |
 | Ignore black borders | on | Detects letterbox/pillarbox bars before sampling. Applies immediately. |
@@ -226,18 +231,27 @@ specific to the developer's installation.
 
 ### Room calibration
 
+![The colour calibration wizard, mid-run](docs/images/settings-calibration-wizard.png)
+
 The **Ambilight** card's "Color calibration" section walks a nine-step
-wizard -- white, then every RGB primary and secondary (red, yellow, green,
-cyan, blue, magenta) -- each against a plain, rendered solid-colour swatch at
-that colour's own canonical hue, with three sliders per colour: a **hue**
-nudge (how far this colour actually sits from where the strip should show
-it, e.g. "a touch pinker"), its own **brightness**, and its own
-**intensity**. Those six calibrated points build one smooth correction curve
-around the whole colour wheel -- shown back to the operator as an actual
-chart once the wizard finishes, not just numbers -- so a colour between two
-calibrated points is corrected smoothly too, not just the six points
-themselves. White keeps its own, separate colour-temperature control
-(warmer/cooler).
+wizard, each step against a plain, rendered solid-colour swatch:
+
+1. **White** -- a colour-temperature slider (warmer/cooler), its own
+   red/blue push-pull.
+2. **20% grey** and **40% grey** -- an independent temperature *and* tint
+   (green/magenta) correction at those two brightness levels, for a strip
+   whose white balance drifts with brightness rather than staying flat at
+   whatever White alone was tuned against.
+3. **Red, yellow, green, cyan, blue, magenta** -- three sliders per colour: a
+   **hue** nudge (how far this colour actually sits from where the strip
+   should show it, e.g. "a touch pinker"), its own **brightness**, and its
+   own **intensity** (can exceed the swatch's own 100% saturation, since a
+   real strip's gamut at a given hue can render less vivid than that
+   mathematical ideal). Those six calibrated points build one smooth
+   correction curve around the whole colour wheel -- shown back to the
+   operator as an actual chart once the wizard finishes, not just numbers --
+   so a colour between two calibrated points is corrected smoothly too, not
+   just the six points themselves.
 
 Click **Start calibration** first -- the TV link is only reachable while a
 calibration is actually running. On an internet-facing Jellyfin an always-on,

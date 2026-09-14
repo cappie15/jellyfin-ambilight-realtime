@@ -1,8 +1,17 @@
-# README illustration
+# README images
 
 `ambilight-hero.png` is an AI-generated concept illustration, created with the
 built-in image generation tool. It is not a photograph of the development setup
 or evidence of the plugin's output quality.
+
+The other three are real screenshots of the settings page (captured with
+Playwright against the reference host, 2026-09-14), not illustrations:
+
+- `settings-overview-cards.png` -- the four status cards (TV, WLED, Plugin,
+  Philips Hue).
+- `settings-signal-chain-tuning.png` -- the live pipeline status and the Live
+  tuning panel.
+- `settings-calibration-wizard.png` -- the colour calibration wizard, mid-run.
 
 Generation prompt:
 
