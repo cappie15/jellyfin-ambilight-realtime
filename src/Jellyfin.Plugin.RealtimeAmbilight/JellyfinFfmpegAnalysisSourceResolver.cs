@@ -69,11 +69,17 @@ public sealed class JellyfinFfmpegAnalysisSourceResolver : IFfmpegAnalysisSource
         // was never going to fill with genuinely new frames anyway.
         var videoStream = mediaSource.VideoStream;
         double? sourceFramesPerSecond = videoStream?.RealFrameRate ?? videoStream?.AverageFrameRate;
+        var videoProfile = videoStream is null ? null : HdrVideoProfileMapper.Resolve(videoStream.VideoRangeType, _logger);
+        if (videoProfile is not null)
+        {
+            _logger.LogInformation("Realtime Ambilight classified {Path} as {VideoRangeType}, using the {Profile} analysis graph.", mediaSource.Path, videoStream!.VideoRangeType, videoProfile);
+        }
 
         return new FfmpegAnalysisSource(
             _mediaEncoder.EncoderPath,
             mediaSource.Path,
             CreateFrameOptions(sourceFramesPerSecond),
+            VideoProfile: videoProfile,
             SourceFramesPerSecond: sourceFramesPerSecond);
     }
 
