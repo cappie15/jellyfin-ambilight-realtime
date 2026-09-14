@@ -69,11 +69,15 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     private HueCredentials? _credentials;
     private IReadOnlyList<HueEntertainmentChannel> _channels = [];
     private IReadOnlyDictionary<Guid, Guid> _lightIdsByServiceId = new Dictionary<Guid, Guid>();
-    private byte[]? _lastPacket;
-    private IReadOnlyDictionary<int, LinearRgb>? _lastChannelColours;
-    private DateTimeOffset _lastSend = DateTimeOffset.MinValue;
-    private DateTimeOffset _nextRetryAt = DateTimeOffset.MinValue;
-    private int _consecutiveFailures;
+    /// <summary>
+    /// What was last actually transmitted, and the current connection
+    /// retry/backoff state -- grouped from five separate fields into one
+    /// small mutable object, since they were being read and reset together
+    /// often enough (every connect, every stop, every transient failure)
+    /// that keeping them as scattered fields obscured which ones belonged
+    /// together.
+    /// </summary>
+    private readonly HueStreamState _streamState = new();
 
     /// <summary>
     /// Mirrors <c>JellyfinWledOutputService.RunPumpAsync</c>'s own
@@ -266,7 +270,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                     _stateMachine.StopRequested();
                     _lifecycleTask = StopAsync(configuration);
                 }
-                else if (DateTimeOffset.UtcNow >= _nextRetryAt && LifecycleTaskIsFree())
+                else if (DateTimeOffset.UtcNow >= _streamState.NextRetryAt && LifecycleTaskIsFree())
                 {
                     _stateMachine.ConnectRequested();
                     _lifecycleTask = ConnectAndStreamAsync(configuration, currentSession);
@@ -432,9 +436,8 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             }
 
             _channel = channel;
-            _consecutiveFailures = 0;
-            _lastPacket = null;
-            _lastChannelColours = null;
+            _streamState.ConsecutiveFailures = 0;
+            _streamState.ForgetTransmitted();
             _pendingFrames.Clear();
             _stateMachine.Connected();
             _logger.LogInformation("Hue Entertainment connected to {ConfigurationName} on {Host}.", selected.Name, configuration.HueBridgeHost);
@@ -532,16 +535,16 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                     colours.TryGetValue(c.ChannelId, out var colour) ? colour : default(LinearRgb)))
                 .ToArray();
             packet = HueStreamPacketizer.Packetize(configuration.HueEntertainmentConfigurationId, channelColours)[0];
-            _lastPacket = packet;
-            _lastChannelColours = colours;
+            _streamState.LastPacket = packet;
+            _streamState.LastChannelColours = colours;
         }
-        else if (DateTimeOffset.UtcNow - _lastSend < KeepAliveInterval)
+        else if (DateTimeOffset.UtcNow - _streamState.LastSendAt < KeepAliveInterval)
         {
             return; // Paused, or no new frame yet: hold, do not resend every 40 ms.
         }
         else
         {
-            packet = _lastPacket; // Paused: keep the entertainment session valid with the last colours.
+            packet = _streamState.LastPacket; // Paused: keep the entertainment session valid with the last colours.
         }
 
         if (packet is null)
@@ -552,7 +555,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         try
         {
             _channel.SendPacket(packet);
-            _lastSend = DateTimeOffset.UtcNow;
+            _streamState.LastSendAt = DateTimeOffset.UtcNow;
             _sendRateMeter.Increment();
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -564,11 +567,11 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
 
     private void ReportTransientFailure(HueEntertainmentIssue issue)
     {
-        _consecutiveFailures++;
-        var exponent = Math.Min(_consecutiveFailures, MaximumConsecutiveFailuresBeforeSlowestBackoff);
+        _streamState.ConsecutiveFailures++;
+        var exponent = Math.Min(_streamState.ConsecutiveFailures, MaximumConsecutiveFailuresBeforeSlowestBackoff);
         var backoffSeconds = Math.Min(MaximumBackoff.TotalSeconds, MinimumBackoff.TotalSeconds * Math.Pow(2, exponent - 1));
         var jitterSeconds = backoffSeconds * (0.8 + (_jitter.NextDouble() * 0.4)); // +/-20% jitter
-        _nextRetryAt = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(jitterSeconds);
+        _streamState.NextRetryAt = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(jitterSeconds);
         _stateMachine.ConnectionLost(issue);
     }
 
@@ -595,7 +598,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
 
     private async Task StopAsync(PluginConfiguration configuration)
     {
-        if (_channel is not null && _lastChannelColours is { Count: > 0 } lastColours)
+        if (_channel is not null && _streamState.LastChannelColours is { Count: > 0 } lastColours)
         {
             try
             {
@@ -622,7 +625,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
 
         _frameProcessor?.Reset();
         _pendingFrames.Clear();
-        _lastChannelColours = null;
+        _streamState.ForgetTransmitted();
 
         try
         {
@@ -806,5 +809,34 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         private readonly System.Diagnostics.Stopwatch _stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         public TimeSpan Elapsed => _stopwatch.Elapsed;
+    }
+
+    /// <summary>
+    /// What was last actually transmitted over the DTLS stream, and the
+    /// current connection retry/backoff state.
+    /// </summary>
+    private sealed class HueStreamState
+    {
+        /// <summary>The last packet actually sent -- resent as a keepalive while paused.</summary>
+        public byte[]? LastPacket;
+
+        /// <summary>Per-channel colours behind <see cref="LastPacket"/>, for <see cref="FadeToBlackAsync"/> to ease down from at stop.</summary>
+        public IReadOnlyDictionary<int, LinearRgb>? LastChannelColours;
+
+        /// <summary>When something was last actually sent, so keepalives are not resent needlessly often.</summary>
+        public DateTimeOffset LastSendAt = DateTimeOffset.MinValue;
+
+        /// <summary>When the next reconnect attempt is allowed, per the exponential backoff in <see cref="ReportTransientFailure"/>.</summary>
+        public DateTimeOffset NextRetryAt = DateTimeOffset.MinValue;
+
+        /// <summary>How many connection attempts have failed in a row -- resets to 0 on a successful connect.</summary>
+        public int ConsecutiveFailures;
+
+        /// <summary>Clears what was transmitted, e.g. on a fresh connect or after fully stopping -- leaves the retry/backoff state alone, since that belongs to the connection attempt itself, not to any one stream of frames.</summary>
+        public void ForgetTransmitted()
+        {
+            LastPacket = null;
+            LastChannelColours = null;
+        }
     }
 }
