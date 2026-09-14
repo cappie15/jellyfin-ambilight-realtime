@@ -1,3 +1,4 @@
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Color;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Diagnostics;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Model;
@@ -204,6 +205,47 @@ public sealed class HueEntertainmentServiceTests : IDisposable
         Assert.Equal(lightId, Assert.Single(lightControl.WarmWhiteDimmedLightIds));
         var channel = Assert.Single(channelFactory.Created);
         Assert.True(channel.Disposed);
+    }
+
+    [Fact]
+    public void ComputeFadeStepColoursScalesEveryKnownChannelByTheRemainingFraction()
+    {
+        var channels = new[]
+        {
+            new HueEntertainmentChannel(0, new HuePosition(0, 0, 0), [new HueChannelMember(Guid.NewGuid(), 0)]),
+            new HueEntertainmentChannel(1, new HuePosition(0, 0, 0), [new HueChannelMember(Guid.NewGuid(), 0)]),
+        };
+        var source = new Dictionary<int, LinearRgb>
+        {
+            [0] = new LinearRgb(1f, 0.5f, 0.25f),
+            [1] = new LinearRgb(0.8f, 0.4f, 0.2f),
+        };
+
+        var atFullBrightness = HueEntertainmentService.ComputeFadeStepColours(channels, source, remaining: 1f);
+        Assert.Equal(new LinearRgb(1f, 0.5f, 0.25f), atFullBrightness[0].Colour);
+        Assert.Equal(new LinearRgb(0.8f, 0.4f, 0.2f), atFullBrightness[1].Colour);
+
+        var atHalfway = HueEntertainmentService.ComputeFadeStepColours(channels, source, remaining: 0.5f);
+        Assert.Equal(new LinearRgb(0.5f, 0.25f, 0.125f), atHalfway[0].Colour);
+        Assert.Equal(new LinearRgb(0.4f, 0.2f, 0.1f), atHalfway[1].Colour);
+
+        var atBlack = HueEntertainmentService.ComputeFadeStepColours(channels, source, remaining: 0f);
+        Assert.Equal(default, atBlack[0].Colour);
+        Assert.Equal(default, atBlack[1].Colour);
+    }
+
+    [Fact]
+    public void ComputeFadeStepColoursReturnsBlackForAChannelAbsentFromSource()
+    {
+        var channels = new[]
+        {
+            new HueEntertainmentChannel(0, new HuePosition(0, 0, 0), [new HueChannelMember(Guid.NewGuid(), 0)]),
+        };
+        var source = new Dictionary<int, LinearRgb>();
+
+        var result = HueEntertainmentService.ComputeFadeStepColours(channels, source, remaining: 1f);
+
+        Assert.Equal(default, Assert.Single(result).Colour);
     }
 
     [Fact]

@@ -662,13 +662,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
         for (var step = 1; step <= stepCount; step++)
         {
             var remaining = (float)(stepCount - step) / stepCount;
-            var channelColours = _channels
-                .Select(c => new HueStreamPacketizer.ChannelColour(
-                    (byte)c.ChannelId,
-                    source.TryGetValue(c.ChannelId, out var colour)
-                        ? new LinearRgb(colour.Red * remaining, colour.Green * remaining, colour.Blue * remaining)
-                        : default))
-                .ToArray();
+            var channelColours = ComputeFadeStepColours(_channels, source, remaining);
             var packet = HueStreamPacketizer.Packetize(configuration.HueEntertainmentConfigurationId, channelColours)[0];
             _channel?.SendPacket(packet);
             if (step < stepCount)
@@ -677,6 +671,28 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
             }
         }
     }
+
+    /// <summary>
+    /// One fade-out step's worth of channel colours: each of <paramref name="source"/>'s
+    /// remembered colours scaled toward black by <paramref name="remaining"/>
+    /// (1 = unscaled, 0 = black), keyed to every one of <paramref name="channels"/>
+    /// so a channel with no remembered colour still gets an explicit black
+    /// entry rather than being silently omitted from the packet. Pure
+    /// function, split out from <see cref="FadeToBlackAsync"/> specifically
+    /// so the actual ramp values are directly testable without needing a
+    /// real DTLS channel or the pump's own timing.
+    /// </summary>
+    public static HueStreamPacketizer.ChannelColour[] ComputeFadeStepColours(
+        IReadOnlyList<HueEntertainmentChannel> channels,
+        IReadOnlyDictionary<int, LinearRgb> source,
+        float remaining)
+        => channels
+            .Select(c => new HueStreamPacketizer.ChannelColour(
+                (byte)c.ChannelId,
+                source.TryGetValue(c.ChannelId, out var colour)
+                    ? new LinearRgb(colour.Red * remaining, colour.Green * remaining, colour.Blue * remaining)
+                    : default))
+            .ToArray();
 
     private async Task ApplyEndBehaviourAsync(PluginConfiguration configuration, HueCredentials credentials)
     {
