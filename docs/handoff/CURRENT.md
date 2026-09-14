@@ -1,5 +1,13 @@
 # Current state
 
+## 2026-09-14: per-section "Reset to defaults", and closing the defaults-drift bug for good
+
+- **Per-section reset, replacing the one global button**: each of the four settings modals (TV, WLED, Ambilight/colour calibration, Hue) and the Live Tuning panel now has its own "Reset to defaults" button, resetting only that section's own fields against a confirm dialog, instead of one button at the bottom of the page that reset everything (LED layout, colour calibration, bound TV) at once. A paired Hue bridge's own host/id/entertainment-area selection is never touched by any reset -- unlinking it stays a separate, explicit action, same as before.
+- **Root-caused and closed the actual defaults-drift bug this project has now hit at least twice** (see the two "default promotion round" entries below this one): config.js carried two of its own hand-written copies of PluginConfiguration's defaults (`factoryDefaultConfiguration()` for the old reset button, and a `defaults` fallback object used when populating the form) that both silently drifted out of sync with the real C# defaults every time one changed there -- confirmed live: `BrightnessPercent` read 158 in config.js against a real default of 130, `SaturationPercent` 140 vs 185, `SamplingDepthPercent` 5 vs 27, `OutputFramesPerSecond` 30 vs 60, `WledSmoothingMilliseconds` 110 vs 150, `WhiteChannelStrengthPercent` 50 vs 20, `HueBrightnessPercent` 169 vs 188, `HueResponsePercent` 20 vs 0, `AnalysisWidth`/`AnalysisHeight` 160×90 vs 320×180 -- meaning the old global reset button would have silently reset those fields to the *wrong*, stale numbers. New `GET RealtimeAmbilight/Discovery/DefaultConfiguration` endpoint returns `new PluginConfiguration()` directly; config.js fetches it once and uses it as the only source of truth for every reset button and the form's own missing-field fallback. Structurally cannot drift again the way the two hand-copied lists did.
+- **Fixed the same drift in the Live Tuning panel's own on-screen "Default: X" labels**, which had quietly gone stale the same way (158%/140%/5%/110 ms/50%/169%/20/30/160×90, corrected to 130%/185%/27%/150 ms/20%/188%/0/60/320×180) -- caught while adding the tuning panel's reset button, since resetting a slider to a number that contradicted its own on-screen "Default" label would have read as broken.
+
+242 tests passing (unchanged -- this is a settings-page/config.js and one small read-only endpoint change with no new server-side logic to test beyond what the existing UI smoke test already covers).
+
 ## 2026-09-13 (later still): finished the live-preview feature that had been left half-done
 
 Earlier this session, `LivePreviewSnapshot` and a `_latestPhysicalFrame`

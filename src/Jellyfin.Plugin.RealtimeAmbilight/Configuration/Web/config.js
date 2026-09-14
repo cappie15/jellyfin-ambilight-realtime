@@ -83,19 +83,16 @@ export default function (view) {
         "topLedCount", "rightLedCount", "bottomLedCount", "leftLedCount", "samplingDepthPercent",
         "minimumColourHoldMilliseconds", "wledSmoothingMilliseconds", ...colourTuningFields
     ];
-    const defaults = {
-        WledHttpPort: 80, RealtimeProtocol: 0, OutputDelayMilliseconds: 0, OutputFramesPerSecond: 30,
-        TopLedCount: 265, RightLedCount: 150,
-        BottomLedCount: 266, LeftLedCount: 150, AnalysisWidth: 160,
-        SamplingDepthPercent: 5, MinimumColourHoldMilliseconds: 100, WledSmoothingMilliseconds: 110, BrightnessPercent: 158, SaturationPercent: 140,
-        RedGainPercent: 100, GreenGainPercent: 100, BlueGainPercent: 100,
-        BlackLevelFloorPercent: 1,
-        WallColourCorrectionPercent: 100,
-        TopBrightnessPercent: 100, TopRedGainPercent: 100, TopGreenGainPercent: 100, TopBlueGainPercent: 100,
-        RightBrightnessPercent: 100, RightRedGainPercent: 100, RightGreenGainPercent: 100, RightBlueGainPercent: 100,
-        BottomBrightnessPercent: 100, BottomRedGainPercent: 100, BottomGreenGainPercent: 100, BottomBlueGainPercent: 100,
-        LeftBrightnessPercent: 100, LeftRedGainPercent: 100, LeftGreenGainPercent: 100, LeftBlueGainPercent: 100
-    };
+    // The plugin's own factory-default configuration, fetched once from the
+    // server (RealtimeAmbilight/Discovery/DefaultConfiguration) rather than
+    // duplicated here by hand -- a hand-maintained copy of PluginConfiguration's
+    // property initializers drifted out of sync with them more than once
+    // (this project's own history: BrightnessPercent, SaturationPercent,
+    // SamplingDepthPercent and several others were still the old numbers here
+    // long after the real defaults changed), silently resetting a field to a
+    // stale value instead of its actual current default. Populated by load()
+    // before anything reads it; every reset button below depends on it.
+    let factoryDefaults = null;
     // Soft, muted, contemporary interior tones -- the kind of wall colour
     // actually behind a TV today (warm off-whites, greiges, dusty sage and
     // blue, soft clay) -- not swatches sampled evenly across the full colour
@@ -427,7 +424,7 @@ export default function (view) {
         setCardState("tv", enabled ? "ok" : "off", !enabled ? "OFF" : streaming ? "STREAM" : "READY");
         byId("tvStat").textContent = targetDeviceName() || "Not bound yet";
         const ip = targetDeviceIp();
-        const width = Math.max(16, Number(byId("analysisWidth").value) || defaults.AnalysisWidth);
+        const width = Math.max(16, Number(byId("analysisWidth").value) || (factoryDefaults && factoryDefaults.AnalysisWidth) || 320);
         byId("tvCap").textContent = `${ip ? `${ip} · ` : ""}${width} × ${analysisHeight()} · Ambilight ${enabled ? "on" : "off"}`;
         const device = knownDevices.find(candidate => candidate.id === byId("targetDeviceId").value);
         byId("tvSub").textContent = device?.lastUsed ? `Last seen ${lastUsedLabel(device.lastUsed)}` : "";
@@ -1159,7 +1156,7 @@ export default function (view) {
     }
 
     function setAnalysisLabel() {
-        const width = Math.max(16, Number(byId("analysisWidth").value) || defaults.AnalysisWidth);
+        const width = Math.max(16, Number(byId("analysisWidth").value) || (factoryDefaults && factoryDefaults.AnalysisWidth) || 320);
         byId("analysisSizeValue").textContent = `${width} × ${analysisHeight()} pixels`;
     }
 
@@ -1221,7 +1218,7 @@ export default function (view) {
     }
 
     function analysisHeight() {
-        const width = Math.max(16, Number(byId("analysisWidth").value) || defaults.AnalysisWidth);
+        const width = Math.max(16, Number(byId("analysisWidth").value) || (factoryDefaults && factoryDefaults.AnalysisWidth) || 320);
         return Math.max(16, Math.round(width * 9 / 16));
     }
 
@@ -1570,10 +1567,22 @@ export default function (view) {
             .finally(() => { byId("findWled").disabled = false; });
     }
 
+    // Fetched once and cached: every page load after the first reuses the
+    // same factory-default snapshot rather than re-requesting it.
+    let factoryDefaultsPromise = null;
+    function ensureFactoryDefaults() {
+        if (!factoryDefaultsPromise) {
+            factoryDefaultsPromise = window.ApiClient
+                .getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/DefaultConfiguration"))
+                .then(config => { factoryDefaults = config; return config; });
+        }
+        return factoryDefaultsPromise;
+    }
+
     function load() {
         Dashboard.showLoadingMsg();
-        return window.ApiClient.getPluginConfiguration(pluginId)
-            .then(config => {
+        return Promise.all([window.ApiClient.getPluginConfiguration(pluginId), ensureFactoryDefaults()])
+            .then(([config]) => {
                 loadedConfig = config;
                 resetHueAnchors(config);
                 resetGreyBalance(config);
@@ -1606,8 +1615,8 @@ export default function (view) {
                 numericFields.forEach(field => {
                     const key = fieldKey(field);
                     const value = field === "realtimeProtocol"
-                        ? ({ Auto: 0, HyperionRawRgb: 1, Ddp: 2 }[config[key]] ?? config[key] ?? defaults[key])
-                        : config[key] ?? defaults[key];
+                        ? ({ Auto: 0, HyperionRawRgb: 1, Ddp: 2 }[config[key]] ?? config[key] ?? factoryDefaults?.[key])
+                        : config[key] ?? factoryDefaults?.[key];
                     byId(field).value = value;
                 });
                 byId("wledHost").value = config.WledHost || "";
@@ -1616,7 +1625,7 @@ export default function (view) {
                     : "#ffffff";
                 byId("wallColourHex").value = wallColourHex;
                 syncWallColourPresetFromHex(wallColourHex);
-                selectAnalysisWidth(Math.max(16, Number(config.AnalysisWidth) || defaults.AnalysisWidth));
+                selectAnalysisWidth(Math.max(16, Number(config.AnalysisWidth) || (factoryDefaults && factoryDefaults.AnalysisWidth) || 320));
                 view.querySelectorAll('input[type="range"]').forEach(range => range.dispatchEvent(new Event("input")));
                 setDelayLabel();
                 setAnalysisLabel();
@@ -1764,89 +1773,52 @@ export default function (view) {
             });
     }
 
-    // Mirrors PluginConfiguration's own C# property initialisers -- a brand
-    // new install's config, in other words -- except the Hue bridge pairing
-    // itself (host/id/entertainment area), which stays exactly as currently
-    // paired: unlinking that bridge is a separate, explicit action ("Unlink
-    // this bridge" on the Hue tab) and is not implied by resetting
-    // preferences back to their defaults.
-    function factoryDefaultConfiguration() {
-        const anchorDefaults = {};
-        hueAnchorColours.forEach(colour => {
-            anchorDefaults[`${colour}HueShiftDegrees`] = 0;
-            anchorDefaults[`${colour}BrightnessPercent`] = 100;
-            anchorDefaults[`${colour}IntensityPercent`] = 100;
-        });
-        const sideDefaults = {};
-        sideNames.forEach(side => {
-            const key = field => `${side}${field[0].toUpperCase()}${field.slice(1)}Percent`;
-            sideDefaults[key("brightness")] = 100;
-            sideDefaults[key("redGain")] = 100;
-            sideDefaults[key("greenGain")] = 100;
-            sideDefaults[key("blueGain")] = 100;
-        });
+    // --- Per-section "Reset to defaults" -----------------------------------
+    // Each section of the page gets its own reset button instead of one
+    // global one, so resetting a wrong LED count no longer means also
+    // wiping colour calibration tuned separately, and vice versa.
+    //
+    // factoryDefaults (fetched once from RealtimeAmbilight/Discovery/DefaultConfiguration,
+    // i.e. PluginConfiguration's own C# property initialisers) already
+    // carries every field a reset needs, so there is no second,
+    // hand-maintained copy of those numbers here to drift out of sync with
+    // the real defaults -- exactly what happened to this file's own former
+    // hardcoded defaults object. The Hue bridge pairing itself (host/id/
+    // entertainment area) is always carried forward from loadedConfig
+    // instead of reset: unlinking that bridge is a separate, explicit
+    // action ("Unlink this bridge" on the Hue tab), never implied by
+    // resetting preferences.
+    const tvResetFields = ["Enabled", "IgnoreBlackBorders", "AnalysisWidth", "AnalysisHeight", "TargetDeviceId", "TargetDeviceName"];
+    const wledResetFields = [
+        "WledHost", "WledHttpPort", "RealtimeProtocol", "TopLedCount", "RightLedCount", "BottomLedCount", "LeftLedCount",
+        "OutputDelayMilliseconds", "OutputFramesPerSecond", "HoldWhilePaused", "SendWhiteChannel", "AllowWledControl",
+        "AutoDetectLedGamma", "CorrectLedGamma"
+    ];
+    const ambilightResetFields = [
+        "RedGainPercent", "GreenGainPercent", "BlueGainPercent", "WallColourHex", "WallColourCorrectionPercent",
+        ...hueAnchorFields, ...greyBalanceFields, ...sideTuningFields
+    ];
+    const hueResetFields = ["HueEnabled", "HueEndBehaviour"];
 
-        return {
-            ConfigSchemaVersion: 3,
-            Enabled: true,
-            TargetDeviceId: "",
-            TargetDeviceName: "",
-            WledHost: "10.0.0.8",
-            WledHttpPort: 80,
-            RealtimeProtocol: 0,
-            TopLedCount: 265,
-            RightLedCount: 150,
-            BottomLedCount: 266,
-            LeftLedCount: 150,
-            OutputDelayMilliseconds: 0,
-            OutputFramesPerSecond: 30,
-            HoldWhilePaused: true,
-            SamplingDepthPercent: 5,
-            BrightnessPercent: 158,
-            SaturationPercent: 140,
-            RedGainPercent: 100,
-            GreenGainPercent: 100,
-            BlueGainPercent: 100,
-            ...anchorDefaults,
-            BlackLevelFloorPercent: 1,
-            WallColourHex: "#ffffff",
-            WallColourCorrectionPercent: 100,
-            ...sideDefaults,
-            CorrectLedGamma: true,
-            AutoDetectLedGamma: true,
-            IgnoreBlackBorders: true,
-            AnalysisWidth: 160,
-            AnalysisHeight: 90,
-            AllowWledControl: false,
-            MinimumColourHoldMilliseconds: 100,
-            WledSmoothingMilliseconds: 110,
-            SendWhiteChannel: false,
-            WhiteChannelStrengthPercent: 50,
-            HueEnabled: false,
-            HueBridgeHost: loadedConfig?.HueBridgeHost || "",
-            HueBridgeId: loadedConfig?.HueBridgeId || "",
-            HueEntertainmentConfigurationId: loadedConfig?.HueEntertainmentConfigurationId || "00000000-0000-0000-0000-000000000000",
-            HueEntertainmentConfigurationName: loadedConfig?.HueEntertainmentConfigurationName || "",
-            HueBrightnessPercent: 188,
-            HueEndBehaviour: 0,
-            HueResponsePercent: 0,
-            HueBlackLevelFloorPercent: 1
-        };
-    }
+    function resetFields(fieldNames, sectionLabel) {
+        if (!factoryDefaults) {
+            return;
+        }
 
-    function resetConfiguration() {
-        const confirmed = window.confirm(
-            "Reset every Ambilight setting on this page to its factory default?\n\n" +
-            "Clears the bound TV, WLED address, LED layout and all colour calibration, " +
-            "and saves immediately. A paired Hue bridge stays paired; use " +
-            "\"Unlink this bridge\" separately for that. This cannot be undone."
-        );
+        const confirmed = window.confirm(`Reset ${sectionLabel} to its factory defaults? Saves immediately.`);
         if (!confirmed) {
             return;
         }
 
         Dashboard.showLoadingMsg();
-        const config = factoryDefaultConfiguration();
+        const config = {
+            ...loadedConfig,
+            ...Object.fromEntries(fieldNames.map(name => [name, factoryDefaults[name]])),
+            HueBridgeHost: loadedConfig?.HueBridgeHost || "",
+            HueBridgeId: loadedConfig?.HueBridgeId || "",
+            HueEntertainmentConfigurationId: loadedConfig?.HueEntertainmentConfigurationId || "00000000-0000-0000-0000-000000000000",
+            HueEntertainmentConfigurationName: loadedConfig?.HueEntertainmentConfigurationName || ""
+        };
         window.ApiClient.updatePluginConfiguration(pluginId, config)
             .then(result => {
                 loadedConfig = config;
@@ -1855,6 +1827,12 @@ export default function (view) {
             .then(load)
             .finally(() => Dashboard.hideLoadingMsg());
     }
+
+    function resetTvSection() { resetFields(tvResetFields, "TV"); }
+    function resetWledSection() { resetFields(wledResetFields, "WLED"); }
+    function resetAmbilightSection() { resetFields(ambilightResetFields, "colour calibration"); }
+    function resetHueSection() { resetFields(hueResetFields, "Hue"); }
+    function resetTuningSection() { resetFields(tuningFields.map(fieldKey), "Live tuning"); }
 
     // --- Hue Entertainment (optional, off by default) ---------------------
     // A deliberately separate save path from the main form: pairing and
@@ -2120,7 +2098,11 @@ export default function (view) {
     setInterval(refreshActivityLog, 5000);
     view.addEventListener("viewshow", load);
     byId("realtimeAmbilightConfigurationForm").addEventListener("submit", save);
-    byId("resetConfiguration").addEventListener("click", resetConfiguration);
+    byId("resetTvSection").addEventListener("click", resetTvSection);
+    byId("resetWledSection").addEventListener("click", resetWledSection);
+    byId("resetAmbilightSection").addEventListener("click", resetAmbilightSection);
+    byId("resetHueSection").addEventListener("click", resetHueSection);
+    byId("resetTuningSection").addEventListener("click", resetTuningSection);
     byId("outputDelayMilliseconds").addEventListener("input", setDelayLabel);
     byId("samplingDepthPercent").addEventListener("input", setDepthLabel);
     byId("minimumColourHoldMilliseconds").addEventListener("input", setMinimumColourHoldLabel);

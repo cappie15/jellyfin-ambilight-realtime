@@ -85,7 +85,8 @@
            scroll inside a fixed-height modal is fine; this page's own rule
            is specifically against ever scrolling sideways. */
         #realtimeAmbilightConfigurationPage .raModalBody.raScrollable { -webkit-mask-image: linear-gradient(to bottom, #000 92%, transparent); mask-image: linear-gradient(to bottom, #000 92%, transparent); }
-        #realtimeAmbilightConfigurationPage .raModalFooter { padding: 1em 1.3em; border-top: 1px solid #22262c; flex: none; }
+        #realtimeAmbilightConfigurationPage .raModalFooter { display: flex; justify-content: space-between; align-items: center; gap: .8em; flex-wrap: wrap; padding: 1em 1.3em; border-top: 1px solid #22262c; flex: none; }
+        #realtimeAmbilightConfigurationPage .raModalFooter .raResetSection { opacity: .75; }
 
         /* ---- modernized sliders + step buttons inside every modal ---- */
         #realtimeAmbilightConfigurationPage .raModalBody input[type="range"], #realtimeAmbilightConfigurationPage .raPanel input[type="range"] { accent-color: #3ddc84; height: 1.4em; }
@@ -307,6 +308,7 @@
                 <span class="raPanelTopRight">
                     <button type="button" id="livePreviewToggle" class="raLink">Live preview &#9662;</button>
                     <button type="button" id="testVideosToggle" class="raLink">Test videos &#9662;</button>
+                    <button type="button" id="resetTuningSection" class="raLink">Reset to defaults</button>
                     <span class="raCardState" id="tuningSavedIndicator">&nbsp;</span>
                 </span>
             </div>
@@ -326,12 +328,12 @@
 
             <div class="inputContainer">
                 <input is="emby-input" id="brightnessPercent" type="range" min="1" max="200" step="1" label="Ambilight brightness" />
-                <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. Above 100% pushes already-dim scenes brighter than the source picture. <strong>Default: 158%.</strong></div>
+                <div class="fieldDescription">Now: <strong id="brightnessValue"></strong>. Above 100% pushes already-dim scenes brighter than the source picture. <strong>Default: 130%.</strong></div>
             </div>
 
             <div class="inputContainer">
                 <input is="emby-input" id="saturationPercent" type="range" min="50" max="200" step="5" label="Ambilight colour intensity" />
-                <div class="fieldDescription">Now: <strong id="saturationValue"></strong>. <strong>Default: 140%.</strong></div>
+                <div class="fieldDescription">Now: <strong id="saturationValue"></strong>. <strong>Default: 185%.</strong></div>
             </div>
 
             <div class="inputContainer">
@@ -346,18 +348,18 @@
                     combined brightness of red, green and blue lit together, so a bright/near-white scene can
                     look dimmer than it should if everything is pushed onto it. Lower this if white still looks
                     dim; the colour LEDs pick up whatever the white LED cannot. Only shown while RGBW (Send a
-                    real white signal) is on. <strong>Default: 50%.</strong>
+                    real white signal) is on. <strong>Default: 20%.</strong>
                 </div>
             </div>
 
             <div class="inputContainer">
                 <input is="emby-input" id="samplingDepthPercent" type="range" min="1" max="30" step="1" label="Ambilight sampling edge range" />
-                <div class="fieldDescription">Now: <strong id="samplingDepthValue"></strong>. Lower is more literal; higher is calmer. <strong>Default: 5%.</strong></div>
+                <div class="fieldDescription">Now: <strong id="samplingDepthValue"></strong>. Lower is more literal; higher is calmer. <strong>Default: 27%.</strong></div>
             </div>
 
             <div class="inputContainer">
                 <input is="emby-input" id="wledSmoothingMilliseconds" type="range" min="0" max="2000" step="10" label="Ambilight smoothing" />
-                <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED into its new colour; left is more reactive, right is smoother. <strong>Default: 110 ms.</strong></div>
+                <div class="fieldDescription">Now: <strong id="wledSmoothingValue"></strong>. Eases each LED into its new colour; left is more reactive, right is smoother. <strong>Default: 150 ms.</strong></div>
             </div>
 
             <div class="inputContainer">
@@ -367,12 +369,12 @@
 
             <div class="inputContainer">
                 <input is="emby-input" id="hueBrightnessPercent" type="range" min="1" max="200" step="1" label="Hue brightness" />
-                <div class="fieldDescription">Now: <strong id="hueBrightnessValue"></strong>. A 1% minimum always stays on. <strong>Default: 169%.</strong></div>
+                <div class="fieldDescription">Now: <strong id="hueBrightnessValue"></strong>. A 1% minimum always stays on. <strong>Default: 188%.</strong></div>
             </div>
 
             <div class="inputContainer">
                 <input is="emby-input" id="hueResponsePercent" type="range" min="0" max="100" step="10" label="Hue responsivity" />
-                <div class="fieldDescription">Now: <strong id="hueResponseValue"></strong>. Reactive tracks a cut instantly; smooth eases in over a second or more. <strong>Default: 20.</strong></div>
+                <div class="fieldDescription">Now: <strong id="hueResponseValue"></strong>. Reactive tracks a cut instantly; smooth eases in over a second or more. <strong>Default: 0.</strong></div>
             </div>
 
             <div class="inputContainer">
@@ -429,7 +431,7 @@
                                     <option value="320">320 × 180, high</option>
                                     <option value="480">480 × 270, highest</option>
                                 </select>
-                                <div class="fieldDescription"><strong>Default: 160 × 90.</strong> Lower saves CPU; higher adds detail.</div>
+                                <div class="fieldDescription"><strong>Default: 320 × 180.</strong> Lower saves CPU; higher adds detail.</div>
                             </div>
                         </div>
                         <div style="flex:1 1 20em;min-width:18em">
@@ -446,7 +448,7 @@
                     </label>
                     <div class="fieldDescription">Keeps letterbox bars (wide-screen film) and pillarbox bars (4:3 content) from turning the LEDs off. <strong>Default: on.</strong></div>
                 </div>
-                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save and Close</span></button></div>
+                <div class="raModalFooter"><button type="button" is="emby-button" id="resetTvSection" class="raised raResetSection">Reset to defaults</button><button is="emby-button" type="submit" class="raised button-submit"><span>Save and Close</span></button></div>
                 </div>
             </div>
 
@@ -569,7 +571,7 @@
 
                     <div class="inputContainer">
                         <input is="emby-input" id="outputFramesPerSecond" type="number" min="1" max="180" label="LED updates per second" />
-                        <div class="fieldDescription">Higher is smoother but costs more CPU. <strong>Default: 30.</strong> Restart after changing.</div>
+                        <div class="fieldDescription">Higher is smoother but costs more CPU. <strong>Default: 60.</strong> Restart after changing.</div>
                     </div>
 
                     <label class="checkboxContainer">
@@ -610,7 +612,7 @@
                     </label>
                     <div class="fieldDescription">Only takes effect when the controller does not report its own setting above. <strong>Default: on.</strong></div>
                 </div>
-                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save and Close</span></button></div>
+                <div class="raModalFooter"><button type="button" is="emby-button" id="resetWledSection" class="raised raResetSection">Reset to defaults</button><button is="emby-button" type="submit" class="raised button-submit"><span>Save and Close</span></button></div>
                 </div>
             </div>
 
@@ -704,7 +706,7 @@
                     </details>
                     </div>
                 </div>
-                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save and Close</span></button></div>
+                <div class="raModalFooter"><button type="button" is="emby-button" id="resetAmbilightSection" class="raised raResetSection">Reset to defaults</button><button is="emby-button" type="submit" class="raised button-submit"><span>Save and Close</span></button></div>
                 </div>
             </div>
 
@@ -772,19 +774,11 @@
                         <div class="fieldDescription">Applied only to the lights in the selected entertainment area.</div>
                     </div>
                 </div>
-                <div class="raModalFooter"><button is="emby-button" type="submit" class="raised button-submit"><span>Save and Close</span></button></div>
+                <div class="raModalFooter"><button type="button" is="emby-button" id="resetHueSection" class="raised raResetSection">Reset to defaults</button><button is="emby-button" type="submit" class="raised button-submit"><span>Save and Close</span></button></div>
                 </div>
             </div>
 
             <div class="raModalBackdrop" id="raModalBackdrop" hidden></div>
-
-            <div class="verticalSection">
-                <button type="button" is="emby-button" id="resetConfiguration" class="raised">Reset to defaults</button>
-                <div class="fieldDescription" style="margin-top:.4em">
-                    Restores every setting on this page to its factory default and saves immediately, after asking
-                    to confirm. Does not unlink a paired Hue bridge; use "Unlink this bridge" for that.
-                </div>
-            </div>
 
         </form>
     </div>

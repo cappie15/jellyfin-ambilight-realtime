@@ -123,6 +123,18 @@ public sealed class WledDiscoveryController : ControllerBase
             .ConfigureAwait(false));
     }
 
+    /// <summary>
+    /// The plugin's own factory-default configuration, straight from
+    /// <see cref="PluginConfiguration"/>'s own property initializers -- the
+    /// single source of truth the settings page's "Reset to defaults"
+    /// buttons compare against, instead of a hand-maintained copy of the
+    /// same numbers in config.js that can silently drift from the real
+    /// defaults every time one changes here.
+    /// </summary>
+    [HttpGet("DefaultConfiguration")]
+    [ProducesResponseType(typeof(PluginConfiguration), StatusCodes.Status200OK)]
+    public ActionResult<PluginConfiguration> GetDefaultConfiguration() => Ok(new PluginConfiguration());
+
     /// <summary>Reports whether the configured WLED is reachable and in realtime mode.</summary>
     [HttpGet("Status")]
     [ProducesResponseType(typeof(WledControllerStatus), StatusCodes.Status200OK)]
