@@ -1,5 +1,15 @@
 # Current state
 
+## 2026-09-15: the calibration wizard preview was dithered, and a held swatch cannot be
+
+The operator reported the 20%/40% grey step's Tint slider "oscillating": pressing "−" once made the preview visibly darker/lighter, and the very next "−" press flew back toward the original colour, alternating with every click. Their own guess, unprompted -- "lijkt iets met dithering misschien" -- was exactly right.
+
+**Root cause**: `JellyfinWledOutputService.SendCalibrationPhotoFrameAsync` encoded every calibration frame through `_calibrationEncoder`, a `DitheredRgb24Encoder`/`DitheredRgbw32Encoder` instance -- the same stateful, error-diffusion encoder real playback uses. Dithering deliberately carries each frame's rounding error into the next so that, averaged across *many different* frames of *changing* video, a fractional target reads as a smooth colour instead of a stepped one. A calibration swatch is the opposite case: a single target held static for as long as the operator is looking at it. Every frame sent for that same held target, the ditherer alternates between two adjacent byte values exactly as designed -- invisible on fast-moving video, but a distinct, regular flicker on something deliberately held still. `DitheredRgbw32Encoder`'s own doc comment already recorded this exact tradeoff for the white channel specifically ("a held or near-still fractional target is exactly what error diffusion must alternate... reads as a distinct, regular brightness flicker") -- the calibration path was simply never given the same treatment.
+
+**Fix**: new `Rgbw32Encoder` (Core/Output) -- the stateless sibling `Rgb24Encoder` already was for RGB24, mirroring `DitheredRgbw32Encoder`'s own white-extraction/compensation maths exactly but rounding every channel plainly, carrying nothing forward. `SendCalibrationPhotoFrameAsync` now calls `Rgb24Encoder.Encode`/`Rgbw32Encoder.Encode` instead of the dithered pair; the now-unused `_calibrationEncoder` field (and its `DitheredRgb24Encoder`/`DitheredRgbw32Encoder` allocation) is gone. Real playback (`AmbilightFrameProcessor`) is untouched -- still dithered, exactly as it should be for actual video.
+
+258 tests passing (3 new, mirroring `DitheredRgbw32EncoderTests` but asserting the opposite: identical bytes on every call for the same unrepresentable target, not an alternating pair).
+
 ## 2026-09-14 (later still still): Dolby Vision was never actually reaching the HDR graph
 
 The operator tested three titles back to back: an HDR10 film ("werkt nu perfect"), a Dolby Vision film ("de kleuren zijn compleet fucked up"), and a plain non-HDR film ("de kleuren wijken enorm af"). Root-caused the Dolby Vision report by reading the actual resolver, not by guessing at the colour maths again.

@@ -90,7 +90,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     private Rgb24Encoding _encoding;
     private readonly int _ledCount;
     private readonly int _bytesPerLed;
-    private readonly IDitheredChannelEncoder _calibrationEncoder;
+    private readonly bool _sendWhiteChannel;
     private readonly object _calibrationPhotoLock = new();
     private bool _calibrationActive;
     private byte[]? _calibrationPhotoPixels;
@@ -226,7 +226,7 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
         var logical = LogicalSamplingLayout.FromPhysicalLayout(_physicalLayout);
         _ledCount = _physicalLayout.TotalLedCount;
         _bytesPerLed = configuration.SendWhiteChannel ? 4 : 3;
-        _calibrationEncoder = configuration.SendWhiteChannel ? new DitheredRgbw32Encoder() : new DitheredRgb24Encoder();
+        _sendWhiteChannel = configuration.SendWhiteChannel;
         _encoding = configuration.CorrectLedGamma ? Rgb24Encoding.Linear : Rgb24Encoding.Bt709;
         // The detector is stateful across frames, so it is created once with the
         // service rather than per frame. Disabled, sampling simply uses the whole
@@ -422,7 +422,15 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             physicalFrame[index] = adjustment.Apply(physicalFrame[index], index, _physicalLayout);
         }
 
-        await _output.SendFrameAsync(_calibrationEncoder.Encode(physicalFrame, _encoding, adjustment.WhiteExtractionFactor), cancellationToken).ConfigureAwait(false);
+        // Plainly rounded, never dithered: dithering exists to average a
+        // rounding error across many frames of *changing* video content,
+        // which is invisible there but reads as a distinct, regular flicker
+        // on a calibration swatch the operator is deliberately holding still
+        // to judge -- see Rgbw32Encoder's own remarks.
+        var calibrationFrame = _sendWhiteChannel
+            ? Rgbw32Encoder.Encode(physicalFrame, _encoding, adjustment.WhiteExtractionFactor, adjustment.WhiteChannelCeiling)
+            : Rgb24Encoder.Encode(physicalFrame, _encoding);
+        await _output.SendFrameAsync(calibrationFrame, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
