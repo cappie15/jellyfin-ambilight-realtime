@@ -7,18 +7,19 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Model;
 /// a float roughly in [-1, 1].
 /// </summary>
 /// <remarks>
-/// Axis convention, per the Hue Entertainment developer documentation and
-/// corroborated by every third-party client this project could inspect (not
-/// independently re-verified against the official reference this round --
-/// that page is behind a developer-portal login this environment cannot
-/// reach): the origin sits at the screen, at floor level, centred.
-/// <c>X</c> runs left (-1) to right (+1) facing the screen. <c>Y</c> is depth:
-/// roughly 0 at the screen, increasing toward and past the viewer, toward the
-/// back of the room. <c>Z</c> is height: 0 at the floor, increasing toward
-/// the ceiling. This is exactly the assumption <see cref="HueChannelMapper"/>
-/// is built on, and it is the first thing to check against the real bridge:
-/// place one light unambiguously (directly beside the TV, say) and confirm
-/// its reported X is near 0 and Y is near 0 before trusting the mapping.
+/// Axis convention, corroborated by every third-party client this project
+/// could inspect for <c>X</c>/<c>Z</c>, and confirmed against the operator's
+/// own real bridge data for <c>Y</c> (2026-09-15, see
+/// <see cref="HueChannelMapper"/>'s own remarks for the four independent
+/// fixtures this was checked against): the origin sits at the screen, at
+/// floor level, centred. <c>X</c> runs left (-1) to right (+1) facing the
+/// screen. <c>Z</c> is height: 0 at the floor, increasing toward the
+/// ceiling. <c>Y</c> is depth, but runs the opposite direction from what was
+/// first assumed: <b>+1 is at/near the screen, -1 is behind the viewer</b>,
+/// with 0 at/near the viewer's own seating position. (An earlier,
+/// unverified assumption had <c>Y</c> running 0 at the screen to +1 behind
+/// the viewer -- the mirror image of the confirmed convention above, and
+/// wrong.) This is exactly what <see cref="HueChannelMapper"/> is built on.
 /// </remarks>
 public readonly record struct HuePosition(double X, double Y, double Z);
 

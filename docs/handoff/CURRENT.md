@@ -1,5 +1,15 @@
 # Current state
 
+## 2026-09-15 (later): Hue's own depth axis (`Y`) was inverted, not just unverified
+
+Investigating why the operator's vertical Hue gradient strip (beside the TV) tracks the picture correctly while the horizontal one (under the TV) reads as barely more than a single shifted colour, first confirmed the channel-grouping question was a genuine, unfixable Hue Bridge platform ceiling (see the ADR-011 entry immediately below this one) -- but that didn't explain the difference between the two strips, since both get split into 3 channels each regardless.
+
+Checked the actual axis convention against four independent real fixtures on the operator's own bridge instead of re-guessing: both gradient strips, physically repositioned to sit against the TV wall, reported `Y = 1.0` afterward -- if `Y = 0` meant "at the screen" as this project's own docs and `HueChannelMapper` assumed, moving a light onto the screen wall should have pushed `Y` toward 0, not to the opposite extreme. Two more fixtures the operator described as "halfway from the TV" and "just rear of the viewing position" reported `Y` of roughly −0.25 and −0.62 -- consistent with a midpoint at 0, not at 0.5.
+
+**All four points agree: `Y` runs −1 (behind the viewer) to +1 (at the screen)**, the mirror image of the 0..1/0-at-screen convention this project shipped with, which additionally clamped `Y` to `[0, 1]` and silently discarded every real position on the "behind the viewer" half of the actual range. Fixed in `HueChannelMapper.Map`: the bridge's own `Y` is now converted via `(1 - Clamp(Y, -1, 1)) / 2` to the method's existing internal 0-at-screen/1-behind-viewer depth scale -- every downstream blending threshold is unchanged, only the input conversion was wrong. This was a real, previously-shipped bug: every Hue installation using this integration before this fix had its depth blending backwards for any light not sitting exactly at the documented (wrong) midpoint.
+
+258 tests passing (`HueChannelMapperTests`' seven cases rewritten to the corrected `Y` convention, same coverage).
+
 ## 2026-09-15: the calibration wizard preview was dithered, and a held swatch cannot be
 
 The operator reported the 20%/40% grey step's Tint slider "oscillating": pressing "−" once made the preview visibly darker/lighter, and the very next "−" press flew back toward the original colour, alternating with every click. Their own guess, unprompted -- "lijkt iets met dithering misschien" -- was exactly right.

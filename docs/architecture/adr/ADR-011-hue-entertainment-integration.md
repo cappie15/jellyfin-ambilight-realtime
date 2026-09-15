@@ -56,6 +56,24 @@ Depth blends piecewise-linearly across those three points; within the "at the sc
 
 **Axis convention — stated, and explicitly unverified this session.** `X`: left (−1) to right (+1) facing the screen. `Y` (depth): 0 at/near the screen, increasing toward and past the viewer. `Z` (height): 0 at the floor, increasing toward the ceiling. This is the convention consistently described across every third-party Hue Entertainment client this project could inspect, but **not confirmed against the primary reference**, which is behind a developer-portal login this environment cannot reach, and **not confirmed against the operator's own bridge** — obtaining real position data requires paired credentials, and pairing requires the physical link button, which this session was explicitly told not to simulate. First item on the hardware checklist below: place one light unambiguously (directly beside the screen, say) and confirm its reported `X` reads near 0 and `Y` reads near 0 before trusting anything the mapping produces.
 
+### Update 2026-09-15 — `Y` was wrong, not merely unverified: it runs the opposite direction
+
+The axis-convention caveat above turned out to matter. The operator reported one Hue gradient strip (beside the TV, vertical) tracking the picture correctly and a second (under the TV, horizontal) reading as barely more than a single shifted colour along its whole length — after the channel-grouping question above was already closed as a hard platform ceiling (see further down), this was a separate, real bug still to find.
+
+**Checked against four independent, real fixtures on the operator's own bridge, not assumed:**
+
+| Fixture | Operator's own description | Reported `Y` |
+|---|---|---|
+| Both gradient strips, after being physically repositioned to sit against the TV wall | "against the TV wall" (i.e. at the screen) | **1.0** (both) |
+| "Flux wash midden" | "depth is halfway from the tv" | **−0.2483** |
+| "Entertainment 5" | "below and just rear of the viewing position" | **−0.61627** |
+
+If `Y = 0` meant "at the screen" as originally assumed, moving a light *onto the screen wall* should have pushed its `Y` toward 0 — instead both strips went to the opposite extreme, `1.0`. A light described as "halfway" should read near the mapping's own midpoint if that midpoint is where the formula expects it; on the originally-assumed 0..1 scale (midpoint 0.5) it does not, but on a **−1..+1 scale with 0 as the midpoint**, −0.2483 is close to it. The fourth fixture ("just rear of the viewing position", i.e. past the midpoint toward the back of the room) reporting a more strongly negative `−0.616` fits the same corrected scale.
+
+**All four points are consistent with exactly one convention: `Y` runs −1 (behind the viewer) to +1 (at the screen), with 0 at the viewer's own seating position** — the mirror image of what this ADR and `HueChannelMapper`'s own code assumed, which additionally `Math.Clamp`ed `Y` to `[0, 1]`, silently discarding every real position on the "behind the viewer" half of the actual range. `X` and `Z`'s own documented conventions were never in question and remain unchanged.
+
+**Fix**: `HueChannelMapper.Map` now converts the bridge's own `Y` (−1..+1, +1 at screen) to the method's internal 0 (screen) to 1 (behind viewer) depth via `(1 - Clamp(Y, -1, 1)) / 2` — every downstream threshold (0 = screen, 0.5 = beside viewer, 1 = behind viewer) is unchanged; only the input conversion was wrong. `HuePosition`'s own doc comment and every `HueChannelMapperTests` position were updated to match. This is a real, previously-shipped bug, not a new gap: every Hue installation using this integration before this fix had its depth blending backwards, silently trading real edge-based colour for flat scene-average (or vice versa) depending on where a light actually sat.
+
 ### Update 2026-09-13 — `channels[]` vs `locations.service_locations[]`, verified against the operator's real bridge
 
 The axis convention above is now confirmed against real hardware: the operator's two gradient strips (one horizontal under the TV, one roughly 2 m vertical beside the TV) report positions consistent with it. This update was only reached after an earlier, **wrong** diagnosis was given and then corrected — recorded here so the mistake is not silently repeated.

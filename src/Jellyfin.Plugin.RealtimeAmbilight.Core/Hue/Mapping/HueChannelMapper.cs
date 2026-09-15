@@ -12,36 +12,45 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Mapping;
 /// <remarks>
 /// <para>
 /// Coordinate handling, per <see cref="HuePosition"/>'s own documented
-/// (and explicitly unverified against the official reference) convention:
-/// <c>x</c> is clamped to [-1, 1] (left/right); <c>z</c> is clamped to [0, 1]
-/// (floor/ceiling) -- a light mounted above a notionally one-unit-tall room
-/// still reads as "near the ceiling" rather than extrapolating past it;
-/// <c>y</c> (depth) is clamped to [0, 1] and treated as the single axis this
-/// mapping blends across: 0 is at/near the screen, 1 is behind the viewer,
-/// with 0.5 -- beside the viewer -- as the mapping's explicit midpoint.
+/// convention, confirmed against the operator's real bridge data
+/// (2026-09-15): <c>x</c> is clamped to [-1, 1] (left/right); <c>z</c> is
+/// clamped to [0, 1] (floor/ceiling) -- a light mounted above a notionally
+/// one-unit-tall room still reads as "near the ceiling" rather than
+/// extrapolating past it; <c>y</c> (depth) is clamped to [-1, 1] and treated
+/// as the single axis this mapping blends across: <b>+1 is at/near the
+/// screen, -1 is behind the viewer</b>, with 0 -- beside the viewer -- as
+/// the mapping's explicit midpoint. (This is the mirror image of an earlier,
+/// unverified assumption that <c>y</c> ran 0..1 with 0 at the screen; see
+/// the 2026-09-15 finding below.)
 /// </para>
 /// <para>
 /// Three anchors, blended smoothly rather than switched between:
 /// </para>
 /// <list type="number">
-/// <item><b>At the screen (depth 0).</b> Blends the picture's own top and
+/// <item><b>At the screen (y = +1).</b> Blends the picture's own top and
 /// bottom edge samples by height (<c>z</c>), then, the closer <c>x</c> sits
 /// to either side, blends further toward that side's full edge sample --
 /// directly above the screen centre is pure top edge; directly beside the
 /// screen is close to the corresponding side edge.</item>
-/// <item><b>Beside the viewer (depth 0.5).</b> The corresponding left or
+/// <item><b>Beside the viewer (y = 0).</b> The corresponding left or
 /// right image edge outright (chosen by the sign of <c>x</c>), positioned
 /// along that edge by height.</item>
-/// <item><b>Behind the viewer (depth 1).</b> The whole scene's average
+/// <item><b>Behind the viewer (y = -1).</b> The whole scene's average
 /// colour, uniform regardless of <c>x</c>/<c>z</c>.</item>
 /// </list>
 /// <para>
-/// This is a reproducible function of a channel's reported position, not a
-/// measurement of the real room: Hue positions are a coarse spatial layout
-/// the operator places lights into via the Hue app, not a ruler distance from
-/// the screen. The viewing-position assumption this rests on -- that "beside
-/// the viewer" is a meaningful, distinct depth from "at the screen" -- should
-/// be sanity-checked against how the operator actually placed their lights.
+/// <b>2026-09-15 finding, confirmed against four independent real fixtures
+/// on the operator's own bridge, not assumed:</b> two gradient lights were
+/// both repositioned to sit physically against the TV wall and both then
+/// reported <c>y = 1.0</c> -- if <c>y = 0</c> meant "at the screen" as
+/// originally assumed, moving a light onto the screen wall should have
+/// pushed its <c>y</c> toward 0, not to the opposite extreme. Two more
+/// fixtures, described by the operator as "halfway from the TV" and "just
+/// rear of the viewing position", reported <c>y</c> of roughly -0.25 and
+/// -0.62 respectively -- consistent with a midpoint at 0 and increasingly
+/// negative behind it, not with the 0..1/0-at-screen range. All four only
+/// make sense on the corrected -1..+1/+1-at-screen scale now documented
+/// above; the mapping formula was updated to match, not just this comment.
 /// </para>
 /// </remarks>
 public static class HueChannelMapper
@@ -52,7 +61,19 @@ public static class HueChannelMapper
 
         var x = Math.Clamp(position.X, -1d, 1d);
         var z = Math.Clamp(position.Z, 0d, 1d);
-        var depth = Math.Clamp(position.Y, 0d, 1d);
+        // Y runs -1 (behind the viewer) to +1 (at the screen) -- confirmed
+        // against the operator's own real bridge data (2026-09-15), not
+        // assumed: two gradient lights both moved to sit physically against
+        // the TV wall reported Y=1.0 afterward, and two single-position
+        // lights described as "halfway from the TV" and "just rear of the
+        // viewing position" reported Y of roughly -0.25 and -0.62
+        // respectively -- all four only make sense on a -1..+1 scale with
+        // +1 at the screen, the mirror image of the 0..1/0-at-screen range
+        // this method used to assume (and X and Z's own documented -1..1/
+        // 0..1 ranges were never wrong; only Y was). Converted here to this
+        // method's own internal 0 (screen) to 1 (behind the viewer) scale,
+        // which every threshold below still expects unchanged.
+        var depth = (1d - Math.Clamp(position.Y, -1d, 1d)) / 2d;
 
         var screenColour = MapScreenRegion(x, z, edgeSamples);
         var sideColour = MapSideEdge(x, z, edgeSamples);

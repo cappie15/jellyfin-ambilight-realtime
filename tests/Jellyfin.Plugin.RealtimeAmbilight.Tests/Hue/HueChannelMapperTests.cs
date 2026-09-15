@@ -26,10 +26,15 @@ public class HueChannelMapperTests
         Bottom: [BottomRight, BottomLeft],
         Left: [LeftBottom, LeftTop]);
 
+    // Y is +1 at/near the screen, -1 behind the viewer, 0 beside the viewer
+    // -- confirmed against the operator's own real bridge data 2026-09-15
+    // (see HueChannelMapper's own remarks); the mirror image of Y running
+    // 0..1 with 0 at the screen, which every position below used before
+    // that finding.
     [Fact]
     public void AChannelDirectlyAboveScreenCentreFollowsTheTopEdgesMidpoint()
     {
-        var colour = HueChannelMapper.Map(new HuePosition(0, 0, 1), CreateSamples(), SceneAverage);
+        var colour = HueChannelMapper.Map(new HuePosition(0, 1, 1), CreateSamples(), SceneAverage);
 
         var expected = LinearRgb.Lerp(TopLeft, TopRight, 0.5f);
         AssertApproximatelyEqual(expected, colour);
@@ -38,8 +43,8 @@ public class HueChannelMapperTests
     [Fact]
     public void AChannelBesideTheScreenOnTheRightLeansTowardTheRightEdge()
     {
-        var atScreenCentre = HueChannelMapper.Map(new HuePosition(0, 0, 0.5), CreateSamples(), SceneAverage);
-        var besideScreenRight = HueChannelMapper.Map(new HuePosition(1, 0, 0.5), CreateSamples(), SceneAverage);
+        var atScreenCentre = HueChannelMapper.Map(new HuePosition(0, 1, 0.5), CreateSamples(), SceneAverage);
+        var besideScreenRight = HueChannelMapper.Map(new HuePosition(1, 1, 0.5), CreateSamples(), SceneAverage);
 
         // The fully-right position must be closer to the pure right-edge
         // sample (RightTop/RightBottom average at z=0.5) than the centred one.
@@ -52,7 +57,7 @@ public class HueChannelMapperTests
     [Fact]
     public void AChannelBesideTheViewerIsExactlyTheCorrespondingSideEdge()
     {
-        var colour = HueChannelMapper.Map(new HuePosition(1, 0.5, 0.5), CreateSamples(), SceneAverage);
+        var colour = HueChannelMapper.Map(new HuePosition(1, 0, 0.5), CreateSamples(), SceneAverage);
 
         var expectedRight = LinearRgb.Lerp(RightTop, RightBottom, 0.5f);
         AssertApproximatelyEqual(expectedRight, colour);
@@ -61,8 +66,8 @@ public class HueChannelMapperTests
     [Fact]
     public void LeftAndRightAreSymmetric()
     {
-        var right = HueChannelMapper.Map(new HuePosition(1, 0.5, 0.25), CreateSamples(), SceneAverage);
-        var left = HueChannelMapper.Map(new HuePosition(-1, 0.5, 0.25), CreateSamples(), SceneAverage);
+        var right = HueChannelMapper.Map(new HuePosition(1, 0, 0.25), CreateSamples(), SceneAverage);
+        var left = HueChannelMapper.Map(new HuePosition(-1, 0, 0.25), CreateSamples(), SceneAverage);
 
         var expectedRight = LinearRgb.Lerp(RightTop, RightBottom, 0.75f); // z=0.25 -> RightFraction = 1-0.25 = 0.75
         var expectedLeft = LinearRgb.Lerp(LeftBottom, LeftTop, 0.25f); // z=0.25 -> LeftFraction = 0.25
@@ -74,8 +79,8 @@ public class HueChannelMapperTests
     [Fact]
     public void AChannelBehindTheViewerIsTheSceneAverageRegardlessOfXAndZ()
     {
-        var colourA = HueChannelMapper.Map(new HuePosition(-1, 1, 0), CreateSamples(), SceneAverage);
-        var colourB = HueChannelMapper.Map(new HuePosition(1, 1, 1), CreateSamples(), SceneAverage);
+        var colourA = HueChannelMapper.Map(new HuePosition(-1, -1, 0), CreateSamples(), SceneAverage);
+        var colourB = HueChannelMapper.Map(new HuePosition(1, -1, 1), CreateSamples(), SceneAverage);
 
         AssertApproximatelyEqual(SceneAverage, colourA);
         AssertApproximatelyEqual(SceneAverage, colourB);
@@ -85,11 +90,11 @@ public class HueChannelMapperTests
     public void DepthTransitionsSmoothlyFromScreenThroughSideToScene()
     {
         var samples = CreateSamples();
-        var atScreen = HueChannelMapper.Map(new HuePosition(1, 0, 0.5), samples, SceneAverage);
-        var quarter = HueChannelMapper.Map(new HuePosition(1, 0.25, 0.5), samples, SceneAverage);
-        var beside = HueChannelMapper.Map(new HuePosition(1, 0.5, 0.5), samples, SceneAverage);
-        var threeQuarter = HueChannelMapper.Map(new HuePosition(1, 0.75, 0.5), samples, SceneAverage);
-        var behind = HueChannelMapper.Map(new HuePosition(1, 1, 0.5), samples, SceneAverage);
+        var atScreen = HueChannelMapper.Map(new HuePosition(1, 1, 0.5), samples, SceneAverage);
+        var quarter = HueChannelMapper.Map(new HuePosition(1, 0.5, 0.5), samples, SceneAverage);
+        var beside = HueChannelMapper.Map(new HuePosition(1, 0, 0.5), samples, SceneAverage);
+        var threeQuarter = HueChannelMapper.Map(new HuePosition(1, -0.5, 0.5), samples, SceneAverage);
+        var behind = HueChannelMapper.Map(new HuePosition(1, -1, 0.5), samples, SceneAverage);
 
         // Blue (from RightBottom) should increase monotonically front-to-back
         // toward the 0.5 scene average, since RightTop/RightBottom for this
