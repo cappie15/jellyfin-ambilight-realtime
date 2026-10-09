@@ -1,5 +1,85 @@
 # Current state
 
+## 2026-10-09: per-side LED wiring direction, and a pause the server may never have seen
+
+Two live reports, investigated together.
+
+### One side reading as mirrored had no possible remedy in software
+
+The operator judged, from the test clips, that the bottom run tracks the
+picture backwards while the other three sides look right. Read the whole
+sampling and mapping path before touching it: `EdgeSampler.CreateZones` builds
+all four runs consistently clockwise (top left to right, right top to bottom,
+bottom right to left via `leftToRight: false`, left bottom to top), and
+`LinearLightInterpolator.InterpolatePerimeter` lays them into the frame in that
+same order. No bug there -- but also **no way whatsoever to express a strip
+wired any other way**. That single clockwise-from-the-top-left assumption was
+hardcoded end to end, so a perimeter built from four cut runs joined by corner
+wires (which is what this installation is: 265/150/266/150) had exactly one
+remedy for a run soldered the other way round, and it was a soldering iron.
+
+New `LedSideDirections` (Core/Layout), four `Reverse*Leds` configuration flags,
+and an optional parameter on `InterpolatePerimeter` that reverses a side's
+resampled run after resampling. Deliberately after: the picture geometry, the
+logical sample counts and the per-side colour trims (which key off the physical
+index block, unchanged by a within-block reversal) all stay exactly as they
+were -- this is a wiring correction and nothing else. Default is false on every
+side, which reproduces the previous behaviour bit for bit. Resolved live from
+configuration like every other tuning value, so a tick takes effect on the next
+frame, and read through the same helper by the calibration preview path so a
+reversed side is corrected while the operator is judging a swatch too.
+
+**Not yet confirmed which side is actually backwards, or whether it is wiring
+at all.** WLED's own segment reports `rev:false`/`mi:false` across one 831-LED
+segment, so the controller is not flipping anything; the question is purely how
+the physical run was soldered. New `tools/led-orientation.py` settles it
+without guessing: `sides` paints each side the plugin's own colour and drives
+the first 15 LEDs of each white, so every side's starting corner is visible at
+a glance (expected, correctly wired: white markers at top-left, top-right,
+bottom-right, bottom-left); `chase` walks one dot from index 0 so the start and
+direction of the whole run can be read directly. Both speak DDP on 4048 exactly
+as the plugin does. **Not yet run against the live strip** -- it drives real
+LEDs in an occupied room and was written late in the evening.
+
+### Playback pausing by itself on the television
+
+Reported: playback on the bound TCL pauses by itself several times per film,
+resumes instantly from the remote, and stops happening with the plugin
+disabled. The LEDs keep running through it.
+
+**Nothing in this plugin can pause a session** -- grepped the whole tree for
+`SendPlaystateCommand`/`SendMessageToSession`/any `ISessionManager` use beyond
+the three event subscriptions, and there is none; the adapter only reads. So
+either the pause is server-visible and something else issues it, or it never
+reaches the server at all.
+
+That distinction is the whole investigation, and the LEDs already hint at the
+answer: `HoldWhilePaused` is on, so a server-visible pause freezes the strip.
+The strip kept moving, which means `PlaybackProgressed.IsPaused` never arrived.
+New Information-level logging in `JellyfinPlaybackEventAdapter` records every
+pause/resume transition the bound device actually reports (position, session,
+and whether the progress was server-generated), mirrored into the settings
+page's activity log, so the next occurrence answers it outright: a line means a
+real session pause, silence while the picture is frozen means the stall is in
+the client or the path feeding it.
+
+**Measured and ruled out: CPU.** Ran the plugin's exact HDR analysis graph
+against a real 2160p HDR10 remux from the NFS library on this host: 12 to 18%
+of one core steady state after start-up, nowhere near a contention problem on
+four cores. What the same measurement did show is that the analysis decoder
+reads about **10 MB/s (roughly 80 Mbit/s, the file's own bitrate) from the NAS
+for the entire duration of playback** -- `-re` paced, a second full-rate reader
+on the same file as the one feeding the television, about five seconds ahead of
+it. All media here is NFS from 10.0.0.90 on volumes 90 to 96% full. The NFS
+client page cache should absorb much of the duplication (the analysis read runs
+*ahead*, so the television's own read should often be a cache hit), which
+weakens this as an explanation, but it is the only mechanism found so far that
+both scales with playback and disappears when the plugin is disabled.
+
+261 tests passing (3 new, covering one side reversed, every side reversed, and
+`LedSideDirections.Clockwise` producing byte-identical output to the previous
+default).
+
 ## 2026-09-15 (later): Hue's own depth axis (`Y`) was inverted, not just unverified
 
 Investigating why the operator's vertical Hue gradient strip (beside the TV) tracks the picture correctly while the horizontal one (under the TV) reads as barely more than a single shifted colour, first confirmed the channel-grouping question was a genuine, unfixable Hue Bridge platform ceiling (see the ADR-011 entry immediately below this one) -- but that didn't explain the difference between the two strips, since both get split into 3 channels each regardless.

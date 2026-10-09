@@ -20,6 +20,23 @@ public sealed class JellyfinPlaybackEventAdapter : IHostedService, IAsyncDisposa
     private readonly ILogger<JellyfinPlaybackEventAdapter> _logger;
     private int _subscribed;
 
+    /// <summary>
+    /// The pause state the bound device last reported, so only a genuine
+    /// transition is logged rather than every progress report.
+    /// </summary>
+    /// <remarks>
+    /// Exists to answer one question that cannot be answered from the colours
+    /// on the wall: when a television stops playing by itself, did the server
+    /// see a real pause, or did only the client's own player stall? The two
+    /// look identical in the room and have nothing in common underneath. A
+    /// transition logged here means Jellyfin's own session genuinely went to
+    /// paused; silence here while the picture is frozen means it did not, and
+    /// the stall is inside the client or the path feeding it. The LEDs follow
+    /// this same signal, which is why they keep running through a stall that
+    /// never reaches the server.
+    /// </remarks>
+    private bool? _lastReportedPaused;
+
     public JellyfinPlaybackEventAdapter(
         ISessionManager sessionManager,
         PlaybackEventCoordinator coordinator,
@@ -93,6 +110,7 @@ public sealed class JellyfinPlaybackEventAdapter : IHostedService, IAsyncDisposa
                 return;
             }
 
+            _lastReportedPaused = false;
             _logger.LogInformation("Realtime Ambilight playback start received for session {SessionId}, item {ItemId}.", sessionId, args.Item.Id);
             _activityLog.Info($"TV: playback started on {args.Session?.DeviceName}.");
             SynchroniseBinding(args.Session?.DeviceId, args.Session?.DeviceName);
@@ -125,6 +143,7 @@ public sealed class JellyfinPlaybackEventAdapter : IHostedService, IAsyncDisposa
             }
 
             _logger.LogDebug("Realtime Ambilight playback progress received for session {SessionId}.", sessionId);
+            ReportPauseTransition(sessionId, args.IsPaused, args.IsAutomated, args.Session?.DeviceName, args.PlaybackPositionTicks.Value);
 
             PlaybackSourceReference? source = args.Item is null || string.IsNullOrWhiteSpace(args.MediaSourceId)
                 ? null
@@ -155,6 +174,7 @@ public sealed class JellyfinPlaybackEventAdapter : IHostedService, IAsyncDisposa
             var sessionId = args.Session?.Id;
             if (!string.IsNullOrWhiteSpace(sessionId))
             {
+                _lastReportedPaused = null;
                 _activityLog.Info($"TV: playback stopped on {args.Session?.DeviceName}.");
                 _coordinator.TryPost(new PlaybackStopped(sessionId));
             }
@@ -164,6 +184,29 @@ public sealed class JellyfinPlaybackEventAdapter : IHostedService, IAsyncDisposa
             _logger.LogError(exception, "Realtime Ambilight playback stop adapter failed.");
             // See OnPlaybackStart: this callback must not throw into Jellyfin.
         }
+    }
+
+    /// <summary>
+    /// Logs a pause or resume the bound device actually reported, once per
+    /// transition. See <see cref="_lastReportedPaused"/> for why this is worth
+    /// a log line of its own at Information level.
+    /// </summary>
+    private void ReportPauseTransition(string sessionId, bool isPaused, bool isAutomated, string? deviceName, long positionTicks)
+    {
+        if (_lastReportedPaused == isPaused)
+        {
+            return;
+        }
+
+        _lastReportedPaused = isPaused;
+        _logger.LogInformation(
+            "Realtime Ambilight saw {DeviceName} report playback {State} at {Position} (session {SessionId}, server-generated progress: {IsAutomated}).",
+            deviceName,
+            isPaused ? "paused" : "resumed",
+            TimeSpan.FromTicks(positionTicks),
+            sessionId,
+            isAutomated);
+        _activityLog.Info($"TV: {deviceName} reported playback {(isPaused ? "paused" : "resumed")} at {TimeSpan.FromTicks(positionTicks):hh\\:mm\\:ss}.");
     }
 
     private void Unsubscribe()

@@ -52,13 +52,20 @@ public static class LinearLightInterpolator
     /// Builds one clockwise RGB frame. Runs never interpolate across a corner:
     /// the sampler owns deliberate corner overlap in the source samples.
     /// </summary>
+    /// <param name="directions">
+    /// Per-side wiring correction for a physical run that was soldered against
+    /// the clockwise order. Applied to each resampled run on its own, so a
+    /// reversed side still draws from exactly the picture it sits beside; only
+    /// the order the LEDs along it are addressed in changes.
+    /// </param>
     public static LinearRgb[] InterpolatePerimeter(
         LedLayout physicalLayout,
         LogicalSamplingLayout logicalLayout,
         ReadOnlySpan<LinearRgb> topSamples,
         ReadOnlySpan<LinearRgb> rightSamples,
         ReadOnlySpan<LinearRgb> bottomSamples,
-        ReadOnlySpan<LinearRgb> leftSamples)
+        ReadOnlySpan<LinearRgb> leftSamples,
+        LedSideDirections directions = default)
     {
         ArgumentNullException.ThrowIfNull(physicalLayout);
         ArgumentNullException.ThrowIfNull(logicalLayout);
@@ -70,10 +77,10 @@ public static class LinearLightInterpolator
         var frame = new LinearRgb[physicalLayout.TotalLedCount];
         var destination = frame.AsSpan();
         var offset = 0;
-        CopyResampled(topSamples, physicalLayout.TopLedCount, destination, ref offset);
-        CopyResampled(rightSamples, physicalLayout.RightLedCount, destination, ref offset);
-        CopyResampled(bottomSamples, physicalLayout.BottomLedCount, destination, ref offset);
-        CopyResampled(leftSamples, physicalLayout.LeftLedCount, destination, ref offset);
+        CopyResampled(topSamples, physicalLayout.TopLedCount, destination, ref offset, directions.ReverseTop);
+        CopyResampled(rightSamples, physicalLayout.RightLedCount, destination, ref offset, directions.ReverseRight);
+        CopyResampled(bottomSamples, physicalLayout.BottomLedCount, destination, ref offset, directions.ReverseBottom);
+        CopyResampled(leftSamples, physicalLayout.LeftLedCount, destination, ref offset, directions.ReverseLeft);
         return frame;
     }
 
@@ -81,9 +88,16 @@ public static class LinearLightInterpolator
         ReadOnlySpan<LinearRgb> logicalSamples,
         int physicalLedCount,
         Span<LinearRgb> destination,
-        ref int offset)
+        ref int offset,
+        bool reverse)
     {
-        Resample(logicalSamples, physicalLedCount).CopyTo(destination[offset..]);
+        var run = Resample(logicalSamples, physicalLedCount);
+        if (reverse)
+        {
+            Array.Reverse(run);
+        }
+
+        run.CopyTo(destination[offset..]);
         offset += physicalLedCount;
     }
 

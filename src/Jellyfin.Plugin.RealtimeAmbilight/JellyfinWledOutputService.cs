@@ -243,7 +243,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             static () => BuildColourTuning(Plugin.Instance?.Configuration).ToAdjustment(),
             static () => Plugin.Instance?.Configuration.MinimumColourHoldMilliseconds ?? 0,
             configuration.SendWhiteChannel,
-            static () => Plugin.Instance?.Configuration.WledSmoothingMilliseconds ?? 0);
+            static () => Plugin.Instance?.Configuration.WledSmoothingMilliseconds ?? 0,
+            static () => ResolveSideDirections(Plugin.Instance?.Configuration));
         _output = new WledRealtimeOutput(
             new WledEndpoint(configuration.WledHost, Math.Clamp(configuration.WledHttpPort, 1, ushort.MaxValue)),
             configuration.RealtimeProtocol,
@@ -416,7 +417,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
             samples.Top,
             samples.Right,
             samples.Bottom,
-            samples.Left);
+            samples.Left,
+            ResolveSideDirections(Plugin.Instance?.Configuration));
         for (var index = 0; index < physicalFrame.Length; index++)
         {
             physicalFrame[index] = adjustment.Apply(physicalFrame[index], index, _physicalLayout);
@@ -794,6 +796,22 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
         _output.Dispose();
         _shutdown.Dispose();
     }
+
+    /// <summary>
+    /// Reads the per-side wiring correction live, like every other tuning
+    /// value here, so flipping a side on the settings page takes effect on the
+    /// next frame instead of at the next restart. The calibration preview
+    /// reads it through the same call, so a reversed side is corrected while
+    /// the operator is looking at a swatch, not only during playback.
+    /// </summary>
+    private static LedSideDirections ResolveSideDirections(PluginConfiguration? configuration)
+        => configuration is null
+            ? LedSideDirections.Clockwise
+            : new LedSideDirections(
+                configuration.ReverseTopLeds,
+                configuration.ReverseRightLeds,
+                configuration.ReverseBottomLeds,
+                configuration.ReverseLeftLeds);
 
     private static PerimeterColourTuning BuildColourTuning(PluginConfiguration? configuration)
     {

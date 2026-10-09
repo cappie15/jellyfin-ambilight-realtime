@@ -556,6 +556,37 @@
                         <div class="raLedGridBottom"><input is="emby-input" id="bottomLedCount" type="number" min="1" label="Bottom" /></div>
                     </div>
                     <div class="fieldDescription" style="text-align:center">Defaults: 265 / 150 / 266 / 150 (top/right/bottom/left), 831 LEDs total.</div>
+
+                    <h3 class="sectionTitle" style="margin-top:1.2em">Wiring direction per side</h3>
+                    <div class="fieldDescription" style="margin-bottom:.6em">
+                        The LED order assumed here runs clockwise from the top-left corner of the picture:
+                        across the top to the right, down the right side, back along the bottom to the left,
+                        then up the left side. A perimeter built from four cut runs joined at the corners can
+                        have any one of them soldered the other way round, which shows up as that side's
+                        colours mirrored end for end while the other three track the picture correctly.
+                        Tick the side that reads backwards. <strong>Default: all off.</strong>
+                    </div>
+                    <div class="fieldDescription" style="margin-bottom:.6em">
+                        Not sure which side? Run <code>python3 tools/led-orientation.py sides</code> on the
+                        server with the plugin disabled: it paints each side its own colour and drives the
+                        first 15 LEDs of each one white, so every side's starting corner is visible at a glance.
+                    </div>
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="reverseTopLeds" type="checkbox" />
+                        <span>Top side runs right to left</span>
+                    </label>
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="reverseRightLeds" type="checkbox" />
+                        <span>Right side runs bottom to top</span>
+                    </label>
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="reverseBottomLeds" type="checkbox" />
+                        <span>Bottom side runs left to right</span>
+                    </label>
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="reverseLeftLeds" type="checkbox" />
+                        <span>Left side runs top to bottom</span>
+                    </label>
                 </div>
 
                 <div class="verticalSection">

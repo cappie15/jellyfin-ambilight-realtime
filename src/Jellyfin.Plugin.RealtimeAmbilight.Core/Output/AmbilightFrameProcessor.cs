@@ -20,6 +20,7 @@ public sealed class AmbilightFrameProcessor
     private readonly Func<PerimeterColourAdjustment> _adjustmentResolver;
     private readonly Func<int> _minimumColourHoldMillisecondsResolver;
     private readonly Func<int> _smoothingMillisecondsResolver;
+    private readonly Func<LedSideDirections> _sideDirectionsResolver;
     private readonly IDitheredChannelEncoder _encoder;
     private readonly DwellFilter _dwellFilter = new();
     private readonly WledTemporalSmoother _smoother = new();
@@ -61,7 +62,8 @@ public sealed class AmbilightFrameProcessor
         Func<PerimeterColourAdjustment>? adjustmentResolver = null,
         Func<int>? minimumColourHoldMillisecondsResolver = null,
         bool sendWhiteChannel = false,
-        Func<int>? smoothingMillisecondsResolver = null)
+        Func<int>? smoothingMillisecondsResolver = null,
+        Func<LedSideDirections>? sideDirectionsResolver = null)
     {
         _physicalLayout = physicalLayout ?? throw new ArgumentNullException(nameof(physicalLayout));
         _logicalLayout = logicalLayout ?? throw new ArgumentNullException(nameof(logicalLayout));
@@ -71,6 +73,7 @@ public sealed class AmbilightFrameProcessor
         _adjustmentResolver = adjustmentResolver ?? (static () => PerimeterColourAdjustment.None);
         _minimumColourHoldMillisecondsResolver = minimumColourHoldMillisecondsResolver ?? (static () => 0);
         _smoothingMillisecondsResolver = smoothingMillisecondsResolver ?? (static () => 0);
+        _sideDirectionsResolver = sideDirectionsResolver ?? (static () => LedSideDirections.Clockwise);
         _encoder = sendWhiteChannel ? new DitheredRgbw32Encoder() : new DitheredRgb24Encoder();
     }
 
@@ -118,7 +121,8 @@ public sealed class AmbilightFrameProcessor
             samples.Top,
             samples.Right,
             samples.Bottom,
-            samples.Left);
+            samples.Left,
+            _sideDirectionsResolver());
     }
 
     /// <summary>

@@ -1597,6 +1597,10 @@ export default function (view) {
                 byId("autoDetectLedGamma").checked = config.AutoDetectLedGamma !== false;
                 byId("allowWledControl").checked = config.AllowWledControl === true;
                 byId("sendWhiteChannel").checked = config.SendWhiteChannel === true;
+                byId("reverseTopLeds").checked = config.ReverseTopLeds === true;
+                byId("reverseRightLeds").checked = config.ReverseRightLeds === true;
+                byId("reverseBottomLeds").checked = config.ReverseBottomLeds === true;
+                byId("reverseLeftLeds").checked = config.ReverseLeftLeds === true;
                 byId("whiteChannelStrengthPercent").value = config.WhiteChannelStrengthPercent ?? 50;
                 byId("hueEnabled").checked = config.HueEnabled === true;
                 byId("hueBrightnessPercent").value = config.HueBrightnessPercent || 100;
@@ -1693,6 +1697,10 @@ export default function (view) {
             Enabled: byId("enabled").checked,
             HoldWhilePaused: byId("holdWhilePaused").checked,
             IgnoreBlackBorders: byId("ignoreBlackBorders").checked,
+            ReverseTopLeds: byId("reverseTopLeds").checked,
+            ReverseRightLeds: byId("reverseRightLeds").checked,
+            ReverseBottomLeds: byId("reverseBottomLeds").checked,
+            ReverseLeftLeds: byId("reverseLeftLeds").checked,
             CorrectLedGamma: byId("correctLedGamma").checked,
             AutoDetectLedGamma: byId("autoDetectLedGamma").checked,
             AllowWledControl: byId("allowWledControl").checked,
@@ -1796,7 +1804,8 @@ export default function (view) {
     const wledResetFields = [
         "WledHost", "WledHttpPort", "RealtimeProtocol", "TopLedCount", "RightLedCount", "BottomLedCount", "LeftLedCount",
         "OutputDelayMilliseconds", "OutputFramesPerSecond", "HoldWhilePaused", "SendWhiteChannel", "AllowWledControl",
-        "AutoDetectLedGamma", "CorrectLedGamma"
+        "AutoDetectLedGamma", "CorrectLedGamma",
+        "ReverseTopLeds", "ReverseRightLeds", "ReverseBottomLeds", "ReverseLeftLeds"
     ];
     const ambilightResetFields = [
         "RedGainPercent", "GreenGainPercent", "BlueGainPercent", "WallColourHex", "WallColourCorrectionPercent",

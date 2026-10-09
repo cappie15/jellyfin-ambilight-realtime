@@ -46,6 +46,31 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     public int LeftLedCount { get; set; } = 150;
 
     /// <summary>
+    /// Set when a physical side's LEDs are wired against the clockwise
+    /// perimeter order everything else assumes (top left to right, right top
+    /// to bottom, bottom right to left, left bottom to top).
+    /// </summary>
+    /// <remarks>
+    /// A perimeter built from four cut runs joined by corner wires has an
+    /// independent data direction per side, and one run soldered the other way
+    /// round renders that side's picture mirrored end for end while the other
+    /// three stay correct. Before these existed the single clockwise-from-the-
+    /// top-left assumption was the only wiring the plugin could express, so the
+    /// only remedy was to resolder the strip. Default false, which is exactly
+    /// the behaviour every existing installation already has.
+    /// </remarks>
+    public bool ReverseTopLeds { get; set; }
+
+    /// <inheritdoc cref="ReverseTopLeds"/>
+    public bool ReverseRightLeds { get; set; }
+
+    /// <inheritdoc cref="ReverseTopLeds"/>
+    public bool ReverseBottomLeds { get; set; }
+
+    /// <inheritdoc cref="ReverseTopLeds"/>
+    public bool ReverseLeftLeds { get; set; }
+
+    /// <summary>
     /// Delays LED output to compensate for a client display pipeline that lags
     /// the server-side decoder. Positive values make the LEDs react later.
     /// Starts at zero: it is raised only when the LEDs are demonstrably ahead of
