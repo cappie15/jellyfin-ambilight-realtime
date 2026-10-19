@@ -451,4 +451,24 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     /// <inheritdoc cref="HueScreenWidthPercent"/>
     public int HueScreenHeightPercent { get; set; } = 100;
+
+    /// <summary>
+    /// Where the middle of the television sits on the room's own height axis,
+    /// as a percentage from -100 (floor) to +100 (ceiling). 0 is the bridge's
+    /// own origin, which is seated eye level, not the middle of the wall.
+    /// </summary>
+    /// <remarks>
+    /// A wall-mounted set is normally well above eye level, and assuming it
+    /// is centred on the origin pushes the whole picture downward relative to
+    /// the lights. Measured on the reference installation by lighting one Hue
+    /// channel at a time and photographing the wall: the vertical strip's
+    /// channel at room Z = 0 sits at the <em>top</em> of the set, not halfway
+    /// up it, so it was being handed the middle of the picture and the top
+    /// half of the image only ever reached the single channel physically
+    /// above the set.
+    /// </remarks>
+    public int HueScreenCentreHeightPercent { get; set; }
+
+    /// <inheritdoc cref="HueScreenCentreHeightPercent"/>
+    public int HueScreenCentreWidthPercent { get; set; }
 }

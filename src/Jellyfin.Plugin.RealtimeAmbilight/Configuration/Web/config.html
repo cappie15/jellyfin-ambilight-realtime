@@ -407,6 +407,19 @@
                 <input is="emby-input" id="hueScreenHeightPercent" type="range" min="10" max="100" step="5" label="Screen height in the room" />
                 <div class="fieldDescription">Now: <strong id="hueScreenHeightValue"></strong> of the room's half-height.</div>
             </div>
+            <div class="inputContainer">
+                <input is="emby-input" id="hueScreenCentreHeightPercent" type="range" min="-100" max="100" step="5" label="Screen centre height" />
+                <div class="fieldDescription">
+                    Now: <strong id="hueScreenCentreHeightValue"></strong>. Where the middle of the television sits on the room's
+                    height axis: -100 is the floor, 0 is the bridge's own origin at seated eye level, +100 the ceiling. A
+                    wall-mounted set is usually above eye level, and leaving this at 0 pushes the whole picture downward
+                    relative to the lights. <strong>Default: 0.</strong>
+                </div>
+            </div>
+            <div class="inputContainer">
+                <input is="emby-input" id="hueScreenCentreWidthPercent" type="range" min="-100" max="100" step="5" label="Screen centre, left to right" />
+                <div class="fieldDescription">Now: <strong id="hueScreenCentreWidthValue"></strong>. Only needed for a set placed off to one side. <strong>Default: 0.</strong></div>
+            </div>
         </div>
 
         <div class="raPanel">

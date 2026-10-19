@@ -54,6 +54,27 @@ public sealed class HueFrameProcessor
     private readonly IMonotonicTime _monotonicTime;
     private readonly HueNaturalLightFilter _filter;
     private readonly Func<HueScreenExtent> _screenExtentResolver;
+
+    /// <summary>
+    /// Channel colours to send instead of anything derived from the picture,
+    /// for finding out which part of which physical strip a channel actually
+    /// drives. Null for normal operation.
+    /// </summary>
+    /// <remarks>
+    /// Where a Hue channel physically lands cannot be computed from the
+    /// bridge's own data when a gradient strip has been cut shorter than the
+    /// length its firmware still spreads its segments over, which is the case
+    /// on the reference installation. The only way to know is to light one
+    /// channel at a time and look. This has now been the missing instrument
+    /// in three separate rounds of chasing Hue position bugs.
+    /// </remarks>
+    private volatile IReadOnlyDictionary<int, LinearRgb>? _channelOverride;
+
+    /// <summary>Sets or clears <see cref="_channelOverride"/>. Thread-safe; the pump reads it once per frame.</summary>
+    public void SetChannelOverride(IReadOnlyDictionary<int, LinearRgb>? colours) => _channelOverride = colours;
+
+    /// <summary>Whether an override is currently replacing the picture.</summary>
+    public bool HasChannelOverride => _channelOverride is not null;
     private TimeSpan? _lastProcessedAt;
     private TimeSpan? _sessionStartedAt;
 
@@ -87,6 +108,22 @@ public sealed class HueFrameProcessor
         var result = new Dictionary<int, LinearRgb>(channels.Count);
         if (channels.Count == 0)
         {
+            return result;
+        }
+
+        if (_channelOverride is { } forced)
+        {
+            // Deliberately skips the natural-light filter and the session
+            // fade: an identify colour that eases in over two seconds, or
+            // drifts because the filter is smoothing it, is useless for
+            // reading a boundary off a wall.
+            var scale = (float)Math.Clamp(overallBrightnessFraction, 0d, 4d);
+            foreach (var channel in channels)
+            {
+                var colour = forced.TryGetValue(channel.ChannelId, out var wanted) ? wanted : default;
+                result[channel.ChannelId] = new LinearRgb(colour.Red * scale, colour.Green * scale, colour.Blue * scale);
+            }
+
             return result;
         }
 

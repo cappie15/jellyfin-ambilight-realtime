@@ -1,5 +1,6 @@
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Model;
 using Jellyfin.Plugin.RealtimeAmbilight.Hue;
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Color;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -142,6 +143,52 @@ public sealed class HueController : ControllerBase
     public ActionResult<HueStatus> GetStatus() => Ok(_entertainmentService.GetStatus());
 
     /// <summary>Forgets the stored credentials. Does not touch the bridge itself; the operator removes the app from the Hue app if they want the bridge side undone too.</summary>
+    /// <summary>
+    /// Lights one entertainment channel and blacks out the rest, so it can be
+    /// seen which part of which physical strip that channel actually drives.
+    /// Pass no channel to clear the override again.
+    /// </summary>
+    /// <remarks>
+    /// Rides along on an existing stream rather than connecting one, so
+    /// something must be playing on the bound television. Returns 409 when
+    /// nothing is streaming. This exists because where a channel lands cannot
+    /// be derived from the bridge's own data once a gradient strip has been
+    /// physically shortened, and guessing at it has now cost three separate
+    /// rounds of chasing Hue position bugs.
+    /// </remarks>
+    [HttpPost("Identify")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public IActionResult Identify([FromQuery] int? channel, [FromQuery] string? colour)
+    {
+        if (channel is null)
+        {
+            return _entertainmentService.TrySetChannelOverride(null) ? NoContent() : Conflict("Hue is not streaming.");
+        }
+
+        var lit = ParseColour(colour);
+        var map = _entertainmentService.ActiveChannelIds.ToDictionary(id => id, id => id == channel.Value ? lit : default);
+        return _entertainmentService.TrySetChannelOverride(map) ? NoContent() : Conflict("Hue is not streaming.");
+    }
+
+    /// <summary>Hex <c>rrggbb</c> read as full-range sRGB, defaulting to white. Linear light, like everything downstream.</summary>
+    private static LinearRgb ParseColour(string? colour)
+    {
+        var text = (colour ?? "ffffff").TrimStart('#');
+        if (text.Length != 6 || !int.TryParse(text, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out _))
+        {
+            text = "ffffff";
+        }
+
+        static float Linear(string text, int offset)
+        {
+            var encoded = Convert.ToInt32(text.Substring(offset, 2), 16) / 255f;
+            return encoded <= 0.04045f ? encoded / 12.92f : MathF.Pow((encoded + 0.055f) / 1.055f, 2.4f);
+        }
+
+        return new LinearRgb(Linear(text, 0), Linear(text, 2), Linear(text, 4));
+    }
+
     [HttpPost("Unlink")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public IActionResult Unlink()

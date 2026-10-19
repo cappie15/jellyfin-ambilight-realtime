@@ -1,5 +1,59 @@
 # Current state
 
+## 2026-10-19 (last round): measuring where the Hue channels actually are
+
+The screen-extent change made each channel's colour pure but moved no
+boundary, and the operator said so plainly. It was the right correction for
+the wrong complaint. Stopped arguing from the bridge's numbers and built the
+instrument this project has now wanted three times: `POST
+RealtimeAmbilight/Hue/Identify?channel=N` lights one entertainment channel and
+blacks out the rest, riding along on whatever is already streaming
+(`HueFrameProcessor.SetChannelOverride`, which deliberately bypasses the
+natural-light filter and the session fade so the colour is readable the
+instant it is set). A fifteen-minute static clip ships alongside it in the
+test library, purely to keep the stream open while channels are stepped
+through.
+
+Lit channels 0 to 4 one at a time with WLED off and photographed each, then
+located them numerically against the camera frame (television at x 23-56%,
+y 30-63%):
+
+| channel | room position | where it actually lights |
+| --- | --- | --- |
+| 3 | X -0.40, Z -0.40 | under the set, left third (x 2-38%) |
+| 4 | X 0.00, Z -0.40 | under the set, middle, centred at x 39% |
+| 0 | X 0.40, Z -0.40 | under the set right third, plus the low part of both vertical strips |
+| 1 | X 0.40, Z 0.00 | right side, centred at y 34% |
+| 2 | X 0.40, Z 0.40 | right side, high, y 0-30% |
+
+**The television's own centre is at x 39 to 40%, and channel 4 sits exactly
+there**, so the horizontal model was right: the strip under the set really is
+split 2/3/2 across its length, evenly. Its yellow starting at 71% is the
+bridge's three-channel resolution and nothing else. Not fixable here.
+
+**The vertical axis was wrong, and the measurement says why.** Channel 1 sits
+at room Z = 0 but lands at y 34%, the *top* of the set, not halfway up it.
+The television hangs well above the seated eye level the bridge puts its
+origin at, and `HueScreenExtent` assumed the screen was centred on that
+origin. So channel 1 was handed the middle of the picture while physically
+sitting at the top of the screen, and the image's top half only ever reached
+channel 2, the one light physically above the set. That is exactly the
+reported "green section too high".
+
+Added `CentreWidth`/`CentreHeight` to `HueScreenExtent` and
+`HueScreenCentreHeightPercent`/`HueScreenCentreWidthPercent` to the
+configuration, both defaulting to 0 (the previous behaviour). Live values for
+this room, derived from the measurement rather than guessed: width 45, height
+25, centre height -25.
+
+267 tests passing (1 new, pinning that a screen above eye level changes which
+light sees the top of the picture).
+
+**Operational note worth repeating:** every deploy restarts Jellyfin and the
+Android TV session loses `SupportsRemoteControl` until the app is fully
+restarted. This round cost four of those. Batch code changes; the settings
+themselves are read per frame and need no restart at all.
+
 ## 2026-10-19 (later again): the room is not the screen
 
 With the quadrant test pattern on the television and the camera on the wall,

@@ -171,6 +171,28 @@ public class HueChannelMapperTests
     }
 
     [Fact]
+    public void AScreenMountedAboveEyeLevelMovesWhichLightSeesTheTopOfThePicture()
+    {
+        // Measured in the operator's room: the vertical strip's channel at
+        // room Z = 0 sits at the top of the television, not halfway up it,
+        // because the set hangs well above the seated eye level the bridge
+        // puts its origin at. Centred on the origin, that channel is handed
+        // the middle of the picture and the top half only ever reaches the
+        // one channel physically above the set.
+        var samples = CreateSamples();
+        var centredOnTheOrigin = HueChannelMapper.Map(new HuePosition(0, 1, 0), samples, SceneAverage, new HueScreenExtent(0.4, 0.25));
+        var raisedToTheRealScreen = HueChannelMapper.Map(new HuePosition(0, 1, 0), samples, SceneAverage, new HueScreenExtent(0.4, 0.25, 0d, -0.25));
+
+        var topOfThePicture = LinearRgb.Lerp(TopLeft, TopRight, 0.5f);
+        var bottomOfThePicture = LinearRgb.Lerp(BottomLeft, BottomRight, 0.5f);
+
+        // Centred on the origin it reads halfway up the image, a blend of the
+        // two; told where the screen actually hangs, it reads the top.
+        AssertApproximatelyEqual(LinearRgb.Lerp(bottomOfThePicture, topOfThePicture, 0.5f), centredOnTheOrigin);
+        AssertApproximatelyEqual(topOfThePicture, raisedToTheRealScreen);
+    }
+
+    [Fact]
     public void PositionsOutsideTheDocumentedRangeAreClamped()
     {
         var farOutside = HueChannelMapper.Map(new HuePosition(5, 5, 5), CreateSamples(), SceneAverage);

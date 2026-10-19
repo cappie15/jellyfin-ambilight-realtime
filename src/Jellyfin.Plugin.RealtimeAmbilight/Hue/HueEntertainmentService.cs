@@ -66,6 +66,28 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     private readonly FrameRateMeter _sendRateMeter = new(new PlaybackMonotonicTimeAdapter());
 
     private HueFrameProcessor? _frameProcessor;
+
+    /// <summary>
+    /// Replaces every channel's colour with a fixed one, or clears that
+    /// again, for working out which part of which physical strip a channel
+    /// actually drives. Requires an active stream: this rides along on the
+    /// frames playback is already producing rather than connecting on its
+    /// own. Returns false when nothing is streaming.
+    /// </summary>
+    public bool TrySetChannelOverride(IReadOnlyDictionary<int, LinearRgb>? colours)
+    {
+        var processor = _frameProcessor;
+        if (processor is null)
+        {
+            return false;
+        }
+
+        processor.SetChannelOverride(colours);
+        return true;
+    }
+
+    /// <summary>Every channel the active entertainment configuration declares, for the identify endpoint to enumerate.</summary>
+    public IReadOnlyList<int> ActiveChannelIds => _channels.Select(static c => c.ChannelId).ToArray();
     private IHueStreamChannel? _channel;
     private HueCredentials? _credentials;
     private IReadOnlyList<HueEntertainmentChannel> _channels = [];
@@ -394,7 +416,9 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                         ? HueScreenExtent.Full
                         : new HueScreenExtent(
                             Math.Clamp(configuration.HueScreenWidthPercent, 10, 100) / 100d,
-                            Math.Clamp(configuration.HueScreenHeightPercent, 10, 100) / 100d);
+                            Math.Clamp(configuration.HueScreenHeightPercent, 10, 100) / 100d,
+                            Math.Clamp(configuration.HueScreenCentreWidthPercent, -100, 100) / 100d,
+                            Math.Clamp(configuration.HueScreenCentreHeightPercent, -100, 100) / 100d);
                 });
 
             if (_snapshot?.PlaybackSessionId != sessionId)

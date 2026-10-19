@@ -21,10 +21,35 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Mapping;
 /// <see langword="default"/> is the previous behaviour (the screen treated as
 /// filling the room), so an installation that has never set this is unchanged.
 /// </remarks>
-public readonly record struct HueScreenExtent(double HalfWidth = 1d, double HalfHeight = 1d)
+/// <param name="CentreHeight">
+/// Where the middle of the screen sits on the room's own height axis.
+/// Measured by lighting one Hue channel at a time and photographing the wall
+/// (2026-10-19): the vertical strip's channel at room Z = 0 turned out to sit
+/// at the <em>top</em> of the television, not halfway up it, because the set
+/// is mounted well above the seated eye level the bridge puts its origin at.
+/// Treating the screen as centred on the origin handed that channel the
+/// middle of the picture, so the top half of the image only ever reached the
+/// one channel physically above the set, and green stopped far too high.
+/// </param>
+/// <param name="CentreWidth">
+/// The same for the horizontal axis. Usually 0, since a television is
+/// normally centred on the wall the entertainment area was mapped around, but
+/// a set placed off to one side needs it.
+/// </param>
+public readonly record struct HueScreenExtent(
+    double HalfWidth = 1d,
+    double HalfHeight = 1d,
+    double CentreWidth = 0d,
+    double CentreHeight = 0d)
 {
     /// <summary>The screen treated as spanning the whole room, which is what this mapping assumed before the extent existed.</summary>
     public static HueScreenExtent Full => new(1d, 1d);
+
+    /// <summary>Converts a reported room position on one axis to the -1..+1 the mapping wants, against the screen rather than the walls.</summary>
+    public double NormaliseX(double x) => Math.Clamp((x - CentreWidth) / EffectiveHalfWidth, -1d, 1d);
+
+    /// <inheritdoc cref="NormaliseX"/>
+    public double NormaliseZ(double z) => Math.Clamp((z - CentreHeight) / EffectiveHalfHeight, -1d, 1d);
 
     /// <summary>
     /// Half-extents are clamped into a sane band, and <c>0</c> (what
