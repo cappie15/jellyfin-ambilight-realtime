@@ -1,5 +1,61 @@
 # Current state
 
+## 2026-10-19 (later): Hue's Z axis was half-range too, exactly like Y
+
+The operator reported that on every Hue gradient strip the boundary between
+the picture's top and bottom colours sat far too close to the ceiling, and
+that the strip under the television put its own boundary far too far to one
+side. Chased it with a camera in the room and four-colour quadrant test clips
+(`Position A/B/C`, generated into the plugin's own test-video library) rather
+than a film: a film never holds a hard edge still long enough to read a
+gradient against.
+
+**Root cause, in `HueChannelMapper.Map`:** `var z = Math.Clamp(position.Z, 0d, 1d)`.
+The bridge reports Z on the same -1 (floor) to +1 (ceiling) scale as X, and
+both of this operator's entertainment areas are full of negative values: the
+three gradient strips sit at Z = -0.4, and two of the five lamps at -0.235 and
+-0.645. The clamp pinned every one of them to 0, which this mapping reads as
+the very bottom of the picture. **Five of the ten channels in the TV area were
+showing the picture's bottom edge regardless of where they physically are**,
+and every remaining channel sat far below its real height (a lamp at Z = 0.094
+was read as 5% up the picture instead of 55%). That is precisely the reported
+symptom: the bottom edge's colour covering almost the whole room, with only a
+light at the literal ceiling ever showing the top of the picture.
+
+This is the **same mistake, on the neighbouring axis**, as the 2026-09-15 Y
+finding. Worse, that finding's own write-up explicitly exonerated this one:
+"X and Z's own documented -1..1/0..1 ranges were never wrong; only Y was."
+That sentence was never checked against bridge data either. The evidence was
+sitting in the same API response the whole time. Both `HueChannelMapper` and
+`HuePosition` now carry the corrected convention, and the latter says plainly
+that any remaining unverified claim about it should be treated the same way.
+
+Fixed: `z = (Clamp(position.Z, -1, 1) + 1) / 2`, the same shape of conversion
+Y already had. Two new regression tests pin the axis directly (a negative Z is
+below eye level, not pinned to the bottom edge; floor, middle and ceiling span
+the whole picture), and the six existing position tests were rewritten onto
+the corrected scale rather than deleted.
+
+**Still a real limitation, unchanged and not fixable here:** channel 0 of the
+TV area drives segments of all three gradient strips at once, and channels 1
+and 2 drive segments of two. The bridge groups them that way and rejects a
+client-supplied channel list (ADR-011). So the right-hand third of the strip
+under the television is forced to show whatever colour the two vertical
+strips' low segments get, whatever this mapping computes. Re-doing the
+entertainment area's light positions in the Hue app is the only lever the
+operator has on that.
+
+**Also found, unrelated:** the settings page's Live preview panel has never
+worked at all. `config.js` fetches `RealtimeAmbilight/LivePreview`, but the
+controller serves it at `RealtimeAmbilight/Discovery/LivePreview`, so the
+panel has always shown "Could not reach the preview right now." That also
+retires this file's own 2026-10-19 (earlier) explanation for the mirrored
+bottom strip: the operator cannot have been looking at that panel, because it
+has never rendered. The orientation fix made there is still correct and is
+still needed, but what the operator actually saw is not yet explained.
+
+264 tests passing (2 new).
+
 ## 2026-10-19: the bottom was never mirrored on the wall, the preview panel was
 
 Settled the open question from 2026-10-09 with a camera in the room rather

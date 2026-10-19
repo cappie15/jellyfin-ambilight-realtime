@@ -7,19 +7,24 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Model;
 /// a float roughly in [-1, 1].
 /// </summary>
 /// <remarks>
-/// Axis convention, corroborated by every third-party client this project
-/// could inspect for <c>X</c>/<c>Z</c>, and confirmed against the operator's
-/// own real bridge data for <c>Y</c> (2026-09-15, see
-/// <see cref="HueChannelMapper"/>'s own remarks for the four independent
-/// fixtures this was checked against): the origin sits at the screen, at
-/// floor level, centred. <c>X</c> runs left (-1) to right (+1) facing the
-/// screen. <c>Z</c> is height: 0 at the floor, increasing toward the
-/// ceiling. <c>Y</c> is depth, but runs the opposite direction from what was
-/// first assumed: <b>+1 is at/near the screen, -1 is behind the viewer</b>,
-/// with 0 at/near the viewer's own seating position. (An earlier,
-/// unverified assumption had <c>Y</c> running 0 at the screen to +1 behind
-/// the viewer -- the mirror image of the confirmed convention above, and
-/// wrong.) This is exactly what <see cref="HueChannelMapper"/> is built on.
+/// Axis convention, confirmed against the operator's own real bridge data
+/// (<c>Y</c> on 2026-09-15, <c>Z</c> on 2026-10-19; see
+/// <see cref="HueChannelMapper"/>'s own remarks for the fixtures and the
+/// room test each was checked against). <b>All three axes run -1 to +1,
+/// with the origin at the centre of the room at seated eye level</b>, not
+/// at the screen or on the floor. <c>X</c> runs left (-1) to right (+1)
+/// facing the screen. <c>Z</c> is height: -1 at the floor, +1 at the
+/// ceiling. <c>Y</c> is depth: <b>+1 is at/near the screen, -1 is behind
+/// the viewer</b>, with 0 at/near the viewer's own seating position.
+/// <para>
+/// Both of the corrections above replaced an assumption this project had
+/// carried without ever checking it against a bridge: that <c>Y</c> ran
+/// 0..1 from the screen (the mirror image of the truth), and that <c>Z</c>
+/// ran 0..1 from the floor (half the real range, silently discarding every
+/// light below eye level). Neither survived contact with real data. Treat
+/// any remaining unverified claim about this struct the same way.
+/// </para>
+/// This is exactly what <see cref="HueChannelMapper"/> is built on.
 /// </remarks>
 public readonly record struct HuePosition(double X, double Y, double Z);
 

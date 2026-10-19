@@ -13,10 +13,9 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Mapping;
 /// <para>
 /// Coordinate handling, per <see cref="HuePosition"/>'s own documented
 /// convention, confirmed against the operator's real bridge data
-/// (2026-09-15): <c>x</c> is clamped to [-1, 1] (left/right); <c>z</c> is
-/// clamped to [0, 1] (floor/ceiling) -- a light mounted above a notionally
-/// one-unit-tall room still reads as "near the ceiling" rather than
-/// extrapolating past it; <c>y</c> (depth) is clamped to [-1, 1] and treated
+/// (2026-09-15 for <c>y</c>, 2026-10-19 for <c>z</c>): every axis is
+/// clamped to [-1, 1]. <c>x</c> is left/right; <c>z</c> is height, -1 at
+/// the floor and +1 at the ceiling; <c>y</c> (depth) is treated
 /// as the single axis this mapping blends across: <b>+1 is at/near the
 /// screen, -1 is behind the viewer</b>, with 0 -- beside the viewer -- as
 /// the mapping's explicit midpoint. (This is the mirror image of an earlier,
@@ -28,7 +27,7 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Mapping;
 /// </para>
 /// <list type="number">
 /// <item><b>At the screen (y = +1).</b> Blends the picture's own top and
-/// bottom edge samples by height (<c>z</c>), then, the closer <c>x</c> sits
+/// bottom edge samples by height (<c>z</c>, floor to ceiling), then, the closer <c>x</c> sits
 /// to either side, blends further toward that side's full edge sample --
 /// directly above the screen centre is pure top edge; directly beside the
 /// screen is close to the corresponding side edge.</item>
@@ -52,6 +51,17 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Mapping;
 /// make sense on the corrected -1..+1/+1-at-screen scale now documented
 /// above; the mapping formula was updated to match, not just this comment.
 /// </para>
+/// <para>
+/// <b>2026-10-19: the same was true of <c>z</c>, which that note had
+/// explicitly excused.</b> Both of the operator's entertainment areas report
+/// negative <c>z</c> for half their channels (-0.4 for the gradient strips,
+/// -0.235 and -0.645 for two lamps), impossible on the 0..1 range this
+/// mapping assumed. Confirmed by what it produced in the room: with a test
+/// pattern split into coloured quadrants, every light pinned to <c>z = 0</c>
+/// showed the picture's bottom edge, so the boundary between the top and
+/// bottom colours sat near the ceiling instead of halfway up each strip.
+/// <c>z</c> is now read on the same -1..+1 scale as <c>x</c>.
+/// </para>
 /// </remarks>
 public static class HueChannelMapper
 {
@@ -60,7 +70,21 @@ public static class HueChannelMapper
         ArgumentNullException.ThrowIfNull(edgeSamples);
 
         var x = Math.Clamp(position.X, -1d, 1d);
-        var z = Math.Clamp(position.Z, 0d, 1d);
+        // Z runs -1 (floor) to +1 (ceiling), the same -1..+1 scale as X, and
+        // is converted here to this method's own internal 0 (bottom) to 1
+        // (top) scale. It used to be clamped to [0, 1] on the strength of an
+        // assumption nobody had checked against a real bridge -- the identical
+        // mistake made about Y, found and fixed separately on 2026-09-15 while
+        // the note below it still insisted "X and Z's own documented ranges
+        // were never wrong". They were. The operator's own two entertainment
+        // areas report Z of -0.4, -0.235, -0.645 and more, which simply cannot
+        // occur on a 0..1 scale, and the old clamp pinned every one of them to
+        // 0: the picture's bottom edge. Half this installation's ten channels
+        // landed there, and every remaining channel sat far lower than its
+        // real height, so the bottom edge's colour covered almost the whole
+        // room and only a light at the literal ceiling ever showed the top of
+        // the picture.
+        var z = (Math.Clamp(position.Z, -1d, 1d) + 1d) / 2d;
         // Y runs -1 (behind the viewer) to +1 (at the screen) -- confirmed
         // against the operator's own real bridge data (2026-09-15), not
         // assumed: two gradient lights both moved to sit physically against

@@ -43,11 +43,11 @@ public class HueChannelMapperTests
     [Fact]
     public void AChannelBesideTheScreenOnTheRightLeansTowardTheRightEdge()
     {
-        var atScreenCentre = HueChannelMapper.Map(new HuePosition(0, 1, 0.5), CreateSamples(), SceneAverage);
-        var besideScreenRight = HueChannelMapper.Map(new HuePosition(1, 1, 0.5), CreateSamples(), SceneAverage);
+        var atScreenCentre = HueChannelMapper.Map(new HuePosition(0, 1, 0), CreateSamples(), SceneAverage);
+        var besideScreenRight = HueChannelMapper.Map(new HuePosition(1, 1, 0), CreateSamples(), SceneAverage);
 
         // The fully-right position must be closer to the pure right-edge
-        // sample (RightTop/RightBottom average at z=0.5) than the centred one.
+        // sample (RightTop/RightBottom average at mid height) than the centred one.
         var pureRight = LinearRgb.Lerp(RightTop, RightBottom, 0.5f);
         Assert.True(
             DistanceSquared(besideScreenRight, pureRight) < DistanceSquared(atScreenCentre, pureRight),
@@ -57,7 +57,7 @@ public class HueChannelMapperTests
     [Fact]
     public void AChannelBesideTheViewerIsExactlyTheCorrespondingSideEdge()
     {
-        var colour = HueChannelMapper.Map(new HuePosition(1, 0, 0.5), CreateSamples(), SceneAverage);
+        var colour = HueChannelMapper.Map(new HuePosition(1, 0, 0), CreateSamples(), SceneAverage);
 
         var expectedRight = LinearRgb.Lerp(RightTop, RightBottom, 0.5f);
         AssertApproximatelyEqual(expectedRight, colour);
@@ -66,11 +66,11 @@ public class HueChannelMapperTests
     [Fact]
     public void LeftAndRightAreSymmetric()
     {
-        var right = HueChannelMapper.Map(new HuePosition(1, 0, 0.25), CreateSamples(), SceneAverage);
-        var left = HueChannelMapper.Map(new HuePosition(-1, 0, 0.25), CreateSamples(), SceneAverage);
+        var right = HueChannelMapper.Map(new HuePosition(1, 0, -0.5), CreateSamples(), SceneAverage);
+        var left = HueChannelMapper.Map(new HuePosition(-1, 0, -0.5), CreateSamples(), SceneAverage);
 
-        var expectedRight = LinearRgb.Lerp(RightTop, RightBottom, 0.75f); // z=0.25 -> RightFraction = 1-0.25 = 0.75
-        var expectedLeft = LinearRgb.Lerp(LeftBottom, LeftTop, 0.25f); // z=0.25 -> LeftFraction = 0.25
+        var expectedRight = LinearRgb.Lerp(RightTop, RightBottom, 0.75f); // z=-0.5 is a quarter of the way up, so RightFraction = 1-0.25 = 0.75
+        var expectedLeft = LinearRgb.Lerp(LeftBottom, LeftTop, 0.25f); // z=-0.5 is a quarter of the way up, so LeftFraction = 0.25
 
         AssertApproximatelyEqual(expectedRight, right);
         AssertApproximatelyEqual(expectedLeft, left);
@@ -79,7 +79,7 @@ public class HueChannelMapperTests
     [Fact]
     public void AChannelBehindTheViewerIsTheSceneAverageRegardlessOfXAndZ()
     {
-        var colourA = HueChannelMapper.Map(new HuePosition(-1, -1, 0), CreateSamples(), SceneAverage);
+        var colourA = HueChannelMapper.Map(new HuePosition(-1, -1, -1), CreateSamples(), SceneAverage);
         var colourB = HueChannelMapper.Map(new HuePosition(1, -1, 1), CreateSamples(), SceneAverage);
 
         AssertApproximatelyEqual(SceneAverage, colourA);
@@ -90,11 +90,11 @@ public class HueChannelMapperTests
     public void DepthTransitionsSmoothlyFromScreenThroughSideToScene()
     {
         var samples = CreateSamples();
-        var atScreen = HueChannelMapper.Map(new HuePosition(1, 1, 0.5), samples, SceneAverage);
-        var quarter = HueChannelMapper.Map(new HuePosition(1, 0.5, 0.5), samples, SceneAverage);
-        var beside = HueChannelMapper.Map(new HuePosition(1, 0, 0.5), samples, SceneAverage);
-        var threeQuarter = HueChannelMapper.Map(new HuePosition(1, -0.5, 0.5), samples, SceneAverage);
-        var behind = HueChannelMapper.Map(new HuePosition(1, -1, 0.5), samples, SceneAverage);
+        var atScreen = HueChannelMapper.Map(new HuePosition(1, 1, 0), samples, SceneAverage);
+        var quarter = HueChannelMapper.Map(new HuePosition(1, 0.5, 0), samples, SceneAverage);
+        var beside = HueChannelMapper.Map(new HuePosition(1, 0, 0), samples, SceneAverage);
+        var threeQuarter = HueChannelMapper.Map(new HuePosition(1, -0.5, 0), samples, SceneAverage);
+        var behind = HueChannelMapper.Map(new HuePosition(1, -1, 0), samples, SceneAverage);
 
         // Blue (from RightBottom) should increase monotonically front-to-back
         // toward the 0.5 scene average, since RightTop/RightBottom for this
@@ -103,6 +103,37 @@ public class HueChannelMapperTests
         Assert.True(quarter.Blue <= beside.Blue + 1e-4f);
         Assert.True(beside.Blue <= threeQuarter.Blue + 1e-4f);
         Assert.True(threeQuarter.Blue <= behind.Blue + 1e-4f);
+    }
+
+    [Fact]
+    public void NegativeHeightIsBelowEyeLevelRatherThanPinnedToTheBottomEdge()
+    {
+        // Z runs -1 (floor) to +1 (ceiling). It was read as 0..1 until
+        // 2026-10-19, which clamped every real negative height to the very
+        // bottom of the picture: in the operator's own room that was half the
+        // channels, all showing the bottom edge whatever their real height.
+        var samples = CreateSamples();
+        var quarterUp = HueChannelMapper.Map(new HuePosition(1, 0, -0.5), samples, SceneAverage);
+        var onTheFloor = HueChannelMapper.Map(new HuePosition(1, 0, -1), samples, SceneAverage);
+
+        Assert.NotEqual(onTheFloor, quarterUp);
+        AssertApproximatelyEqual(LinearRgb.Lerp(RightTop, RightBottom, 1f), onTheFloor);
+        AssertApproximatelyEqual(LinearRgb.Lerp(RightTop, RightBottom, 0.75f), quarterUp);
+    }
+
+    [Fact]
+    public void HeightsSpanTheWholePictureBetweenFloorAndCeiling()
+    {
+        var samples = CreateSamples();
+        var floor = HueChannelMapper.Map(new HuePosition(0, 1, -1), samples, SceneAverage);
+        var middle = HueChannelMapper.Map(new HuePosition(0, 1, 0), samples, SceneAverage);
+        var ceiling = HueChannelMapper.Map(new HuePosition(0, 1, 1), samples, SceneAverage);
+
+        AssertApproximatelyEqual(LinearRgb.Lerp(BottomLeft, BottomRight, 0.5f), floor);
+        AssertApproximatelyEqual(LinearRgb.Lerp(TopLeft, TopRight, 0.5f), ceiling);
+        // The midpoint is a real blend of the two, not either extreme.
+        Assert.True(DistanceSquared(middle, floor) > 1e-6);
+        Assert.True(DistanceSquared(middle, ceiling) > 1e-6);
     }
 
     [Fact]
