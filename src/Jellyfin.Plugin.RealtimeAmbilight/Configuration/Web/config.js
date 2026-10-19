@@ -247,7 +247,7 @@ export default function (view) {
     }
 
     function loadLivePreview() {
-        window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/LivePreview")).then(preview => {
+        window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Discovery/LivePreview")).then(preview => {
             const top = preview?.Top ?? preview?.top;
             const right = preview?.Right ?? preview?.right;
             const bottom = preview?.Bottom ?? preview?.bottom;
@@ -266,6 +266,41 @@ export default function (view) {
         }).catch(() => {
             byId("raLivePreviewStatus").textContent = "Could not reach the preview right now.";
         });
+    }
+
+    // A Hue entertainment channel's reported position says where the bridge
+    // thinks a light is, which stops being the whole story the moment a
+    // gradient strip is physically shortened or a set hangs above the
+    // bridge's own origin. Lighting one channel at a time and looking is the
+    // only way to settle it, and working that out by hand has cost this
+    // project three separate rounds.
+    function renderHueIdentifyButtons(channelCount) {
+        const row = byId("hueIdentifyButtons");
+        const buttons = [];
+        for (let channel = 0; channel < channelCount; channel++) {
+            buttons.push(`<button type="button" is="emby-button" class="raised raHueIdentify" data-channel="${channel}">${channel}</button>`);
+        }
+
+        buttons.push('<button type="button" is="emby-button" class="raised raHueIdentify" data-channel="">All off</button>');
+        row.innerHTML = buttons.join("");
+        row.querySelectorAll(".raHueIdentify").forEach(button => {
+            button.addEventListener("click", () => identifyHueChannel(button.getAttribute("data-channel")));
+        });
+    }
+
+    function identifyHueChannel(channel) {
+        const status = byId("hueIdentifyStatus");
+        const query = channel === "" ? "" : `?channel=${encodeURIComponent(channel)}`;
+        status.textContent = channel === "" ? "Clearing…" : `Lighting channel ${channel}…`;
+        window.ApiClient.ajax({ type: "POST", url: window.ApiClient.getUrl(`RealtimeAmbilight/Hue/Identify${query}`) })
+            .then(() => {
+                status.textContent = channel === ""
+                    ? "Cleared. The lights follow the picture again."
+                    : `Channel ${channel} is lit, every other channel is black. Note where you see it.`;
+            })
+            .catch(() => {
+                status.textContent = "Nothing is streaming to Hue right now. Start playback on the bound television first.";
+            });
     }
 
     function toggleLivePreviewPanel() {
@@ -1904,6 +1939,9 @@ export default function (view) {
         return window.ApiClient.getJSON(window.ApiClient.getUrl("RealtimeAmbilight/Hue/Status"))
             .then(status => {
                 latestHueStatus = status;
+            if (status && Number(status.ChannelCount) > 0 && byId("hueIdentifyButtons").childElementCount === 0) {
+                renderHueIdentifyButtons(Number(status.ChannelCount));
+            }
                 const state = status.State ?? status.state;
                 const issue = status.Issue ?? status.issue;
                 const paired = status.Paired ?? status.paired;

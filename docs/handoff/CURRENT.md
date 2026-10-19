@@ -1,5 +1,71 @@
 # Current state
 
+## 2026-10-19 (close of session): what the next test should pick up
+
+The operator ran out of evening mid-iteration and has powered the television
+and the WLED module down. Everything below is deployed and the live
+configuration is left in a sane state; the two open items both need eyes in
+the room, nothing more.
+
+### Where it stands
+
+- **WLED perimeter: correct, confirmed repeatedly.** Each side's colour
+  boundary sits exactly at the middle of that side, verified against the live
+  preview's own swatches and photographed.
+- **Hue vertical strips: fixed, value not yet pinned.** The centre-height
+  offset is the right lever. Sweeping it live across 0, -15, -25, -35, -45
+  while the quadrant pattern played, the operator reported the strip "looks
+  good now" and then that the boundary had gone too low, which places the
+  answer between 0 and -25. Left at **-15**. One more sweep of -5, -10, -15,
+  -20 settles it, and needs no deploy: the three screen values are read per
+  frame.
+- **Hue strip under the set: at the hardware's resolution limit.** Confirmed by
+  measurement, not argument. Its seven segments are split 2/3/2 across three
+  channels, evenly, and the middle channel sits exactly at the screen's own
+  centre (measured x 39%, television centre x 39 to 40%). With a hard
+  blue/yellow edge at the picture's midpoint, that middle channel correctly
+  averages to neutral across 43% of the strip, so the yellow reads as starting
+  at 71%. No setting moves it; the bridge allocates three channels per strip
+  and rejects a client-supplied channel list (ADR-011). Worth saying to the
+  operator plainly rather than tuning at it again: **the quadrant pattern is a
+  worst case that real video almost never presents.** The same installation
+  measured against three minutes of actual film sat at a deviation of 0.058.
+
+### Done this round, not yet seen by the operator
+
+- `HueScreenWidthPercent` moved 45 to **55**, derived from the identify
+  measurement rather than guessed: at 55 each channel's sampled point lands on
+  its own physical centre (5.6%/50%/94% at 45, against physical centres of
+  14%/50%/86%).
+- **The live preview panel works for the first time.** `config.js` had always
+  fetched `RealtimeAmbilight/LivePreview` while the controller serves it at
+  `RealtimeAmbilight/Discovery/LivePreview`, so the panel had never once
+  rendered. That also finally retires the earlier theory that the operator's
+  "mirrored bottom strip" came from this panel: they could not have seen it.
+  The row-reverse orientation fix made earlier is still correct and now
+  actually visible.
+- **"Which light is where?" panel** in the Hue settings, one button per
+  channel plus "All off", driving the `Hue/Identify` endpoint. The operator
+  can now run the per-channel test without this session being open, which is
+  what the whole last hour was spent doing by hand.
+
+### Live configuration left in place
+
+`Enabled` true, Hue screen width 55, height 25, centre height -15, centre
+width 0. Colour tuning as retuned earlier today (yellow intensity 100, blue
+intensity 120, blue brightness 80, red gain 110, blue gain 88, black floor 4,
+wall correction 40).
+
+### Still unexplained
+
+The operator's original "bottom LED strip looks mirrored" report. The wiring
+is confirmed correct, the software chain is confirmed correct and pinned by a
+test, and the live preview panel they might have misread has never rendered.
+Nothing found accounts for it. Ask what they were looking at when it comes up
+again rather than assuming it is gone.
+
+267 tests passing.
+
 ## 2026-10-19 (last round): measuring where the Hue channels actually are
 
 The screen-extent change made each channel's colour pure but moved no

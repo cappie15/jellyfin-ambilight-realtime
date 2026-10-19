@@ -420,6 +420,17 @@
                 <input is="emby-input" id="hueScreenCentreWidthPercent" type="range" min="-100" max="100" step="5" label="Screen centre, left to right" />
                 <div class="fieldDescription">Now: <strong id="hueScreenCentreWidthValue"></strong>. Only needed for a set placed off to one side. <strong>Default: 0.</strong></div>
             </div>
+
+            <h3 class="sectionTitle" style="margin-top:1.2em">Which light is where?</h3>
+            <div class="fieldDescription" style="margin-bottom:.6em">
+                Lights one entertainment channel and blacks out every other one, so you can see for yourself which
+                part of which strip a channel actually drives. The bridge's own reported positions stop telling the
+                whole story once a gradient strip has been cut shorter, or once the television hangs well above the
+                bridge's origin, and this is the only way to settle it. Needs something playing on the bound
+                television, since it rides along on the stream that playback is already producing.
+            </div>
+            <div id="hueIdentifyButtons" style="display:flex;flex-wrap:wrap;gap:.4em;margin-bottom:.5em"></div>
+            <div class="fieldDescription"><strong id="hueIdentifyStatus">Start playback, then pick a channel.</strong></div>
         </div>
 
         <div class="raPanel">
