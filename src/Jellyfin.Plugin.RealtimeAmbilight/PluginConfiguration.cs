@@ -427,4 +427,28 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// tuning (2026-09-14) settled there.
     /// </summary>
     public int HueBlackLevelFloorPercent { get; set; } = 18;
+
+    /// <summary>
+    /// How wide the television is in the Hue bridge's own room coordinates,
+    /// as a percentage of the room's half-width. 100 means the screen spans
+    /// the whole room, which is what this plugin assumed before this setting
+    /// existed.
+    /// </summary>
+    /// <remarks>
+    /// Every Hue position is reported on a -1 to +1 room scale, and the
+    /// mapping used to read -1 and +1 as the picture's own edges. A set does
+    /// not span its wall. On the reference installation the three gradient
+    /// strips that hug the television report X and Z of only -0.4 to +0.4, so
+    /// each of them only ever sampled the middle 40% of the picture: the
+    /// strip under the set never saw the left or right extremes of the image
+    /// at all, and its colour boundary landed around 70% of its length rather
+    /// than halfway. Setting this to roughly the extent the strips themselves
+    /// report (40 there) puts a light at the edge of the screen on the edge of
+    /// the picture. Read the numbers off the entertainment area rather than
+    /// guessing: they are the same ones the Hue app's own position editor sets.
+    /// </remarks>
+    public int HueScreenWidthPercent { get; set; } = 100;
+
+    /// <inheritdoc cref="HueScreenWidthPercent"/>
+    public int HueScreenHeightPercent { get; set; } = 100;
 }

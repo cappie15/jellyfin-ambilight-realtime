@@ -65,11 +65,17 @@ namespace Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Mapping;
 /// </remarks>
 public static class HueChannelMapper
 {
-    public static LinearRgb Map(HuePosition position, PerimeterSamples edgeSamples, LinearRgb sceneAverage)
+    /// <param name="screen">
+    /// How much of the room the television actually occupies. A light at the
+    /// edge of the screen should read the edge of the picture; without this
+    /// it reads only as far into the picture as it sits into the room. See
+    /// <see cref="HueScreenExtent"/> for what that cost in a real room.
+    /// </param>
+    public static LinearRgb Map(HuePosition position, PerimeterSamples edgeSamples, LinearRgb sceneAverage, HueScreenExtent screen = default)
     {
         ArgumentNullException.ThrowIfNull(edgeSamples);
 
-        var x = Math.Clamp(position.X, -1d, 1d);
+        var x = Math.Clamp(position.X / screen.EffectiveHalfWidth, -1d, 1d);
         // Z runs -1 (floor) to +1 (ceiling), the same -1..+1 scale as X, and
         // is converted here to this method's own internal 0 (bottom) to 1
         // (top) scale. It used to be clamped to [0, 1] on the strength of an
@@ -84,7 +90,7 @@ public static class HueChannelMapper
         // real height, so the bottom edge's colour covered almost the whole
         // room and only a light at the literal ceiling ever showed the top of
         // the picture.
-        var z = (Math.Clamp(position.Z, -1d, 1d) + 1d) / 2d;
+        var z = (Math.Clamp(position.Z / screen.EffectiveHalfHeight, -1d, 1d) + 1d) / 2d;
         // Y runs -1 (behind the viewer) to +1 (at the screen) -- confirmed
         // against the operator's own real bridge data (2026-09-15), not
         // assumed: two gradient lights both moved to sit physically against

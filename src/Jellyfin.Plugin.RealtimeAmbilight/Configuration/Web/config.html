@@ -387,6 +387,26 @@
                 <input is="emby-input" id="hueBlackLevelFloorPercent" type="range" min="0" max="20" step="1" label="Hue black level floor" />
                 <div class="fieldDescription">Now: <strong id="hueBlackLevelFloorValue"></strong>. Below this, the light goes to true black instead of holding a dim glow -- same meaning as Ambilight's own black level floor. <strong>Default: 18%.</strong></div>
             </div>
+
+            <h3 class="sectionTitle" style="margin-top:1.2em">How big the television is in the room</h3>
+            <div class="fieldDescription" style="margin-bottom:.6em">
+                The bridge reports every light's position against the room, from -1 to +1, not against the
+                screen. A set does not span its wall, so without these two a light sitting at the edge of the
+                television is read as sitting only part of the way into the picture, and a gradient strip
+                hugging the set only ever samples the middle of the image. The symptom is a strip whose colour
+                boundary lands well off centre.
+                <strong>Open the Hue app's own light-position editor and read off how far the strips beside the
+                screen actually sit from the centre</strong>, then set these to match. <strong>Default: 100%
+                for both</strong>, which is the behaviour before these existed.
+            </div>
+            <div class="inputContainer">
+                <input is="emby-input" id="hueScreenWidthPercent" type="range" min="10" max="100" step="5" label="Screen width in the room" />
+                <div class="fieldDescription">Now: <strong id="hueScreenWidthValue"></strong> of the room's half-width.</div>
+            </div>
+            <div class="inputContainer">
+                <input is="emby-input" id="hueScreenHeightPercent" type="range" min="10" max="100" step="5" label="Screen height in the room" />
+                <div class="fieldDescription">Now: <strong id="hueScreenHeightValue"></strong> of the room's half-height.</div>
+            </div>
         </div>
 
         <div class="raPanel">

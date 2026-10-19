@@ -1,5 +1,57 @@
 # Current state
 
+## 2026-10-19 (later again): the room is not the screen
+
+With the quadrant test pattern on the television and the camera on the wall,
+the operator confirmed the WLED perimeter is exactly right (verified against
+the live preview: each side's colour boundary sits precisely at the middle of
+that side) and reported two remaining Hue faults: the strip under the set has
+its yellow section too far right, and the vertical strip beside the set has
+its green section too high.
+
+Pulling the entertainment configuration's member indices made it concrete.
+The strip under the television has seven segments across three channels, at
+room X of -0.4, 0.0 and +0.4. `HueChannelMapper` read those positions as
+fractions of the picture directly, so the three channels sampled the picture
+at 30%, 50% and 70% of its width. **A strip hugging the set only ever saw the
+middle 40% of the image**, and its colour boundary landed at 71% of its own
+length (segments 5 and 6 of 7) rather than halfway. The vertical strips have
+the same problem on Z.
+
+The bridge reports positions against the **room**, -1 to +1 wall to wall. A
+television does not span its wall, and nothing in this mapping ever accounted
+for that. Added `HueScreenExtent` plus two settings, `HueScreenWidthPercent`
+and `HueScreenHeightPercent` (default 100, which is the previous behaviour
+exactly), that divide the reported position by the screen's own half-extent
+before mapping. Set to 40 on the reference installation, matching what the
+strips hugging the set actually report.
+
+Computed over the real channel positions with the quadrant pattern, before
+and after:
+
+| channel | position | at 100% | at 40% |
+| --- | --- | --- | --- |
+| 0 (strip right, low) | X 0.40, Z -0.40 | `#deff00` | `#ffff00` yellow |
+| 2 (strip right, high) | X 0.40, Z 0.40 | `#7aff00` | `#00ff00` green |
+| 3 (strip left, low) | X -0.40, Z -0.40 | `#7a00de` purple | `#0000ff` blue |
+| 7 (lamp, left) | X -0.78, Z 0.09 | `#e4006f` pink | `#ff0000` red |
+
+Every channel now receives the colour of the quadrant it physically sits in,
+where most of them previously received a wash.
+
+**What this does not fix, and cannot:** channel 4 is the middle of the strip
+under the set and spans segments 2, 3 and 4 of 7. It straddles the picture's
+own blue/yellow boundary, so it is correctly neutral, and 43% of that strip
+will stay a blend. That is the bridge's three-channels-per-strip grouping
+(ADR-011), not this mapping.
+
+Also worth recording as an operational cost: **every plugin deploy restarts
+Jellyfin, and the Android TV session loses `SupportsRemoteControl` each time
+and does not get it back without a full app restart.** Batch deploys during a
+live session with the operator, or each one costs a round trip.
+
+266 tests passing (2 new).
+
 ## 2026-10-19 (later still): the colour tuning measured against real frames
 
 The operator reported, watching the first three minutes of The Lion King

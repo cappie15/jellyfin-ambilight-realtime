@@ -53,6 +53,7 @@ public sealed class HueFrameProcessor
     private readonly int _samplingDepthPercent;
     private readonly IMonotonicTime _monotonicTime;
     private readonly HueNaturalLightFilter _filter;
+    private readonly Func<HueScreenExtent> _screenExtentResolver;
     private TimeSpan? _lastProcessedAt;
     private TimeSpan? _sessionStartedAt;
 
@@ -62,13 +63,15 @@ public sealed class HueFrameProcessor
         int samplingDepthPercent = EdgeSampler.DefaultDepthPercent,
         LogicalSamplingLayout? samplingLayout = null,
         Func<int>? responsePercentResolver = null,
-        Func<int>? floorPercentResolver = null)
+        Func<int>? floorPercentResolver = null,
+        Func<HueScreenExtent>? screenExtentResolver = null)
     {
         _monotonicTime = monotonicTime ?? throw new ArgumentNullException(nameof(monotonicTime));
         _ignoreBlackBordersResolver = ignoreBlackBordersResolver ?? (static () => true);
         _samplingDepthPercent = Math.Clamp(samplingDepthPercent, EdgeSampler.MinimumDepthPercent, EdgeSampler.MaximumDepthPercent);
         _samplingLayout = samplingLayout ?? DefaultSamplingLayout;
         _filter = new HueNaturalLightFilter(responsePercentResolver, floorPercentResolver);
+        _screenExtentResolver = screenExtentResolver ?? (static () => HueScreenExtent.Full);
     }
 
     /// <param name="overallBrightnessFraction">The operator's overall Hue brightness control, 0-1.</param>
@@ -90,6 +93,7 @@ public sealed class HueFrameProcessor
         var crop = _ignoreBlackBordersResolver() ? _borderDetector.Detect(frame) : default;
         var edgeSamples = EdgeSampler.SampleBgra(frame.BgraPixels, frame.Width, frame.Height, crop, _samplingLayout, _samplingDepthPercent);
         var sceneAverage = SceneAverageSampler.SampleBgra(frame.BgraPixels, frame.Width, frame.Height, crop);
+        var screen = _screenExtentResolver();
 
         var now = _monotonicTime.Elapsed;
         var elapsedMilliseconds = _lastProcessedAt is { } last ? (now - last).TotalMilliseconds : 0;
@@ -99,7 +103,7 @@ public sealed class HueFrameProcessor
 
         foreach (var channel in channels)
         {
-            var mapped = HueChannelMapper.Map(channel.Position, edgeSamples, sceneAverage);
+            var mapped = HueChannelMapper.Map(channel.Position, edgeSamples, sceneAverage, screen);
             var filtered = _filter.Apply(channel.ChannelId, mapped, elapsedMilliseconds, overallBrightnessFraction);
             result[channel.ChannelId] = fadeIn >= 1d
                 ? filtered

@@ -3,6 +3,7 @@ using Jellyfin.Plugin.RealtimeAmbilight.Core.Color;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Decoding;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Diagnostics;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue;
+using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Mapping;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Model;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Hue.Protocol;
 using Jellyfin.Plugin.RealtimeAmbilight.Core.Playback;
@@ -385,7 +386,16 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
                 new PlaybackMonotonicTimeAdapter(),
                 () => true,
                 responsePercentResolver: () => Plugin.Instance?.Configuration.HueResponsePercent ?? 40,
-                floorPercentResolver: () => Plugin.Instance?.Configuration.HueBlackLevelFloorPercent ?? 1);
+                floorPercentResolver: () => Plugin.Instance?.Configuration.HueBlackLevelFloorPercent ?? 1,
+                screenExtentResolver: static () =>
+                {
+                    var configuration = Plugin.Instance?.Configuration;
+                    return configuration is null
+                        ? HueScreenExtent.Full
+                        : new HueScreenExtent(
+                            Math.Clamp(configuration.HueScreenWidthPercent, 10, 100) / 100d,
+                            Math.Clamp(configuration.HueScreenHeightPercent, 10, 100) / 100d);
+                });
 
             if (_snapshot?.PlaybackSessionId != sessionId)
             {

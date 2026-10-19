@@ -137,6 +137,40 @@ public class HueChannelMapperTests
     }
 
     [Fact]
+    public void AScreenNarrowerThanTheRoomPutsItsOwnEdgeAtThePicturesEdge()
+    {
+        // The bridge reports positions against the room, not the screen. On
+        // the reference installation the strips hugging the television report
+        // X of only +-0.4, so with no extent they sampled the middle 40% of
+        // the picture and never its sides at all.
+        var samples = CreateSamples();
+        // At the screen (y = 1), where how far across the picture a light sits
+        // actually changes the colour; beside the viewer only the sign of x
+        // matters, so the extent would be invisible there.
+        var withoutExtent = HueChannelMapper.Map(new HuePosition(0.4, 1, 0), samples, SceneAverage);
+        var withExtent = HueChannelMapper.Map(new HuePosition(0.4, 1, 0), samples, SceneAverage, new HueScreenExtent(0.4, 0.4));
+        var atTheRoomEdge = HueChannelMapper.Map(new HuePosition(1, 1, 0), samples, SceneAverage);
+
+        Assert.NotEqual(withoutExtent, withExtent);
+        AssertApproximatelyEqual(atTheRoomEdge, withExtent);
+    }
+
+    [Fact]
+    public void TheDefaultExtentIsTheWholeRoomSoExistingInstallationsAreUnchanged()
+    {
+        var samples = CreateSamples();
+        foreach (var position in new[] { new HuePosition(0.4, 0.8, -0.4), new HuePosition(-1, 0, 1), new HuePosition(0, 1, 0) })
+        {
+            AssertApproximatelyEqual(
+                HueChannelMapper.Map(position, samples, SceneAverage),
+                HueChannelMapper.Map(position, samples, SceneAverage, HueScreenExtent.Full));
+            AssertApproximatelyEqual(
+                HueChannelMapper.Map(position, samples, SceneAverage),
+                HueChannelMapper.Map(position, samples, SceneAverage, default));
+        }
+    }
+
+    [Fact]
     public void PositionsOutsideTheDocumentedRangeAreClamped()
     {
         var farOutside = HueChannelMapper.Map(new HuePosition(5, 5, 5), CreateSamples(), SceneAverage);

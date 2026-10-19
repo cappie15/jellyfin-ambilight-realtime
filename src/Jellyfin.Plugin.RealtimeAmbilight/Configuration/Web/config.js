@@ -299,6 +299,8 @@ export default function (view) {
         byId("blackLevelFloorValue").textContent = blackFloor === 0 ? "0% (off)" : `${blackFloor}%`;
         const hueBlackFloor = Number(byId("hueBlackLevelFloorPercent").value);
         byId("hueBlackLevelFloorValue").textContent = hueBlackFloor === 0 ? "0% (off)" : `${hueBlackFloor}%`;
+        byId("hueScreenWidthValue").textContent = `${byId("hueScreenWidthPercent").value}%`;
+        byId("hueScreenHeightValue").textContent = `${byId("hueScreenHeightPercent").value}%`;
         byId("wallColourCorrectionValue").textContent = `${byId("wallColourCorrectionPercent").value}%`;
         sideNames.forEach(side => {
             ["brightness", "redGain", "greenGain", "blueGain"].forEach(field => {
@@ -1606,6 +1608,8 @@ export default function (view) {
                 byId("hueBrightnessPercent").value = config.HueBrightnessPercent || 100;
                 byId("hueResponsePercent").value = config.HueResponsePercent ?? 40;
                 byId("hueBlackLevelFloorPercent").value = config.HueBlackLevelFloorPercent ?? 1;
+                byId("hueScreenWidthPercent").value = config.HueScreenWidthPercent ?? 100;
+                byId("hueScreenHeightPercent").value = config.HueScreenHeightPercent ?? 100;
                 // Jellyfin's plugin configuration API returns an enum as its
                 // string name ("WarmWhiteDim"), not the numeric value the
                 // <select>'s own options use -- the same mismatch already
@@ -1722,6 +1726,8 @@ export default function (view) {
             HueBrightnessPercent: Number(byId("hueBrightnessPercent").value),
             HueResponsePercent: Number(byId("hueResponsePercent").value),
             HueBlackLevelFloorPercent: Number(byId("hueBlackLevelFloorPercent").value),
+            HueScreenWidthPercent: Number(byId("hueScreenWidthPercent").value),
+            HueScreenHeightPercent: Number(byId("hueScreenHeightPercent").value),
             HueEndBehaviour: Number(byId("hueEndBehaviour").value)
         };
         numericFields.forEach(field => { config[fieldKey(field)] = Number(byId(field).value); });
@@ -1747,7 +1753,7 @@ export default function (view) {
     // ever merges the tuning fields into whatever was last loaded, so it can
     // never clobber an in-progress, not-yet-saved edit sitting open in a
     // connection modal elsewhere on the page.
-    const tuningFields = ["brightnessPercent", "saturationPercent", "blackLevelFloorPercent", "whiteChannelStrengthPercent", "samplingDepthPercent", "wledSmoothingMilliseconds", "minimumColourHoldMilliseconds", "hueBrightnessPercent", "hueResponsePercent", "hueBlackLevelFloorPercent"];
+    const tuningFields = ["brightnessPercent", "saturationPercent", "blackLevelFloorPercent", "whiteChannelStrengthPercent", "samplingDepthPercent", "wledSmoothingMilliseconds", "minimumColourHoldMilliseconds", "hueBrightnessPercent", "hueResponsePercent", "hueBlackLevelFloorPercent", "hueScreenWidthPercent", "hueScreenHeightPercent"];
     let tuningSaveTimer = null;
 
     function scheduleTuningSave() {
@@ -1811,7 +1817,7 @@ export default function (view) {
         "RedGainPercent", "GreenGainPercent", "BlueGainPercent", "WallColourHex", "WallColourCorrectionPercent",
         ...hueAnchorFields, ...greyBalanceFields, ...sideTuningFields
     ];
-    const hueResetFields = ["HueEnabled", "HueEndBehaviour"];
+    const hueResetFields = ["HueEnabled", "HueEndBehaviour", "HueScreenWidthPercent", "HueScreenHeightPercent"];
 
     function resetFields(fieldNames, sectionLabel) {
         if (!factoryDefaults) {
