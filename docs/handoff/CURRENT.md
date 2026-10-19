@@ -1,5 +1,74 @@
 # Current state
 
+## 2026-10-19 (later still): the colour tuning measured against real frames
+
+The operator reported, watching the first three minutes of The Lion King
+(1994), that at 58 s the strip was "te felrood en niet oranje genoeg", that
+grey sometimes read too blue, and that red sometimes read too red. Rather than
+judge that off a photograph of a warm wall, recorded the camera continuously
+for 209 s alongside playback, pulled the matching 139 analysis frames out of
+the film in one decode pass, and ran **the plugin's own colour code** over
+them (a small harness against `Core`, so no reimplementation of the pipeline
+could introduce its own error).
+
+**First correction, to this project's own assumptions:** `SaturationPercent`
+on the live host is **100**, not the 175 recorded in the 2026-09-14 promotion
+round. A sweep built on the remembered value produced nonsense (175 and 100
+scoring identically) before that was noticed. Pull the live config; do not
+trust the promotion notes for what is actually set.
+
+**What was actually wrong:** at 58 s the picture edge is orange (hue 21 to
+29 degrees, saturation 0.88 to 0.97) and the LEDs were being driven to
+**saturation exactly 1.00 on all four sides**. Orange at full saturation is
+red. Across the whole three minutes the saturation error by picture colour
+was: yellow +0.37, orange +0.15, grey +0.11, magenta +0.10, red +0.08. The
+dominant cause was a single anchor, `YellowIntensityPercent` at 172.
+
+Grey picking up +0.11 saturation is the wall-colour correction at 100% against
+a warm greige wall (`#cabfaf`) pushing the output cooler, which is exactly the
+"grey too blue" report. Worth keeping in mind that this metric measures what
+the LED emits, not what the wall reflects back, so that one correction is the
+only item on the list the operator's own eyes judge better than the number.
+
+**Applied to the live host and re-measured over the identical 139 frames:**
+
+| | before | after |
+| --- | --- | --- |
+| measurements clipped at saturation 1.0 | 126 | 44 |
+| sides driven fully off | 35 | 15 |
+| overall deviation from the picture | 0.172 | **0.058** |
+
+`YellowIntensityPercent` 172 to 100, `BlueIntensityPercent` 173 to 120,
+`BlueBrightnessPercent` 38 to 80, `RedGainPercent` 127 to 110,
+`BlueGainPercent` 73 to 88, `BlackLevelFloorPercent` 8 to 4,
+`WallColourCorrectionPercent` 100 to 40. Per-colour saturation error after:
+yellow +0.02, orange +0.03, red +0.03, grey +0.04, blue +0.03. For reference,
+neutralising every anchor and gain scored 0.052, so this keeps nearly all the
+benefit while leaving some installation-specific correction in place.
+
+**Not promoted to defaults.** These are this room's numbers, measured against
+one film, and the previous three promotion rounds are exactly how the shipped
+defaults drifted into over-correction in the first place. The method is the
+reusable part: record, extract, run the real pipeline, sweep.
+
+**Verified on the wall without the television**, by arming the calibration
+wizard and posting the real 58 s frame straight to `Calibration/PhotoFrame`
+as full-range sRGB: the strip reads plainly orange where it was red before.
+That path is a good general way to test colour changes when the TV session is
+not controllable.
+
+**Also measured, and not a fault:** at 4:18 the operator expected green on
+both sides. The picture's own left and right edges there are warm brown (hue
+23 to 33); the green grass sits in the lower left and is very dark (value 0.07
+to 0.19), so the black-level floor extinguished it. Sampling depths of 7, 15
+and 25 percent all leave the left edge brown, so depth is not the lever. The
+floor at 4% is.
+
+**Still open:** the Hue vertical-strip boundary has not been re-verified since
+the Z-axis fix. The TV session lost `SupportsRemoteControl` after the plugin
+deploy restarted Jellyfin and has not got it back, so playback cannot be
+driven from here; the Android TV app needs a full restart.
+
 ## 2026-10-19 (later): Hue's Z axis was half-range too, exactly like Y
 
 The operator reported that on every Hue gradient strip the boundary between
