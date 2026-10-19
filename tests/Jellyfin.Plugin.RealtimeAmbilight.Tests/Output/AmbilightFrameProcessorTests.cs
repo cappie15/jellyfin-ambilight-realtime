@@ -119,6 +119,52 @@ public class AmbilightFrameProcessorTests
         }
     }
 
+    [Fact]
+    public void TheBottomRunStartsAtThePictureRightAndEndsAtThePictureLeft()
+    {
+        // The whole chain in one assertion, because reading it side by side
+        // across the sampler and the interpolator is exactly how a mirrored
+        // side stays plausible on both sides of the seam. Physical LED order
+        // is clockwise from the top-left corner, so the bottom run's own
+        // first LED sits at the bottom-RIGHT of the television and must carry
+        // the colour from the right of the picture.
+        var processor = CreateProcessor();
+
+        var rgb24 = processor.EncodeTarget(processor.Sample(CreateBottomSplitFrame()));
+
+        // Physical order for LedLayout(2, 2, 2, 2): top 0-1, right 2-3,
+        // bottom 4-5, left 6-7.
+        Assert.Equal([(byte)0, (byte)0, (byte)255], rgb24[12..15]);
+        Assert.Equal([(byte)255, (byte)0, (byte)0], rgb24[15..18]);
+    }
+
+    /// <summary>
+    /// A frame whose bottom half is red on the left and blue on the right,
+    /// with a black top half. Values are BT.709 limited range, matching what
+    /// the analysis decoder actually emits.
+    /// </summary>
+    private static AnalysisFrame CreateBottomSplitFrame()
+    {
+        const int width = 20;
+        const int height = 20;
+        var pixels = new byte[width * height * 4];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var offset = ((y * width) + x) * 4;
+                var inBottomHalf = y >= height / 2;
+                var onPictureRight = x >= width / 2;
+                pixels[offset] = (byte)(inBottomHalf && onPictureRight ? 235 : 16);
+                pixels[offset + 1] = 16;
+                pixels[offset + 2] = (byte)(inBottomHalf && !onPictureRight ? 235 : 16);
+                pixels[offset + 3] = byte.MaxValue;
+            }
+        }
+
+        return new AnalysisFrame(pixels, width, height);
+    }
+
     private static AmbilightFrameProcessor CreateProcessor()
         => new(
             new LedLayout(2, 2, 2, 2),

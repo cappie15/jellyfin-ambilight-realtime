@@ -154,8 +154,14 @@
         #realtimeAmbilightConfigurationPage .raLivePreviewSide { display: flex; border-radius: .25em; overflow: hidden; background: #14171b; }
         #realtimeAmbilightConfigurationPage .raLivePreviewSide span { flex: 1 1 0; }
         #realtimeAmbilightConfigurationPage .raLivePreviewTop { grid-column: 1 / 4; grid-row: 1; flex-direction: row; }
-        #realtimeAmbilightConfigurationPage .raLivePreviewBottom { grid-column: 1 / 4; grid-row: 3; flex-direction: row; }
-        #realtimeAmbilightConfigurationPage .raLivePreviewLeft { grid-column: 1; grid-row: 2; flex-direction: column; }
+        /* The server hands every side back in physical LED order, which runs
+           clockwise: the bottom from right to left and the left side from
+           bottom to top. Drawing those two with a plain row/column put the
+           strip's first LED at the left and the top respectively, which is
+           the wrong end of the television, so both sides read mirrored
+           against the picture even though the wall was correct. */
+        #realtimeAmbilightConfigurationPage .raLivePreviewBottom { grid-column: 1 / 4; grid-row: 3; flex-direction: row-reverse; }
+        #realtimeAmbilightConfigurationPage .raLivePreviewLeft { grid-column: 1; grid-row: 2; flex-direction: column-reverse; }
         #realtimeAmbilightConfigurationPage .raLivePreviewRight { grid-column: 3; grid-row: 2; flex-direction: column; }
         #realtimeAmbilightConfigurationPage .raLivePreviewScreen { grid-column: 2; grid-row: 2; display: flex; align-items: center; justify-content: center; background: #05070a; border-radius: .3em; color: #4d545c; font: 600 .78em/1 "IBM Plex Mono", monospace; letter-spacing: .1em; }
         #realtimeAmbilightConfigurationPage #testVideosPanel { border: 1px solid rgba(127,127,127,.35); border-radius: .6em; padding: .7em 1em; margin: 0 0 1.1em; font-weight: 400; }

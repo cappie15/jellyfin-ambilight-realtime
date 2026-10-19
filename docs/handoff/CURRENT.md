@@ -1,5 +1,48 @@
 # Current state
 
+## 2026-10-19: the bottom was never mirrored on the wall, the preview panel was
+
+Settled the open question from 2026-10-09 with a camera in the room rather
+than more reading. The operator put an MPEG-TS camera stream on
+`http://10.0.0.158:8050/` (1080p h264, 12 fps) pointed at the television, so
+the strip could be driven and photographed in the same step.
+
+**Physical wiring: correct on all four sides.** Drove WLED directly over DDP
+and lit the first 40 LEDs of each run in its own colour (top red, right green,
+bottom blue, left magenta), then photographed the wall. Red landed top-left,
+green top-right, blue **bottom-right**, magenta bottom-left: exactly the
+clockwise-from-the-top-left order the plugin assumes. WLED's own segment is
+`rev:false`/`mi:false` over one 831-LED segment, so nothing is being flipped
+in the controller either. **None of the new `Reverse*Leds` boxes should be
+ticked on this installation.**
+
+**Software mapping: also correct**, and now pinned by a test that covers the
+whole chain in one assertion rather than leaving it to be read across two
+files (`TheBottomRunStartsAtThePictureRightAndEndsAtThePictureLeft`): a frame
+whose bottom half is red on the left and blue on the right must light the
+bottom run's first LED blue, because that LED sits at the bottom-right of the
+television.
+
+**The actual bug was in the settings page's Live preview panel.**
+`GetLivePreview` returns every side in physical LED order, which runs
+clockwise, so the bottom array starts at the right of the picture and the left
+array starts at the bottom. Both were rendered with a plain `flex-direction:
+row`/`column`, putting each of those two runs' first LED at the wrong end of
+the television. The bottom reads as mirrored against the picture and the left
+side does too, while the wall itself was right all along. The bottom is the
+one anyone notices: it is long, horizontal, and sits directly opposite a top
+row that *is* drawn correctly. Fixed with `row-reverse` and `column-reverse`;
+the server-side ordering is untouched, since physical order is the right thing
+for an API that describes the strip.
+
+So 2026-10-09's `LedSideDirections` work did not fix this operator's symptom.
+It stays: a perimeter of four cut runs genuinely can have a side soldered
+backwards, there was no way to express it, and the camera test that proved
+this installation is fine is the same test that would have found the other
+case.
+
+262 tests passing (1 new).
+
 ## 2026-10-09: per-side LED wiring direction, and a pause the server may never have seen
 
 Two live reports, investigated together.
