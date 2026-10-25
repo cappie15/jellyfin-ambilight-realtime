@@ -58,11 +58,20 @@ echo "==> Building $name $version"
 # stay excluded via ExcludeAssets=runtime, and Microsoft.AspNetCore.App is a
 # shared framework Jellyfin itself already provides) is what actually gathers
 # every runtime dependency this plugin needs into one directory.
+#
+# Version: Jellyfin's Dashboard -> Plugins list reports a loaded plugin's
+# *assembly* version (BasePlugin.Version), not the meta.json one, so without
+# this every release showed up as the .NET default 1.0.0.0 while the log, the
+# install folder and the manifest all said the real version. Passing it as a
+# global property stamps Version/AssemblyVersion/FileVersion on the plugin and,
+# because global properties flow to project references, on the Core assembly
+# too -- keeping meta.json the single source of truth.
 rm -rf "$artifacts"
 publish_dir="$artifacts/publish"
 dotnet publish "$plugin_project/Jellyfin.Plugin.RealtimeAmbilight.csproj" --configuration Release \
     --no-self-contained \
     -o "$publish_dir" \
+    -p:Version="$version" \
     -p:ContinuousIntegrationBuild=true \
     -p:PathMap="$repository_root=/src"
 
