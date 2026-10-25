@@ -6,8 +6,16 @@
     "overview": "Realtime HDR-aware ambient lighting for Jellyfin playback",
     "owner": "Realtime Ambilight contributors",
     "category": "General",
-    "imageUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.5.0/ambilight-logo.png",
+    "imageUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.5.1/ambilight-logo.png",
     "versions": [
+      {
+        "version": "0.5.1",
+        "changelog": "Dashboard -> Plugins now shows the real plugin version instead of 1.0.0.0: the build stamps the meta.json version on both plugin assemblies. No functional changes from 0.5.0. Requires Jellyfin 12.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.5.1/realtime-ambilight_0.5.1.zip",
+        "checksum": "06c84a99b5052409d6910970b7bc848a",
+        "timestamp": "2026-10-25T20:37:34.0000000Z"
+      },
       {
         "version": "0.5.0",
         "changelog": "Philips Hue Entertainment: Hue channel positions are now measured from the live bridge instead of derived, the Hue axes (depth, height, room-relative positions) are corrected, and a new \"which light is where\" panel shows the result. The live preview now actually loads and draws all four sides the right way round, with a per-side LED wiring direction setting. Colour pipeline: the black level floor is now perceptual, the white flash on playback start is gone, Hue gets its own black level floor plus a start and end fade, and the default tuning follows a measured real-room baseline. Real per-file HDR and Dolby Vision detection is now wired into analysis. Calibration wizard: masking, grey balance and preview dithering fixes. Settings page: per-section Reset to defaults. Also logs the pause the LEDs never saw. Requires Jellyfin 12.",
