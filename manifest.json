@@ -6,8 +6,16 @@
     "overview": "Realtime HDR-aware ambient lighting for Jellyfin playback",
     "owner": "Realtime Ambilight contributors",
     "category": "General",
-    "imageUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.4.0/ambilight-logo.png",
+    "imageUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.5.0/ambilight-logo.png",
     "versions": [
+      {
+        "version": "0.5.0",
+        "changelog": "Philips Hue Entertainment: Hue channel positions are now measured from the live bridge instead of derived, the Hue axes (depth, height, room-relative positions) are corrected, and a new \"which light is where\" panel shows the result. The live preview now actually loads and draws all four sides the right way round, with a per-side LED wiring direction setting. Colour pipeline: the black level floor is now perceptual, the white flash on playback start is gone, Hue gets its own black level floor plus a start and end fade, and the default tuning follows a measured real-room baseline. Real per-file HDR and Dolby Vision detection is now wired into analysis. Calibration wizard: masking, grey balance and preview dithering fixes. Settings page: per-section Reset to defaults. Also logs the pause the LEDs never saw. Requires Jellyfin 12.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/cappie15/jellyfin-ambilight-realtime/releases/download/v0.5.0/realtime-ambilight_0.5.0.zip",
+        "checksum": "492ce4ae7612a51c6c60bc0c1fc4f4eb",
+        "timestamp": "2026-10-25T20:07:39.0000000Z"
+      },
       {
         "version": "0.4.0",
         "changelog": "Jellyfin 12 support: retargeted to net10.0 and Jellyfin.Controller/Model/Common 12.0.0, now that Jellyfin 12 is out and the developer's own server has been upgraded to it. No code changes were needed -- the plugin never used any of the interfaces Jellyfin 12 changed or removed. A build targeting a newer .NET than the host server cannot load, so this could not ship until the real upgrade happened; installs on Jellyfin 10.11.x should stay on 0.3.0. Also fixes WLED smoothing and Hue responsivity: both still filled right-to-left, the one remaining trace of an earlier, reverted slider redesign, while every other slider on the page fills left-to-right in the same green.",
