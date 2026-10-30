@@ -268,7 +268,10 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _pump = Task.Run(RunPumpAsync, CancellationToken.None);
-        _ = RunStartupProbesAsync();
+        if (Plugin.Instance?.Configuration.WledEnabled != false)
+        {
+            _ = RunStartupProbesAsync();
+        }
         return Task.CompletedTask;
     }
 
@@ -478,7 +481,8 @@ public sealed class JellyfinWledOutputService : IHostedService, IAsyncDisposable
         {
             while (await timer.WaitForNextTickAsync(_shutdown.Token).ConfigureAwait(false))
             {
-                var outputEnabled = Plugin.Instance?.Configuration.Enabled ?? true;
+                var currentConfig = Plugin.Instance?.Configuration;
+                var outputEnabled = AmbilightOutputPolicy.IsAllowed(currentConfig, DateTime.Now) && currentConfig?.WledEnabled == true;
                 if (!outputEnabled)
                 {
                     pendingFrames.Clear();

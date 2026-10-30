@@ -687,7 +687,7 @@ export default function (view) {
     // tvLastSeenLine's own remarks for why the TV is not TCP-pinged the same
     // way, and isAmbilightCalibrated's card has no device of its own to ping.
     function refreshPings() {
-        const wledHost = byId("wledHost").value.trim() || loadedConfig?.WledHost || "";
+        const wledHost = byId("wledEnabled").checked ? (byId("wledHost").value.trim() || loadedConfig?.WledHost || "") : "";
         const hueHost = loadedConfig?.HueBridgeHost || "";
         return Promise.all([
             pingOne(wledHost, Number(byId("wledHttpPort").value) || 80),
@@ -1577,6 +1577,7 @@ export default function (view) {
     }
 
     function checkControllerStatus() {
+        if (!byId("wledEnabled").checked) return Promise.resolve();
         const connection = currentWledConnection();
         if (!connection) {
             latestWledStatus = null;
@@ -1630,6 +1631,8 @@ export default function (view) {
                 resetHueAnchors(config);
                 resetGreyBalance(config);
                 byId("enabled").checked = config.Enabled !== false;
+                byId("wledEnabled").checked = config.WledEnabled !== false;
+                byId("disableAmbilightDuringDaytime").checked = config.DisableAmbilightDuringDaytime === true;
                 byId("holdWhilePaused").checked = config.HoldWhilePaused !== false;
                 byId("ignoreBlackBorders").checked = config.IgnoreBlackBorders !== false;
                 byId("correctLedGamma").checked = config.CorrectLedGamma !== false;
@@ -1703,9 +1706,9 @@ export default function (view) {
 
                 return Promise.all([
                     loadDevices(config.TargetDeviceId || ""),
-                    alreadyConfigured ? Promise.resolve() : findWled(),
-                    checkControllerSettings(),
-                    checkControllerStatus(),
+                    !byId("wledEnabled").checked || alreadyConfigured ? Promise.resolve() : findWled(),
+                    byId("wledEnabled").checked ? checkControllerSettings() : Promise.resolve(),
+                    byId("wledEnabled").checked ? checkControllerStatus() : Promise.resolve(),
                     loadWizardState(),
                     // On a normal page load (not right after an interactive
                     // pairing), nothing else ever populates the entertainment-area
@@ -1727,7 +1730,7 @@ export default function (view) {
         event.preventDefault();
         const usingFinder = byId("wledCandidatesContainer").style.display !== "none";
         const host = (usingFinder ? byId("wledCandidates").value : byId("wledHost").value.trim());
-        if (!host) {
+        if (!host && byId("wledEnabled").checked) {
             Dashboard.alert("Enter a WLED address first, or pick a discovered controller.");
             return;
         }
@@ -1738,6 +1741,8 @@ export default function (view) {
             ...loadedConfig,
             ConfigSchemaVersion: 3,
             Enabled: byId("enabled").checked,
+            WledEnabled: byId("wledEnabled").checked,
+            DisableAmbilightDuringDaytime: byId("disableAmbilightDuringDaytime").checked,
             HoldWhilePaused: byId("holdWhilePaused").checked,
             IgnoreBlackBorders: byId("ignoreBlackBorders").checked,
             ReverseTopLeds: byId("reverseTopLeds").checked,
@@ -1751,7 +1756,7 @@ export default function (view) {
             WhiteChannelStrengthPercent: Number(byId("whiteChannelStrengthPercent").value),
             TargetDeviceId: byId("targetDeviceId").value,
             TargetDeviceName: targetDeviceName(),
-            WledHost: hostName,
+            WledHost: hostName || loadedConfig?.WledHost || "",
             AnalysisWidth: Number(byId("analysisWidth").value),
             AnalysisHeight: analysisHeight(),
             WallColourHex: byId("wallColourHex").value,
@@ -2157,7 +2162,7 @@ export default function (view) {
     // Every 5 s: a real network round trip to WLED/Hue (status + ping), not
     // just a cheap in-process counter read like refreshFpsChain -- but still
     // often enough for the cards to feel genuinely live.
-    setInterval(() => { checkControllerStatus(); loadHueStatus().then(refreshOverviewCards); refreshPings(); }, 5000);
+    setInterval(() => { if (byId("wledEnabled").checked) checkControllerStatus(); loadHueStatus().then(refreshOverviewCards); refreshPings(); }, 5000);
     setInterval(refreshActivityLog, 5000);
     view.addEventListener("viewshow", load);
     byId("realtimeAmbilightConfigurationForm").addEventListener("submit", save);
@@ -2181,6 +2186,10 @@ export default function (view) {
     });
     byId("findWled").addEventListener("click", findWled);
     byId("refreshDevices").addEventListener("click", () => loadDevices(byId("targetDeviceId").value));
+    byId("wledEnabled").addEventListener("change", () => {
+        if (byId("wledEnabled").checked) checkControllerStatus();
+        refreshPings();
+    });
     byId("wledHost").addEventListener("change", () => { checkControllerSettings(); checkControllerStatus(); });
     byId("wledHttpPort").addEventListener("change", () => { checkControllerSettings(); checkControllerStatus(); });
     byId("startCalibrationWizard").addEventListener("click", startWizard);
