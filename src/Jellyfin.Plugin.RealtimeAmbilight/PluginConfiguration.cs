@@ -31,6 +31,12 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public string TargetDeviceName { get; set; } = string.Empty;
 
+    /// <summary>Keep existing WLED installations enabled on upgrade.</summary>
+    public bool WledEnabled { get; set; } = true;
+
+    /// <summary>Block output between 07:00 and 17:00 server local time, including active playback.</summary>
+    public bool DisableAmbilightDuringDaytime { get; set; }
+
     public string WledHost { get; set; } = "10.0.0.8";
 
     public int WledHttpPort { get; set; } = 80;

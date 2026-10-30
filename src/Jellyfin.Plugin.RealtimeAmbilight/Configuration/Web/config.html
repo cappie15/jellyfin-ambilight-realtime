@@ -464,6 +464,11 @@
                         <span>Enable Ambilight</span>
                     </label>
                     <div class="fieldDescription">Turns output off without losing settings. <strong>Default: on.</strong></div>
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="disableAmbilightDuringDaytime" type="checkbox" />
+                        <span>Disable Ambilight during daytime (07:00–17:00)</span>
+                    </label>
+                    <div class="fieldDescription">Uses the Jellyfin server's local time. Existing output loops automatically stop at 07:00 and resume at 17:00 while playback continues. <strong>Default: off.</strong></div>
                 </div>
 
                 <div class="verticalSection">
@@ -507,6 +512,11 @@
                 <div class="raModalBody">
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Which WLED controller?</h3>
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" id="wledEnabled" type="checkbox" />
+                        <span>Enable WLED output</span>
+                    </label>
+                    <div class="fieldDescription">When disabled, skips automatic WLED status checks and realtime output. Hue remains available. <strong>Default: on.</strong></div>
                     <button is="emby-button" type="button" id="findWled" class="raised">Scan the network for WLED</button>
 
                     <div id="wledCandidatesContainer" class="selectContainer" style="display:none">

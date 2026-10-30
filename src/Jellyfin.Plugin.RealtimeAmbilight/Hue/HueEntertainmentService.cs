@@ -203,7 +203,7 @@ public sealed class HueEntertainmentService : IHostedService, IAsyncDisposable
     private async Task TickAsync()
     {
         var configuration = Plugin.Instance?.Configuration;
-        if (configuration is null || !configuration.HueEnabled)
+        if (!AmbilightOutputPolicy.IsAllowed(configuration, DateTime.Now) || configuration?.HueEnabled != true)
         {
             if (_stateMachine.State is not HueEntertainmentState.Unpaired)
             {
