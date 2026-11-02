@@ -80,6 +80,64 @@ public sealed class HueEntertainmentConfigurationTests
     }
 
     [Fact]
+    public void ResolveChannelPositionsPreservesPlayGradientChannelPositionsWithOneServiceLocation()
+    {
+        var stripId = Guid.NewGuid();
+        var lampId = Guid.NewGuid();
+        var positions = new[]
+        {
+            new HuePosition(-0.4, 0.8, -0.4),
+            new HuePosition(-0.4, 0.8, 0.0),
+            new HuePosition(-0.4, 0.8, 0.4),
+            new HuePosition(0.0, 0.8, 0.4),
+            new HuePosition(0.4, 0.8, 0.4),
+            new HuePosition(0.4, 0.8, 0.0),
+            new HuePosition(0.4, 0.8, -0.4),
+        };
+        var channels = positions.Select((position, index) =>
+            new HueEntertainmentChannel(index, position, [new HueChannelMember(stripId, index)]))
+            .Append(new HueEntertainmentChannel(7, new HuePosition(0, 0, 0), [new HueChannelMember(lampId, 0)]))
+            .ToArray();
+        var configuration = new HueEntertainmentConfiguration(
+            Guid.NewGuid(), "TV-Bereich", "screen", "inactive", channels,
+            new Dictionary<Guid, IReadOnlyList<HuePosition>>
+            {
+                [stripId] = [new HuePosition(0, 0.8, 0)],
+                [lampId] = [new HuePosition(0.2, 1, 0)],
+            });
+
+        var resolved = configuration.ResolveChannelPositions();
+
+        for (var i = 0; i < positions.Length; i++)
+        {
+            Assert.Equal(positions[i], resolved[i].Position);
+        }
+        Assert.Equal(new HuePosition(0.2, 1, 0), resolved[7].Position);
+    }
+
+    [Fact]
+    public void ResolveChannelPositionsDoesNotApplySingleLocationFallbackToGroupedSegments()
+    {
+        var stripId = Guid.NewGuid();
+        var configuration = new HueEntertainmentConfiguration(
+            Guid.NewGuid(), "TV-Bereich", "screen", "inactive",
+            [
+                new HueEntertainmentChannel(0, new HuePosition(-0.4, 0.8, -0.4), [new HueChannelMember(stripId, 0)]),
+                new HueEntertainmentChannel(1, new HuePosition(0.4, 0.8, 0.4),
+                    [new HueChannelMember(stripId, 1), new HueChannelMember(stripId, 2)]),
+            ],
+            new Dictionary<Guid, IReadOnlyList<HuePosition>>
+            {
+                [stripId] = [new HuePosition(0, 0.8, 0)],
+            });
+
+        var resolved = configuration.ResolveChannelPositions();
+
+        Assert.Equal(new HuePosition(0, 0.8, 0), resolved[0].Position);
+        Assert.Equal(new HuePosition(0, 0.8, 0), resolved[1].Position);
+    }
+
+    [Fact]
     public void ResolveChannelPositionsFallsBackToTheOriginalPositionWhenOnlySomeMembersAreKnown()
     {
         var knownId = Guid.NewGuid();

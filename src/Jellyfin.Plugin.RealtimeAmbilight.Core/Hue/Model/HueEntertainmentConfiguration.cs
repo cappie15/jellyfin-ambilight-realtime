@@ -108,9 +108,34 @@ public sealed record HueEntertainmentConfiguration(
                 : member.Index;
         }
 
+        // Some Play Gradient Lightstrips expose one service location for the
+        // whole device, but distinct, accurate positions for each segment's
+        // entertainment channel. Do not collapse those channel positions.
+        // Only use this fallback when every segment has its own channel;
+        // grouped channels must retain the existing member-based resolution.
+        var channelsByService = Channels
+            .SelectMany(channel => channel.Members.Select(member => (channel, member)))
+            .GroupBy(entry => entry.member.ServiceId)
+            .ToDictionary(group => group.Key, group => group.ToArray());
+
         var resolved = new List<HueEntertainmentChannel>(Channels.Count);
         foreach (var channel in Channels)
         {
+            if (channel.Members.Count == 1)
+            {
+                var serviceId = channel.Members[0].ServiceId;
+                if (serviceLocations.TryGetValue(serviceId, out var locations)
+                    && locations.Count == 1
+                    && channelsByService.TryGetValue(serviceId, out var entries)
+                    && entries.Length > 1
+                    && entries.All(entry => entry.channel.Members.Count == 1)
+                    && entries.Select(entry => entry.member.Index).Distinct().Count() == entries.Length)
+                {
+                    resolved.Add(channel);
+                    continue;
+                }
+            }
+
             var memberPositions = new List<HuePosition>(channel.Members.Count);
             var allKnown = channel.Members.Count > 0;
             foreach (var member in channel.Members)
