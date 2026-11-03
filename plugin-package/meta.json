@@ -7,7 +7,7 @@
   "owner": "Realtime Ambilight contributors",
   "targetAbi": "12.0.0.0",
   "timestamp": "2026-10-25T21:00:00.0000000Z",
-  "version": "0.5.1",
+  "version": "0.5.1.0",
   "status": "Active",
   "autoUpdate": false,
   "assemblies": []
